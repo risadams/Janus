@@ -3,19 +3,22 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/config"
 )
 
@@ -49,9 +52,9 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		findings = append(findings,
 			checkListen(cfg.Listen),
 			checkUpstream(client, cfg.Upstream.BaseURL),
-			checkLocal(client, cfg.Local.BaseURL),
 			checkLogs(cfg.Logging.Dir),
 		)
+		findings = append(findings, checkLocal(client, cfg)...)
 	}
 
 	fmt.Fprintf(stdout, "%s doctor\n\n", versionLine())
@@ -116,41 +119,68 @@ func checkUpstream(client *http.Client, base string) finding {
 	return finding{"ok", "upstream", fmt.Sprintf("%s answered in %s", base, time.Since(start).Round(time.Millisecond))}
 }
 
-// checkLocal looks at LM Studio. Problems here are warnings: janus runs
-// without the local model, it just cannot use it.
-func checkLocal(client *http.Client, base string) finding {
-	resp, err := client.Get(strings.TrimRight(base, "/") + "/api/v0/models")
-	if err != nil {
-		return finding{"warn", "local", fmt.Sprintf("%s did not answer: %v\n"+
+// checkLocal looks at LM Studio, and at each model a request can be
+// routed to. An unreachable LM Studio is a warning while routing is off,
+// since janus then runs without it.
+func checkLocal(client *http.Client, cfg config.Config) []finding {
+	base := cfg.Local.BaseURL
+	u, _ := url.Parse(base) // Validate has established that this parses
+	models, err := backend.NewLocal(u, client).Models(context.Background())
+
+	level := "warn"
+	if cfg.Features.Route {
+		level = "fail" // requests for a routed model have nowhere else to go
+	}
+	switch {
+	case errors.Is(err, backend.ErrNotLMStudio):
+		return []finding{{level, "local", fmt.Sprintf("%s: %v; is local.baseUrl right?", base, err)}}
+	case err != nil:
+		return []finding{{level, "local", fmt.Sprintf("%s did not answer: %v\n"+
 			"Check that LM Studio is open with its server started. To reach it by a name\n"+
-			"other than localhost, its server must be set to serve on the local network.", base, err)}
-	}
-	defer resp.Body.Close()
-
-	// LM Studio answers 200 even for paths it does not know, with an error
-	// in the body, so the body is what has to be checked.
-	var list struct {
-		Data []struct {
-			ID            string `json:"id"`
-			State         string `json:"state"`
-			LoadedContext int    `json:"loaded_context_length"`
-		} `json:"data"`
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if json.Unmarshal(body, &list) != nil || list.Data == nil {
-		return finding{"warn", "local", fmt.Sprintf("%s answered (HTTP %d) but not like LM Studio; is local.baseUrl right?", base, resp.StatusCode)}
+			"other than localhost, its server must be set to serve on the local network.", base, err)}}
 	}
 
-	var loaded []string
-	for _, m := range list.Data {
-		if m.State == "loaded" {
+	var loaded, all []string
+	byID := map[string]backend.Model{}
+	for _, m := range models {
+		byID[m.ID] = m
+		all = append(all, m.ID)
+		if m.Loaded {
 			loaded = append(loaded, fmt.Sprintf("%s (context %s)", m.ID, commas(m.LoadedContext)))
 		}
 	}
+	var findings []finding
 	if len(loaded) == 0 {
-		return finding{"warn", "local", fmt.Sprintf("%s has %d models and none loaded; the first request to one will wait while it loads", base, len(list.Data))}
+		findings = append(findings, finding{"warn", "local", fmt.Sprintf("%s has %d models and none loaded; the first request to one will wait while it loads", base, len(models))})
+	} else {
+		findings = append(findings, finding{"ok", "local", fmt.Sprintf("%s, loaded: %s", base, strings.Join(loaded, ", "))})
 	}
-	return finding{"ok", "local", fmt.Sprintf("%s, loaded: %s", base, strings.Join(loaded, ", "))}
+	if !cfg.Features.Route {
+		return findings
+	}
+
+	names := make([]string, 0, len(cfg.Local.Models))
+	for name := range cfg.Local.Models {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		want := cfg.Local.Models[name]
+		m, found := byID[want.Model]
+		what := fmt.Sprintf("%q goes to %s", name, want.Model)
+		switch {
+		case !found:
+			findings = append(findings, finding{"fail", "route", fmt.Sprintf("%s, which LM Studio does not have.\nIt has: %s", what, strings.Join(all, ", "))})
+		case !m.Loaded:
+			findings = append(findings, finding{"warn", "route", what + ", which is not loaded; the first request will wait while it loads"})
+		case want.ContextTokens > m.LoadedContext:
+			findings = append(findings, finding{"warn", "route", fmt.Sprintf("%s: contextTokens is %s but the model is loaded with %s,\nso larger requests will be sent and then fail in LM Studio",
+				what, commas(want.ContextTokens), commas(m.LoadedContext))})
+		default:
+			findings = append(findings, finding{"ok", "route", fmt.Sprintf("%s, loaded with a context of %s tokens", what, commas(m.LoadedContext))})
+		}
+	}
+	return findings
 }
 
 // checkLogs confirms the log directory can be written, without creating

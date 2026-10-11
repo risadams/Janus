@@ -30,6 +30,9 @@ func exchange() proxy.Exchange {
 		Path:     "/v1/messages",
 		Header:   header,
 		Status:   200,
+		Backend:  "upstream",
+		Route:    "upstream",
+		Reason:   "passthrough",
 		TTFB:     812 * time.Millisecond,
 		Duration: 1931 * time.Millisecond,
 		RequestBody: []byte(`{"model":"claude-opus-5-5","stream":true,"max_tokens":100,` +
@@ -225,5 +228,41 @@ func TestAppendReportsFailure(t *testing.T) {
 	os.WriteFile(blocker, nil, 0o600)
 	if err := Open(filepath.Join(blocker, "ledger")).Append(FromExchange(exchange())); err == nil {
 		t.Error("Append into a path that cannot be a directory succeeded")
+	}
+}
+
+func TestLocalExchangeRecord(t *testing.T) {
+	ex := exchange()
+	ex.Backend, ex.Route, ex.Reason = "local", "local", "model alias janus-local"
+	ex.Stages = []string{"set_model", "lift_tool_additions"}
+	ex.BackendModel = "qwen/qwen3.8-27b"
+	ex.RequestBody = []byte(`{"model":"janus-local","messages":[{"role":"user","content":"hi"}]}`)
+	ex.Summary = &anthropic.Summary{Model: "qwen/qwen3.8-27b", StopReason: "end_turn", Complete: true,
+		Usage: anthropic.Usage{Input: 363, Output: 30, CacheRead: n(256)}}
+
+	rec := FromExchange(ex)
+	if rec.Backend != "local" || rec.Route != "local" || rec.Reason != "model alias janus-local" || strings.Join(rec.Stages, ",") != "set_model,lift_tool_additions" {
+		t.Errorf("decision = %+v", rec)
+	}
+	// The request names what the client asked for; the response, what
+	// actually answered.
+	if rec.Request.Model != "janus-local" || rec.Response.Model != "qwen/qwen3.8-27b" {
+		t.Errorf("request model %q, response model %q", rec.Request.Model, rec.Response.Model)
+	}
+
+	// LM Studio reported 363 input of which 256 came from its cache; the
+	// record separates them the way the Anthropic API would have.
+	if rec.Usage.Input != 107 || *rec.Usage.CacheRead != 256 {
+		t.Errorf("usage = input %d, cache read %d; want 107 and 256", rec.Usage.Input, *rec.Usage.CacheRead)
+	}
+	upstream := exchange()
+	upstream.Summary.Usage = anthropic.Usage{Input: 2, Output: 1, CacheRead: n(18327)}
+	if got := FromExchange(upstream).Usage.Input; got != 2 {
+		t.Errorf("an upstream record's input was adjusted to %d", got)
+	}
+
+	rep := Summarise([]Record{rec}, DefaultPrices)
+	if rep.Total.CostUSD != 0 || rep.Total.Unpriced != 0 || rep.ByBackend[0].Key != "local" {
+		t.Errorf("a local answer should cost nothing upstream and not be unpriced: %+v", rep.Total)
 	}
 }

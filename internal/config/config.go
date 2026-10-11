@@ -24,7 +24,7 @@ type Config struct {
 	AllowRemote bool `json:"allowRemote"`
 
 	Upstream Backend  `json:"upstream"`
-	Local    Backend  `json:"local"`
+	Local    Local    `json:"local"`
 	Features Features `json:"features"`
 	Logging  Logging  `json:"logging"`
 	// Pricing adds to, or corrects, the prices janus ships with, keyed by
@@ -47,9 +47,35 @@ type Backend struct {
 	BaseURL string `json:"baseUrl"`
 }
 
-// Features switches each mechanism on. All are off by default, and none is
-// implemented yet: Validate rejects any that is set, so a config can never
-// claim a behaviour the binary does not have.
+// Local is the LM Studio server and the models on it that janus may use.
+type Local struct {
+	BaseURL string `json:"baseUrl"`
+	// Models maps a model name a client asks for to a local model. A
+	// request for one of these names is answered locally when
+	// features.route is on. The name can be anything: an alias made up for
+	// the purpose, such as "janus-local", or a real model name to divert.
+	Models map[string]LocalModel `json:"models,omitempty"`
+}
+
+// LocalModel is one entry of local.models.
+type LocalModel struct {
+	// Model is the model's id in LM Studio.
+	Model string `json:"model"`
+	// ContextTokens is the largest prompt to send it. Zero means use the
+	// context LM Studio has the model loaded with.
+	ContextTokens int `json:"contextTokens,omitempty"`
+	// TimeoutSeconds bounds one request. Zero means the default.
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
+}
+
+// DefaultLocalTimeoutSeconds is how long a local request may take when the
+// model's entry does not say. Local models are slow to start on a large
+// prompt and slower still if they must be loaded first.
+const DefaultLocalTimeoutSeconds = 900
+
+// Features switches each mechanism on. All are off by default. Only route
+// is implemented; Validate rejects the others, so a config can never claim
+// a behaviour the binary does not have.
 type Features struct {
 	Route    bool `json:"route"`
 	Escalate bool `json:"escalate"`
@@ -78,7 +104,7 @@ func Default() Config {
 	return Config{
 		Listen:   "127.0.0.1:8787",
 		Upstream: Backend{BaseURL: "https://api.anthropic.com"},
-		Local:    Backend{BaseURL: "http://studio.tuesday.local:1234"},
+		Local:    Local{BaseURL: "http://studio.tuesday.local:1234"},
 		Logging:  Logging{Dir: "logs", Capture: true, RetainDays: 7, MaxMegabytes: 1024},
 	}
 }
@@ -173,13 +199,25 @@ func (c Config) Validate() error {
 		name string
 		on   bool
 	}{
-		{"route", c.Features.Route},
 		{"escalate", c.Features.Escalate},
 		{"compress", c.Features.Compress},
 		{"guard", c.Features.Guard},
 	} {
 		if f.on {
 			errs = append(errs, fmt.Errorf("features.%s is not available in this version; set it to false", f.name))
+		}
+	}
+	if c.Features.Route && len(c.Local.Models) == 0 {
+		errs = append(errs, errors.New(`features.route is on but local.models is empty; add an entry such as "janus-local": {"model": "<id of a model in LM Studio>"}`))
+	}
+	for name, m := range c.Local.Models {
+		switch {
+		case name == "":
+			errs = append(errs, errors.New("local.models has an entry with an empty name"))
+		case m.Model == "":
+			errs = append(errs, fmt.Errorf("local.models.%s.model is not set; give the id of a model in LM Studio", name))
+		case m.ContextTokens < 0 || m.TimeoutSeconds < 0:
+			errs = append(errs, fmt.Errorf("local.models.%s has a negative contextTokens or timeoutSeconds; use 0 for the default", name))
 		}
 	}
 

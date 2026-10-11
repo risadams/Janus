@@ -29,10 +29,10 @@ ignore fields they do not know.
 | `agent` | string | Claude Code's subagent id, from `X-Claude-Code-Agent-Id`. Omitted for the main loop. |
 | `method`, `path` | string | The request line |
 | `class` | string | `main`, `subagent`, `connectivity`, or `unknown` |
-| `route` | string | Where the request was sent. Always `upstream` for now. |
-| `reason` | string | Why. Always `passthrough` for now. |
-| `stages` | string[] | Transforms applied. Always empty for now. |
-| `backend` | string | Which backend answered. Always `upstream` for now. |
+| `route` | string | Where the request was sent: `upstream` or `local` |
+| `reason` | string | The rule that sent it there: `passthrough`, or `model alias <name>`. For a refused request, why. |
+| `stages` | string[] | Changes made to the request on the way: `set_model`, `lift_tool_additions`, `drop_deferred_tools` |
+| `backend` | string | Which backend answered: `upstream`, `local`, or `none` if Janus refused the request itself |
 | `status` | int | HTTP status, or `0` if no response was started |
 | `outcome` | string | See below |
 | `error` | string | The API's error type, when `outcome` is `api_error` |
@@ -74,6 +74,11 @@ report is left out, and that is not the same as zero: LM Studio, for
 example, reports no cache writes at all.
 
 Total input for a request is `input + cache_read + cache_write`.
+
+LM Studio counts tokens read from its own prompt cache inside its input
+figure. Janus takes them out, so `input` means uncached input whichever
+backend answered. For a local answer, `request.model` is the name the
+client asked for and `response.model` is the model that actually ran.
 
 ### Example
 
