@@ -25,7 +25,7 @@ the defaults below and carries on.
 | `routing` | Optional. Rules that decide which requests go local; see below. |
 | `features.route` | Switch routing on: aliases in `local.models` and the rules in `routing`. Off by default. |
 | `features.guard` | Look for secrets in requests going upstream, and record what is found. See [the guard](GUARD.md). |
-| `guard` | Optional. `redact` to replace secrets before they leave; your own patterns, an allow list, and the entropy search. See [the guard](GUARD.md). |
+| `guard` | Optional. `redact` to replace secrets before they leave; your own patterns, an allow list, and the entropy search; and `localOnly`, which keeps named files, directories, and marked content from going upstream at all. See [the guard](GUARD.md). |
 | `features.escalate`, `features.compress` | Reserved. Janus refuses to start if either is true. Local-first routing is a rule, not a feature switch. |
 | `logging.dir` | Where the ledger and captures are written. See [the ledger and captures](LEDGER.md). |
 | `logging.capture` | Save every request and response in full. On by default. Captures contain your prompts and code. |

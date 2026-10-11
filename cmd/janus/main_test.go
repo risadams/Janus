@@ -379,7 +379,7 @@ func TestRecordUsesTheRedactorsOwnAccount(t *testing.T) {
 	dir := t.TempDir()
 	var console bytes.Buffer
 	ex := exchangeCarrying(fakeAWSKey)
-	ex.Guard = &proxy.Guard{Report: guard.Report{Findings: 1, Kinds: map[string]int{"aws_access_key": 1}, Where: []string{"messages[1] user (tool_result)"}}, Replaced: 1, Restored: 2}
+	ex.Guard = &proxy.Guard{Scanned: true, Report: guard.Report{Findings: 1, Kinds: map[string]int{"aws_access_key": 1}, Where: []string{"messages[1] user (tool_result)"}}, Replaced: 1, Restored: 2}
 
 	// A detector is passed too, to show the redactor's account takes
 	// precedence over scanning the request again.
