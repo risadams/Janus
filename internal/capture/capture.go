@@ -19,6 +19,7 @@ import (
 //	.md            the readable render; start here
 //	.request.txt   the request body exactly as the client sent it
 //	.response.txt  the response body, decompressed
+//	.sent.txt      the request as janus sent it on, if it changed it
 //
 // Captures hold prompts, code, and tool output in full, so every file is
 // created readable by its owner only, and old ones are pruned.
@@ -57,11 +58,17 @@ func (w *Writer) Write(ex proxy.Exchange) (name string, err error) {
 	if err := os.MkdirAll(filepath.Dir(base), 0o700); err != nil {
 		return "", fmt.Errorf("capture: %w", err)
 	}
-	for ext, content := range map[string][]byte{
+	files := map[string][]byte{
 		".request.txt":  ex.RequestBody,
 		".response.txt": ex.ResponseBody,
 		".md":           []byte(Render(ex)),
-	} {
+	}
+	// What was actually sent, when janus changed the request on the way:
+	// this is the file that shows what left the machine.
+	if ex.SentBody != nil {
+		files[".sent.txt"] = ex.SentBody
+	}
+	for ext, content := range files {
 		if err := os.WriteFile(base+ext, content, 0o600); err != nil {
 			return "", fmt.Errorf("capture: %w", err)
 		}
@@ -210,6 +217,7 @@ func stem(path string) string {
 		".shadow.request.txt", ".shadow.response.txt", ".shadow.md",
 		".replay.response.txt", ".replay.md",
 		".attempt.response.txt",
+		".sent.txt",
 		".request.txt", ".response.txt", ".md",
 	} {
 		if s, ok := strings.CutSuffix(path, ext); ok {

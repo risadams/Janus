@@ -191,10 +191,71 @@ A secret that is in a conversation is sent again with every turn that
 follows, and is counted each time. The counts are occurrences across
 requests, not distinct secrets.
 
+## Checking what left the machine
+
+`janus audit` answers the question directly, from the ledger and the
+captures.
+
+```bash
+janus audit                 # where everything went, and what became of any secrets
+janus audit -since 24h
+janus audit -verify         # also re-read what was sent and look for secrets in it
+janus audit <request id>    # one request
+janus audit -body <id>      # that request, exactly as it was sent
+```
+
+```
+Where 5 requests carrying your content went
+       3  to Anthropic, exactly as your client sent them
+       2  to Anthropic, changed by janus on the way (2 with secrets replaced)
+       0  to the local model only, never to Anthropic
+       0  refused or stopped by janus, and sent nowhere
+
+Secrets
+  2 requests bound for Anthropic carried something that looks like a secret
+  (aws_access_key 3, github_token 3, url_password 3).
+       2  had them replaced with placeholders before sending
+       0  were SENT WITH THE SECRETS IN THEM
+```
+
+If any request went with secrets in it, the audit lists each one by id,
+kind, and place, and says to rotate them. It never prints a secret.
+
+**`-verify` does not take the ledger's word for it.** It opens the saved
+copy of every request that went to Anthropic, as it was sent, and runs the
+detector over it again. It exits with status 1 if any still holds a
+secret, so it can be used in a script. Because it uses the detector as
+configured now, it also catches what a pattern you have added since would
+have caught at the time.
+
+```
+Verification: re-read 5 requests as they were sent to Anthropic
+       5  contain nothing that looks like a secret
+       0  STILL CONTAIN SOMETHING THAT LOOKS LIKE A SECRET
+       0  could not be checked: no capture was saved, or it has been pruned
+```
+
+**`-body` prints the bytes.** When Janus changed a request before sending
+it, the capture holds both versions: `.request.txt` as your client sent
+it, and `.sent.txt` as it went. `janus audit -body <id>` prints the one
+that went. In the test session, this is the `.env` file as Anthropic
+received it:
+
+```
+AWS_ACCESS_KEY_ID=JANUS_REDACTED_e1a4c4ad4cea
+DATABASE_URL=postgres://app:JANUS_REDACTED_73d86e825765@db.internal:5432/orders
+GITHUB_TOKEN=JANUS_REDACTED_102b543b324f
+```
+
+What it depends on:
+
+- **Captures.** A request with no capture, because `logging.capture` was
+  off or the capture has been pruned, appears in the counts and cannot be
+  verified or printed.
+- **The detector.** "Contain nothing that looks like a secret" means
+  nothing a detector recognises. It is evidence, not proof.
+
 ## What it does not do yet
 
 - Keep chosen files or directories from ever going upstream, whatever is
   in them.
-- Show, after the fact, exactly what left the machine.
-
-Those are the rest of this milestone.
