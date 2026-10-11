@@ -176,6 +176,44 @@ Things to know:
   also sending live requests local, shadows compete with them.
 - Shadow runs are in none of the other figures `janus stats` reports.
 
+### Replay: the same test on traffic you already have
+
+Shadow mode judges the local model on requests as they happen. `janus
+replay` does it on requests you have already captured, which is quicker
+when you want to try a different model or a different context size on the
+same traffic.
+
+```bash
+janus replay logs/captures                    # everything captured
+janus replay -class subagent logs/captures    # one class
+janus replay -limit 20 logs/captures/2026-10-11
+janus replay -local janus-small logs/captures # a particular entry of local.models
+```
+
+```
+20261011T160134.602-bf240e  subagent  9.9s  same: local tool_use (Bash); Claude tool_use (Bash)
+20261011T160138.677-b0b93b  subagent  6.7s  differs: local tool_use (Bash); Claude tool_use (Bash, Read, Read)
+
+Summary
+       class  replayed  skipped  failed  same  differs  not compared  local time
+    subagent         4        0       0     2        2             0        9.9s
+```
+
+Each captured Messages request is run on the local model and set against
+the answer Claude gave at the time. The local answer is saved beside the
+capture as `.replay.md` and `.replay.response.txt`; a later replay
+overwrites them.
+
+- **Nothing is sent upstream.** Replay talks to LM Studio only. Your
+  captures stay on your machines.
+- It needs captures, so `logging.capture` must have been on. It does not
+  need `features.route`.
+- It writes nothing to the ledger.
+- "same" has the meaning it has in shadow mode: same stop reason and same
+  tools called. It is about shape, not correctness.
+- The request class is read from the request body, as `janus route` does.
+- Ctrl+C stops it and still prints the summary so far.
+
 ### Seeing what a rule would do
 
 ```bash

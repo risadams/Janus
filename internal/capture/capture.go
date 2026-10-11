@@ -192,7 +192,11 @@ func (w *Writer) Prune(now time.Time) error {
 // stem is a capture file's path without its extension, which the three
 // files of one capture share.
 func stem(path string) string {
-	for _, ext := range []string{".shadow.request.txt", ".shadow.response.txt", ".shadow.md", ".request.txt", ".response.txt", ".md"} {
+	for _, ext := range []string{
+		".shadow.request.txt", ".shadow.response.txt", ".shadow.md",
+		".replay.response.txt", ".replay.md",
+		".request.txt", ".response.txt", ".md",
+	} {
 		if s, ok := strings.CutSuffix(path, ext); ok {
 			return s
 		}

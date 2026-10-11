@@ -165,60 +165,119 @@ func (r *Runner) skipped(j job, start time.Time, why string) result {
 func (r *Runner) run(ctx context.Context, j job) result {
 	start := time.Now()
 	shadow := j.ex.Shadow
-
-	req, err := anthropic.ParseRequest(j.ex.RequestBody)
-	if err != nil || j.ex.RequestTruncated {
+	if j.ex.RequestTruncated {
 		return r.skipped(j, start, "the request could not be read back")
 	}
-	stages, err := backend.Normalize(req, shadow.Model)
+
+	out := Run(ctx, r.client, r.local, Input{
+		ID: j.ex.ID + "-shadow", Body: j.ex.RequestBody, AnthropicVersion: j.ex.Header.Get("Anthropic-Version"),
+		Model: shadow.Model, ContextTokens: shadow.ContextTokens, Timeout: shadow.Timeout, Reason: shadow.Reason,
+	})
+	if out.Skipped != "" {
+		return r.skipped(j, start, out.Skipped)
+	}
+
+	rec := r.base(j, start)
+	rec.Stages = out.Exchange.Stages
+	if out.Err != nil {
+		rec.DurationMs = out.Exchange.Duration.Milliseconds()
+		rec.Outcome = ledger.OutcomeNoResponse
+		rec.Reason += ": " + out.Err.Error()
+		return result{rec, out.Exchange}
+	}
+
+	// Fill in the outcome, response, and usage the same way a real local
+	// exchange would be recorded, then keep the shadow's own identity.
+	filled := ledger.FromExchange(*out.Exchange)
+	rec.Status, rec.Outcome, rec.Error, rec.Fault = filled.Status, filled.Outcome, filled.Error, filled.Fault
+	rec.TTFBMs, rec.DurationMs = filled.TTFBMs, filled.DurationMs
+	rec.Response, rec.Usage = filled.Response, filled.Usage
+
+	if rec.Outcome == ledger.OutcomeOK {
+		rec.Compare = Compare(j.ex.Summary.StopReason, j.ex.Summary.Tools, j.ex.Duration, *out.Exchange.Summary)
+	}
+	return result{rec, out.Exchange}
+}
+
+// Input is one request to run on the local model for comparison.
+type Input struct {
+	// ID names the run in its capture.
+	ID string
+	// Body is the request as the client originally sent it.
+	Body             []byte
+	AnthropicVersion string
+	// Model is the local model's id in LM Studio; ContextTokens the largest
+	// prompt to send it, or zero to use what it is loaded with.
+	Model         string
+	ContextTokens int
+	Timeout       time.Duration
+	// Reason is recorded as why the run happened.
+	Reason string
+}
+
+// Output is what came of one run. Exactly one of these describes it:
+// Skipped (it was never sent), Err (it was sent and the connection failed),
+// or neither (an answer came back, which may itself be an error or cut
+// short; Exchange.Summary says).
+type Output struct {
+	Skipped string
+	Err     error
+	// Exchange is what was sent to the local model and what came back. Nil
+	// when Skipped. It carries no credentials, because none are sent.
+	Exchange *proxy.Exchange
+}
+
+// Run sends one request to the local model and reads the answer. It is the
+// shared core of shadow mode and of replay.
+func Run(ctx context.Context, client *http.Client, local *backend.Local, in Input) Output {
+	start := time.Now()
+
+	req, err := anthropic.ParseRequest(in.Body)
 	if err != nil {
-		return r.skipped(j, start, "the request cannot be adapted for the local model: "+err.Error())
+		return Output{Skipped: "the request could not be read back"}
+	}
+	stages, err := backend.Normalize(req, in.Model)
+	if err != nil {
+		return Output{Skipped: "the request cannot be adapted for the local model: " + err.Error()}
 	}
 	body := req.Bytes()
 
-	limit := shadow.ContextTokens
-	info, found, err := r.local.Model(ctx, shadow.Model)
+	limit := in.ContextTokens
+	info, found, err := local.Model(ctx, in.Model)
 	switch {
 	case err != nil:
-		return r.skipped(j, start, fmt.Sprintf("could not reach LM Studio: %v", err))
+		return Output{Skipped: fmt.Sprintf("could not reach LM Studio: %v", err)}
 	case !found:
-		return r.skipped(j, start, fmt.Sprintf("LM Studio does not have local model %q", shadow.Model))
+		return Output{Skipped: fmt.Sprintf("LM Studio does not have local model %q", in.Model)}
 	case limit == 0:
 		limit = info.LoadedContext
 	}
 	if estimate := route.EstimateTokens(body); limit > 0 && estimate > limit {
-		return r.skipped(j, start, fmt.Sprintf("about %d tokens, more than the model's %d-token context", estimate, limit))
+		return Output{Skipped: fmt.Sprintf("about %d tokens, more than the model's %d-token context", estimate, limit)}
 	}
 
-	if shadow.Timeout > 0 {
+	if in.Timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, shadow.Timeout)
+		ctx, cancel = context.WithTimeout(ctx, in.Timeout)
 		defer cancel()
 	}
-	out, _ := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(r.local.URL().String(), "/")+"/v1/messages", bytes.NewReader(body))
+	out, _ := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(local.URL().String(), "/")+"/v1/messages", bytes.NewReader(body))
 	out.Header.Set("Content-Type", "application/json")
 	out.Header.Set("Accept-Encoding", "identity")
-	if v := j.ex.Header.Get("Anthropic-Version"); v != "" {
-		out.Header.Set("Anthropic-Version", v)
+	if in.AnthropicVersion != "" {
+		out.Header.Set("Anthropic-Version", in.AnthropicVersion)
 	}
 
-	// The exchange that will be captured: what was sent to the local model
-	// and what came back. It carries no credentials, because none were sent.
-	ex := proxy.Exchange{
-		ID: j.ex.ID + "-shadow", Start: start, Method: http.MethodPost, Path: "/v1/messages",
+	ex := &proxy.Exchange{
+		ID: in.ID, Start: start, Method: http.MethodPost, Path: "/v1/messages",
 		Header: out.Header.Clone(), RequestBody: body,
-		Backend: "local", Route: route.RouteShadow, Reason: shadow.Reason, Stages: stages, BackendModel: shadow.Model,
+		Backend: "local", Route: route.RouteShadow, Reason: in.Reason, Stages: stages, BackendModel: in.Model,
 	}
-	rec := r.base(j, start)
-	rec.Stages = stages
 
-	resp, err := r.client.Do(out)
+	resp, err := client.Do(out)
 	if err != nil {
 		ex.Duration = time.Since(start)
-		rec.DurationMs = ex.Duration.Milliseconds()
-		rec.Outcome = ledger.OutcomeNoResponse
-		rec.Reason += ": " + err.Error()
-		return result{rec, &ex}
+		return Output{Err: err, Exchange: ex}
 	}
 	defer resp.Body.Close()
 
@@ -238,7 +297,7 @@ func (r *Runner) run(ctx context.Context, j job) result {
 		}
 		if err != nil {
 			if err != io.EOF {
-				rec.Reason += ": " + err.Error()
+				ex.Fault = err.Error()
 			}
 			break
 		}
@@ -246,28 +305,18 @@ func (r *Runner) run(ctx context.Context, j job) result {
 	summary := observer.Summary()
 	ex.Status, ex.Duration = resp.StatusCode, time.Since(start)
 	ex.ResponseHeader, ex.ResponseBody, ex.Summary = resp.Header, kept.Bytes(), &summary
-
-	// Fill in the outcome, response, and usage the same way a real local
-	// exchange would be recorded, then keep the shadow's own identity.
-	filled := ledger.FromExchange(ex)
-	rec.Status, rec.Outcome, rec.Error = filled.Status, filled.Outcome, filled.Error
-	rec.TTFBMs, rec.DurationMs = filled.TTFBMs, filled.DurationMs
-	rec.Response, rec.Usage = filled.Response, filled.Usage
-
-	if rec.Outcome == ledger.OutcomeOK {
-		rec.Compare = compare(j.ex, summary)
-	}
-	return result{rec, &ex}
+	return Output{Exchange: ex}
 }
 
-// compare sets the local answer beside the real one.
-func compare(real proxy.Exchange, local anthropic.Summary) *ledger.Compare {
+// Compare sets a local answer beside the real one, which stopped for
+// realStop having called realTools, and took realDuration.
+func Compare(realStop string, realTools []string, realDuration time.Duration, local anthropic.Summary) *ledger.Compare {
 	c := &ledger.Compare{
-		UpstreamStop:  real.Summary.StopReason,
+		UpstreamStop:  realStop,
 		LocalStop:     local.StopReason,
-		UpstreamTools: orEmpty(real.Summary.Tools),
+		UpstreamTools: orEmpty(realTools),
 		LocalTools:    orEmpty(local.Tools),
-		UpstreamMs:    real.Duration.Milliseconds(),
+		UpstreamMs:    realDuration.Milliseconds(),
 	}
 	c.StopMatch = c.UpstreamStop == c.LocalStop
 	c.ToolsMatch = sameTools(c.UpstreamTools, c.LocalTools)
