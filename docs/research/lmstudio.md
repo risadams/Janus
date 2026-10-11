@@ -130,6 +130,24 @@ when `output_tokens` is above zero" should be one of the first validators.
 - **Real Claude Code subagents ran to completion on `qwen/qwen3.8-27b`**:
   four to six tool-using turns, correct final answer, on a trivial task.
 
+## A weak model on the local-first route (2026-10-11)
+
+`gemma-4-e4b-it-obliterated` was put behind a `local-then-escalate` rule
+for subagents, in one real Claude Code session, to see the checks work.
+
+- One answer was empty and was rejected ("no text and no tool call").
+  Claude answered that turn, and accepted the history, which by then held
+  an earlier local turn.
+- Three answers passed the checks. Two of them were long (2,221 and 8,297
+  output tokens) and useless: the subagent returned nothing Claude could
+  use, and Claude did the task itself.
+- One attempt ran for more than five minutes. There was no limit on a
+  local attempt shorter than the model's 15-minute timeout.
+
+Two consequences. The checks catch broken answers and not bad ones, which
+the documentation now says plainly. And local-first attempts now have their
+own time limit, two minutes unless a rule says otherwise.
+
 ## Not tested
 
 - Images and documents in content blocks.

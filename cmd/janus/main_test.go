@@ -120,6 +120,22 @@ func TestFormatExchange(t *testing.T) {
 			}),
 			"POST /v1/messages -> 429 (2.065s) error=rate_limit_error",
 		},
+		"answered locally": {
+			with(func(ex *proxy.Exchange) {
+				ex.Backend = "local"
+				ex.Attempt = &proxy.Attempt{Backend: "local", Accepted: true}
+				ex.Summary = &anthropic.Summary{Model: "qwen/qwen3.8-27b", StopReason: "end_turn", Complete: true, Usage: anthropic.Usage{Input: 17, Output: 3}}
+			}),
+			"POST /v1/messages -> 200 (2.065s) [local] qwen/qwen3.8-27b end_turn in=17 out=3",
+		},
+		"escalated": {
+			with(func(ex *proxy.Exchange) {
+				ex.Backend = "upstream"
+				ex.Attempt = &proxy.Attempt{Backend: "local", Why: "the local answer has no text and no tool call", Duration: 9340 * time.Millisecond}
+				ex.Summary = &anthropic.Summary{Model: "claude-opus-5-5", StopReason: "end_turn", Complete: true, Usage: anthropic.Usage{Input: 2, Output: 9}}
+			}),
+			"POST /v1/messages -> 200 (2.065s) [after local tried for 9.3s: the local answer has no text and no tool call] claude-opus-5-5 end_turn in=2 out=9",
+		},
 		"unreadable encoding": {
 			with(func(ex *proxy.Exchange) { ex.Unread = "content-encoding br" }),
 			"POST /v1/messages -> 200 (2.065s) response not read: content-encoding br",
@@ -228,7 +244,27 @@ func TestNewRouterResolvesRulesAndTimeouts(t *testing.T) {
 	if len(r.Rules) != 3 || r.Rules[0].Local.ID != "qwen/qwen3.8-27b" || r.Rules[0].Class != "subagent" || r.Rules[0].MaxTokens != 40000 || *r.Rules[0].Tools != true {
 		t.Errorf("rules[0] = %+v", r.Rules[0])
 	}
+	if r.Rules[1].TrialTimeout != time.Duration(config.DefaultTrialSeconds)*time.Second || r.Rules[0].TrialTimeout != 0 {
+		t.Errorf("trial timeouts: escalate rule %s (want the default), local rule %s (want none)", r.Rules[1].TrialTimeout, r.Rules[0].TrialTimeout)
+	}
 	if r.Rules[2].Route != "upstream" || r.Rules[2].Local.ID != "" {
 		t.Errorf("rules[2] = %+v", r.Rules[2])
+	}
+}
+
+func TestRecordSavesARejectedLocalAnswer(t *testing.T) {
+	dir := t.TempDir()
+	captures := capture.New(filepath.Join(dir, "captures"), 7, 1024)
+	ex := messagesExchange()
+	ex.Backend, ex.Route = "upstream", "upstream"
+	ex.Attempt = &proxy.Attempt{Backend: "local", Model: "qwen/qwen3.8-27b", Why: "empty", ResponseBody: []byte(`{"content":[]}`)}
+
+	rec := record(ex, ledger.Open(filepath.Join(dir, "ledger")), captures, log.New(io.Discard, "", 0))
+	if rec.Attempt == nil || rec.Attempt.Verdict != ledger.VerdictRejected {
+		t.Errorf("record attempt = %+v", rec.Attempt)
+	}
+	saved, err := os.ReadFile(filepath.Join(dir, "captures", rec.Capture+".attempt.response.txt"))
+	if err != nil || string(saved) != `{"content":[]}` {
+		t.Errorf("the rejected answer was not saved: %q, %v", saved, err)
 	}
 }

@@ -98,6 +98,20 @@ func (w *Writer) WriteShadow(name string, ex proxy.Exchange) error {
 	return nil
 }
 
+// WriteAttempt saves a local answer that was rejected in favour of
+// Claude's, beside the capture of the request, as
+// <name>.attempt.response.txt. It is the evidence for why janus escalated.
+func (w *Writer) WriteAttempt(name string, response []byte) error {
+	base := filepath.Join(w.dir, name)
+	if err := os.MkdirAll(filepath.Dir(base), 0o700); err != nil {
+		return fmt.Errorf("capture: %w", err)
+	}
+	if err := os.WriteFile(base+".attempt.response.txt", response, 0o600); err != nil {
+		return fmt.Errorf("capture: %w", err)
+	}
+	return nil
+}
+
 // sanitize turns a request path into something safe in a file name:
 // "/v1/messages" becomes "v1-messages".
 func sanitize(path string) string {
@@ -195,6 +209,7 @@ func stem(path string) string {
 	for _, ext := range []string{
 		".shadow.request.txt", ".shadow.response.txt", ".shadow.md",
 		".replay.response.txt", ".replay.md",
+		".attempt.response.txt",
 		".request.txt", ".response.txt", ".md",
 	} {
 		if s, ok := strings.CutSuffix(path, ext); ok {

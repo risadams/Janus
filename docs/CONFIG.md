@@ -111,20 +111,95 @@ Outcome.
 
 | Field | Meaning |
 | --- | --- |
-| `route` | `upstream`, `local`, `shadow`, or `local-then-escalate`. `shadow` is described below. `local-then-escalate` is accepted so configs can be written ahead of it, and behaves as `upstream` until it is built. |
+| `route` | `upstream`, `local`, `shadow`, or `local-then-escalate`. The last two are described below. |
 | `local` | Which entry of `local.models` to use. Required unless `route` is `upstream`. |
 | `name` | Shown in the ledger and in `janus route`. Optional. |
+| `skipChecks` | For `local-then-escalate`: checks to leave out. See below. |
+| `maxSeconds` | For `local-then-escalate`: how long the local model gets before Claude is asked. Default 120. |
 
 **A rule never fails a request.** If a rule sends a request local and the
-local model cannot take it (LM Studio is down, the model is missing, the
-request is too large), the request goes upstream exactly as it arrived, and
-the ledger records why. This is the difference from an alias in
-`local.models`, which has no upstream model to fall back to and is refused.
+local model cannot take it, the request goes to Claude instead and the
+ledger records why. That covers LM Studio being down, the model missing,
+the request too large, the local model timing out before it answers, and
+the local model answering with an error. This is the difference from an
+alias in `local.models`, which has no upstream model to fall back to and is
+refused.
+
+There is one limit. With `"route": "local"` the answer is streamed to the
+client as it is produced, so once any of it has been sent, a failure
+part-way cannot be undone. `local-then-escalate` does not have that limit,
+because it holds the answer back.
+
+After three failures in a row to reach the local model, rules stop trying
+it for thirty seconds and send everything to Claude, so that a dead LM
+Studio costs a few requests a short delay and not every request a long
+one. The next request after that tries again.
 
 The client is told the model it asked for answered. The ledger records
 which model really did.
 
 An alias always wins over the rules.
+
+### Local first, with Claude as the safety net
+
+A rule with `"route": "local-then-escalate"` sends the request to the local
+model, holds its whole answer back, and checks it. If it passes, the client
+gets it. If it fails, the request goes to Claude and the client gets
+Claude's answer. Either way the client receives one normal response and
+cannot tell which happened.
+
+```json
+{ "name": "subagents", "class": "subagent", "route": "local-then-escalate", "local": "janus-local", "maxSeconds": 60 }
+```
+
+The checks, by the names `skipChecks` takes:
+
+| Check | Fails an answer that |
+| --- | --- |
+| `empty` | Has no text and no tool call. Small models do this when their tool call is lost on the way out. |
+| `truncated` | Ran out of tokens |
+| `tools` | Calls a tool that was not offered |
+| `schema` | Passes a tool arguments that are not valid JSON, or that do not fit the tool's schema |
+| `refusal` | Is a short refusal or apology and not an attempt |
+
+Always checked, whatever is skipped: the answer finished, was not an error,
+and could be read.
+
+**What the checks cannot do.** They catch answers that are broken. They do
+not catch answers that are wrong. A long, well-formed, useless answer
+passes every one of them. In testing, a small model had three of four
+answers accepted and still left the task undone, so that Claude had to do
+the work itself afterwards. Run a `shadow` rule or `janus replay` on the
+model first, and read `.shadow.md` files, before trusting this route with
+it.
+
+**What it costs.** The client waits for the local model's whole answer
+before seeing anything, where a `local` rule streams it. When the answer is
+rejected, the time spent on it is lost and Claude's time is added. So:
+
+- `maxSeconds` bounds the wait. A local model that rambles is cut off and
+  Claude is asked. The default is 120; set it nearer to how long a good
+  answer from your model takes.
+- The schema check understands `type`, `properties`, `required`,
+  `additionalProperties: false`, `items`, and `enum`. Anything else in a
+  schema is ignored, so it can pass arguments a full validator would
+  reject, and never the reverse.
+
+`janus stats` reports how it is going:
+
+```
+Local first (the local model tried, with Claude as the fallback)
+       class  tried  accepted  rejected  failed  accepted %  attempt time
+    subagent      4         4         0       0        100%         10.2s
+```
+
+Rejected answers failed a check; failed ones found the local model
+unavailable. A rejected answer is saved beside the request's capture as
+`.attempt.response.txt`, so you can see what was thrown away.
+
+A conversation can move between the local model and Claude turn by turn.
+Janus removes the local model's thinking from the history before Claude
+sees it, because Claude rejects thinking it did not produce.
 
 ### Shadow: try the local model without trusting it
 

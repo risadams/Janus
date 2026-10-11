@@ -86,9 +86,16 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 	switch {
 	case refusal != nil:
 		fmt.Fprintf(stdout, "Decision  refused with HTTP %d: %s\n", refusal.Status, refusal.Message)
+	case plan.Backend.Name() == "local" && plan.Accept != nil:
+		fmt.Fprintf(stdout, "Decision  local first: %s answers, and its whole answer is checked before the client\n", plan.BackendModel)
+		fmt.Fprintf(stdout, "          sees any of it. If it passes it is reported as %s; if not, Claude answers.\n", plan.ResponseModel)
+		fmt.Fprintf(stdout, "          changes on the way: %s\n", strings.Join(plan.Stages, ", "))
 	case plan.Backend.Name() == "local":
 		fmt.Fprintf(stdout, "Decision  local: %s answers, reported to the client as %s\n", plan.BackendModel, plan.ResponseModel)
 		fmt.Fprintf(stdout, "          changes on the way: %s\n", strings.Join(plan.Stages, ", "))
+		if plan.Else != nil {
+			fmt.Fprintf(stdout, "          if it cannot be reached or answers with an error, Claude answers instead\n")
+		}
 	default:
 		fmt.Fprintf(stdout, "Decision  upstream, untouched\n")
 		if plan.Shadow != nil {

@@ -121,10 +121,25 @@ func TestBannerListsRoutes(t *testing.T) {
 	want := []string{
 		`model "janus-local" -> local qwen/qwen3.8-27b`,
 		"rule small-subagents: class subagent, up to 40000 tokens, with tools -> local qwen/qwen3.8-27b",
-		"rule 2: model claude-haiku-5-5 -> local-then-escalate qwen/qwen3.8-27b",
+		"rule 2: model claude-haiku-5-5 -> local qwen/qwen3.8-27b first, Claude if its answer fails the checks or takes over 2m0s",
 		"rule rest: everything else -> upstream",
 	}
 	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
 		t.Errorf("summary:\n%s\nwant:\n%s", strings.Join(lines, "\n"), strings.Join(want, "\n"))
 	}
+}
+
+func TestRouteExplainsLocalFirstAndFallback(t *testing.T) {
+	lms := serverSaying(200, lmStudioModels)
+	defer lms.Close()
+
+	out, _ := explain(t, lms.URL, true, []map[string]any{{"name": "careful", "class": "subagent", "route": "local-then-escalate", "local": "janus-local"}}, subagentBody)
+	wantLines(t, out,
+		"rule careful: local first, on qwen/qwen3.8-27b; its answer is checked, and Claude answers instead if it fails",
+		"Decision local first: qwen/qwen3.8-27b answers, and its whole answer is checked before the client",
+		"If it passes it is reported as claude-opus-5-5; if not, Claude answers.",
+	)
+
+	out, _ = explain(t, lms.URL, true, subagentsLocal, subagentBody)
+	wantLines(t, out, "Decision local: qwen/qwen3.8-27b answers", "if it cannot be reached or answers with an error, Claude answers instead")
 }

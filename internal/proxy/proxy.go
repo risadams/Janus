@@ -51,6 +51,12 @@ type Exchange struct {
 	// for comparison. The proxy only carries it; whoever receives the
 	// Exchange does the running.
 	Shadow *Shadow
+	// Attempt is set when a plan with a fallback was tried: either its
+	// answer was put on trial, or it failed and the fallback answered.
+	Attempt *Attempt
+	// BackendFault is true when the backend that was meant to answer could
+	// not be reached or timed out, and there was no fallback.
+	BackendFault bool
 
 	// Summary is what janus read from a Messages API response as it went
 	// past: model, stop reason, token usage. It is nil for every other kind
@@ -76,6 +82,29 @@ type Exchange struct {
 	ResponseHeader    http.Header
 	ResponseBody      []byte
 	ResponseTruncated bool
+}
+
+// Attempt is what became of a try at a backend that had a fallback.
+type Attempt struct {
+	Backend string
+	Model   string
+	Stages  []string
+	// Accepted is true when the attempt's answer is the one the client
+	// got. Otherwise the fallback answered, and Why says what was wrong.
+	Accepted bool
+	Why      string
+	// Check is the validator that failed, when one did.
+	Check string
+	// Fault is true when the attempt failed because the backend was
+	// unavailable, as opposed to giving an answer that was not good
+	// enough. It is what a circuit breaker should count.
+	Fault    bool
+	Duration time.Duration
+	// Summary and ResponseBody are the attempt's own answer. They are set
+	// for a rejected trial; for an accepted one the Exchange itself
+	// carries them.
+	Summary      *anthropic.Summary
+	ResponseBody []byte
 }
 
 // IsMessages reports whether this was a call to the Messages API itself,
@@ -126,6 +155,17 @@ type Plan struct {
 	// model afterwards, for comparison. It changes nothing about how the
 	// request itself is handled.
 	Shadow *Shadow
+
+	// Else is the plan to fall back to if this one's backend fails before
+	// any of its answer has reached the client: it cannot be reached, it
+	// times out, or it answers with an error status. Nil means there is
+	// no fallback and the failure is the client's answer.
+	Else *Plan
+	// Accept, when set, makes this plan a trial. The backend's whole
+	// answer is held back and shown to Accept; the client gets it only if
+	// Accept passes it, and otherwise gets Else's answer, never knowing
+	// there were two. A trial needs Else.
+	Accept func(Fetched) (ok bool, why string)
 }
 
 // Shadow names the local model to compare an upstream answer against.
@@ -161,7 +201,25 @@ type exchangeState struct {
 	responseHeader http.Header
 	firstByte      time.Time
 	fault          error
+
+	attempt      *Attempt
+	backendFault bool
+	// served is an answer given to the client from memory, by a trial
+	// that passed, rather than relayed.
+	served *Fetched
+	// fallBack switches to the plan's Else and serves it. It is set by the
+	// handler for plans that have one, and cleared once used.
+	fallBack func(w http.ResponseWriter, why string, fault bool)
 }
+
+// errBackendStatus turns an error status from a backend with a fallback
+// into a failure, so that the fallback is used.
+type errBackendStatus int
+
+func (e errBackendStatus) Error() string { return fmt.Sprintf("it answered HTTP %d", int(e)) }
+
+// trialLimit bounds the answer a trial will hold.
+const trialLimit = 8 << 20
 
 type stateKey struct{}
 
@@ -196,6 +254,9 @@ func New(opts Options) http.Handler {
 			if state == nil {
 				return nil
 			}
+			if state.fallBack != nil && resp.StatusCode >= 400 {
+				return errBackendStatus(resp.StatusCode)
+			}
 			state.responseHeader = resp.Header.Clone()
 			if state.messages || state.keep {
 				var unsupported bool
@@ -219,17 +280,33 @@ func New(opts Options) http.Handler {
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			state := r.Context().Value(stateKey{}).(*exchangeState)
 			name := state.plan.Backend.Name()
+			if errors.Is(err, context.Canceled) && r.Context().Err() == context.Canceled {
+				// The client went away; there is nobody to answer.
+				return
+			}
+
+			why := "could not reach " + name + ": " + err.Error()
+			status, fault := http.StatusBadGateway, true
+			var bad errBackendStatus
 			switch {
 			case errors.Is(err, context.DeadlineExceeded):
-				writeError(w, http.StatusGatewayTimeout, "api_error",
-					fmt.Sprintf("janus: %s did not answer within %s", name, state.plan.Timeout))
-			case errors.Is(err, context.Canceled):
-				// The client went away; there is nobody to answer.
-			default:
-				writeError(w, http.StatusBadGateway, "api_error", "janus: could not reach "+name+": "+err.Error())
+				why = fmt.Sprintf("%s did not answer within %s", name, state.plan.Timeout)
+				status = http.StatusGatewayTimeout
+			case errors.As(err, &bad):
+				why = name + " " + bad.Error()
+				fault = int(bad) >= 500
 			}
+			if state.fallBack != nil {
+				// Nothing has been written yet: the error handler runs
+				// before any of the response is relayed.
+				state.fallBack(w, why, fault)
+				return
+			}
+			state.backendFault = fault
+			writeError(w, status, "api_error", "janus: "+why)
 		},
 	}
+	client := &http.Client{Transport: transport}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -293,12 +370,46 @@ func New(opts Options) http.Handler {
 			r.Body = &teeBody{ReadCloser: r.Body, copy: requestBody}
 		}
 
-		ctx := context.WithValue(r.Context(), stateKey{}, state)
-		if state.plan.Timeout > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, state.plan.Timeout)
-			defer cancel()
+		base := context.WithValue(r.Context(), stateKey{}, state)
+		withTimeout := func(plan Plan) (context.Context, context.CancelFunc) {
+			if plan.Timeout > 0 {
+				return context.WithTimeout(base, plan.Timeout)
+			}
+			return base, func() {}
 		}
+		// sendBody is what the current plan sends: its own body if it has
+		// one, and otherwise the request exactly as the client sent it.
+		sendBody := func(plan Plan) []byte {
+			if plan.Body != nil {
+				return plan.Body
+			}
+			return original
+		}
+
+		if state.messages && !truncated && state.plan.Else != nil {
+			// The plan has a fallback. Record the attempt, switch to the
+			// fallback, and serve that.
+			state.fallBack = func(w http.ResponseWriter, why string, fault bool) {
+				tried := state.plan
+				state.fallBack = nil
+				if state.attempt == nil {
+					state.attempt = &Attempt{Backend: tried.Backend.Name(), Model: tried.BackendModel, Stages: tried.Stages,
+						Why: why, Fault: fault, Duration: time.Since(start)}
+				}
+				state.plan = *tried.Else
+				state.plan.Reason = fmt.Sprintf("%s: %s; sent %s", tried.Reason, why, state.plan.Backend.Name())
+
+				body := sendBody(state.plan)
+				r.Body = io.NopCloser(bytes.NewReader(body))
+				r.ContentLength = int64(len(body))
+				ctx, cancel := withTimeout(state.plan)
+				defer cancel()
+				rp.ServeHTTP(w, r.WithContext(ctx))
+			}
+		}
+
+		ctx, cancel := withTimeout(state.plan)
+		defer cancel()
 
 		// Deferred because the reverse proxy aborts a response that fails
 		// part-way by panicking; the exchange still has to be reported.
@@ -318,8 +429,16 @@ func New(opts Options) http.Handler {
 				Stages:         state.plan.Stages,
 				BackendModel:   state.plan.BackendModel,
 				Shadow:         state.plan.Shadow,
+				Attempt:        state.attempt,
+				BackendFault:   state.backendFault,
 				Unread:         state.unread,
 				ResponseHeader: state.responseHeader,
+			}
+			if got := state.served; got != nil {
+				ex.TTFB, ex.ResponseHeader, ex.Summary = got.Duration, got.Header, &got.Summary
+				if state.keep {
+					ex.ResponseBody, ex.ResponseTruncated = got.Body, got.Truncated
+				}
 			}
 			if refusal != nil {
 				ex.Backend, ex.Route, ex.Reason = "none", refusal.Route, refusal.Reason
@@ -354,6 +473,56 @@ func New(opts Options) http.Handler {
 
 		if refusal != nil {
 			writeError(sw, refusal.Status, refusal.Type, refusal.Message)
+			return
+		}
+
+		if state.fallBack != nil && state.plan.Accept != nil {
+			// A trial: get the whole answer, judge it, and only then
+			// decide what the client receives.
+			tried := state.plan
+			got := Fetch(ctx, client, tried.Backend, r.Header, sendBody(tried), trialLimit)
+			if r.Context().Err() != nil {
+				return // the client left while the local model was working
+			}
+			attempt := &Attempt{Backend: tried.Backend.Name(), Model: tried.BackendModel, Stages: tried.Stages, Duration: got.Duration}
+			switch {
+			case got.Err != nil && errors.Is(got.Err, context.DeadlineExceeded):
+				attempt.Why, attempt.Fault = fmt.Sprintf("%s did not answer within %s", attempt.Backend, tried.Timeout), true
+			case got.Err != nil:
+				attempt.Why, attempt.Fault = "could not reach "+attempt.Backend+": "+got.Err.Error(), true
+			case got.Status >= 500:
+				attempt.Why, attempt.Fault = fmt.Sprintf("%s answered HTTP %d", attempt.Backend, got.Status), true
+			case got.Truncated:
+				attempt.Why = fmt.Sprintf("the %s answer was larger than %d bytes", attempt.Backend, trialLimit)
+			case got.Fault != "":
+				attempt.Why, attempt.Fault = "the "+attempt.Backend+" answer broke off: "+got.Fault, true
+			default:
+				attempt.Accepted, attempt.Why = tried.Accept(got)
+			}
+			state.attempt = attempt
+
+			if attempt.Accepted {
+				state.fallBack = nil
+				state.plan.Reason = tried.Reason + ": local answer accepted"
+				state.served = &got
+				body := got.Body
+				if tried.ResponseModel != "" {
+					renamed, err := io.ReadAll(backend.RenameModel(io.NopCloser(bytes.NewReader(body)), got.Header.Get("Content-Type"), tried.ResponseModel))
+					if err == nil {
+						body = renamed
+					}
+				}
+				if ct := got.Header.Get("Content-Type"); ct != "" {
+					sw.Header().Set("Content-Type", ct)
+				}
+				sw.WriteHeader(http.StatusOK)
+				sw.Write(body)
+				return
+			}
+			if got.Err == nil {
+				attempt.Summary, attempt.ResponseBody = &got.Summary, got.Body
+			}
+			state.fallBack(sw, attempt.Why, attempt.Fault)
 			return
 		}
 		rp.ServeHTTP(sw, r.WithContext(ctx))

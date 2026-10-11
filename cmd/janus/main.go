@@ -95,8 +95,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	local := backend.NewLocal(localURL, nil)
 
 	var plan proxy.Planner
+	var router *route.Router
 	if cfg.Features.Route {
-		plan = newRouter(cfg, upstream, local).Plan
+		router = newRouter(cfg, upstream, local)
+		plan = router.Plan
 	}
 
 	ln, err := net.Listen("tcp", cfg.Listen)
@@ -127,6 +129,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		KeepBodies: captures != nil,
 		Done: func(ex proxy.Exchange) {
 			rec := record(ex, led, captures, logger)
+			if router != nil {
+				router.Report(ex) // so it notices the local backend failing
+			}
 			if shadows != nil {
 				shadows.Submit(ex, rec)
 			}
@@ -166,10 +171,23 @@ func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local
 	for i, r := range cfg.Routing {
 		rules[i] = route.Rule{
 			Name: r.Name, Class: route.Class(r.Class), Model: r.Model, MaxTokens: r.MaxTokens, Tools: r.Tools,
-			Route: r.Route, Local: models[r.Local],
+			Route: r.Route, Local: models[r.Local], SkipChecks: r.SkipChecks, TrialTimeout: trialTimeout(r),
 		}
 	}
 	return &route.Router{Upstream: upstream, Local: local, Aliases: models, Rules: rules}
+}
+
+// trialTimeout is how long a local-then-escalate rule lets the local model
+// work before asking Claude.
+func trialTimeout(r config.Rule) time.Duration {
+	if r.Route != route.RouteEscalate {
+		return 0
+	}
+	seconds := r.MaxSeconds
+	if seconds == 0 {
+		seconds = config.DefaultTrialSeconds
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // record writes down one finished request: its capture, its ledger line,
@@ -184,6 +202,11 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, log
 			logger.Printf("janus: %v", err)
 		}
 		rec.Capture = name
+		if a := ex.Attempt; a != nil && !a.Accepted && len(a.ResponseBody) > 0 && name != "" {
+			if err := captures.WriteAttempt(name, a.ResponseBody); err != nil {
+				logger.Printf("janus: %v", err)
+			}
+		}
 	}
 	if err := led.Append(rec); err != nil {
 		logger.Printf("janus: %v", err)
@@ -202,6 +225,9 @@ func formatExchange(ex proxy.Exchange) string {
 		line += " refused: " + ex.Reason
 	default:
 		line += " [" + ex.Backend + "]"
+	}
+	if a := ex.Attempt; a != nil && !a.Accepted {
+		line += fmt.Sprintf(" [after %s tried for %s: %s]", a.Backend, a.Duration.Round(100*time.Millisecond), a.Why)
 	}
 	if ex.Unread != "" {
 		return line + " response not read: " + ex.Unread
@@ -276,6 +302,9 @@ func routingSummary(cfg config.Config) []string {
 		case route.RouteUpstream:
 		case route.RouteShadow:
 			target = "upstream, shadowed on " + cfg.Local.Models[r.Local].Model
+		case route.RouteEscalate:
+			target = fmt.Sprintf("local %s first, Claude if its answer fails the checks or takes over %s",
+				cfg.Local.Models[r.Local].Model, trialTimeout(r))
 		default:
 			target += " " + cfg.Local.Models[r.Local].Model
 		}

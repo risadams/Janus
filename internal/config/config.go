@@ -8,6 +8,9 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strings"
+
+	"github.com/risadams/janus/internal/validate"
 )
 
 // DefaultPath is where the config file is looked for when -config is not
@@ -92,12 +95,28 @@ type Rule struct {
 	// Route is where a matching request goes: "upstream"; "local";
 	// "shadow", which sends it upstream as usual and afterwards runs it on
 	// the local model too, for comparison; or "local-then-escalate", which
-	// is accepted but not built yet and behaves as "upstream".
+	// tries the local model, checks its answer, and asks Claude instead if
+	// the answer fails the checks.
 	Route string `json:"route"`
 	// Local names the entry of local.models to use. Required unless Route
 	// is "upstream".
 	Local string `json:"local,omitempty"`
+	// SkipChecks turns off named checks on the local answer, for the
+	// local-then-escalate route: empty, truncated, tools, schema, refusal.
+	SkipChecks []string `json:"skipChecks,omitempty"`
+	// MaxSeconds is how long the local model gets to produce its whole
+	// answer on the local-then-escalate route before janus gives up on it
+	// and asks Claude. Zero means DefaultTrialSeconds. The client is
+	// waiting all the while, so this is the most a poor local answer can
+	// cost it.
+	MaxSeconds int `json:"maxSeconds,omitempty"`
 }
+
+// DefaultTrialSeconds is how long a local-then-escalate attempt may take
+// when the rule does not say. Claude answers a turn in a few seconds; a
+// local model that has not finished in two minutes is not saving anyone
+// anything.
+const DefaultTrialSeconds = 120
 
 // DefaultLocalTimeoutSeconds is how long a local request may take when the
 // model's entry does not say. Local models are slow to start on a large
@@ -253,6 +272,20 @@ func (c Config) Validate() error {
 		}
 		if rule.MaxTokens < 0 {
 			errs = append(errs, fmt.Errorf("%s.maxTokens is negative; leave it out for no limit", where))
+		}
+		for _, check := range rule.SkipChecks {
+			if !validate.Known(check) {
+				errs = append(errs, fmt.Errorf("%s.skipChecks has %q, which is not one of %s", where, check, strings.Join(validate.All, ", ")))
+			}
+		}
+		if len(rule.SkipChecks) > 0 && rule.Route != "local-then-escalate" {
+			errs = append(errs, fmt.Errorf("%s.skipChecks only applies when route is local-then-escalate", where))
+		}
+		switch {
+		case rule.MaxSeconds < 0:
+			errs = append(errs, fmt.Errorf("%s.maxSeconds is negative; leave it out for the default of %d", where, DefaultTrialSeconds))
+		case rule.MaxSeconds > 0 && rule.Route != "local-then-escalate":
+			errs = append(errs, fmt.Errorf("%s.maxSeconds only applies when route is local-then-escalate; local.models.%s.timeoutSeconds bounds other local requests", where, rule.Local))
 		}
 		switch rule.Route {
 		case "upstream":

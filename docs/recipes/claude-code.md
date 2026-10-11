@@ -45,7 +45,19 @@ it answering anything, start with a shadow rule:
 
 Work as normal for a while, then run `janus stats` and read the "Shadow
 runs" section. See [Configuration](../CONFIG.md#shadow-try-the-local-model-without-trusting-it)
-for how to read it. When you are satisfied, change `shadow` to `local`.
+for how to read it.
+
+When you are satisfied, there are two ways to switch on:
+
+- `"route": "local-then-escalate"` checks each local answer before the
+  client sees it and asks Claude instead if it is broken. Safer, and
+  slower to first output, because the answer is held back while it is
+  checked. See [Configuration](../CONFIG.md#local-first-with-claude-as-the-safety-net).
+- `"route": "local"` streams the local answer as it is produced, with no
+  check on what it says.
+
+Neither can tell a wrong answer from a right one. That is what the shadow
+period is for.
 
 ## 2. Choose how requests get there
 

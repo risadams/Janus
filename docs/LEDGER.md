@@ -31,7 +31,7 @@ ignore fields they do not know.
 | `class` | string | `main`, `subagent`, `connectivity`, or `unknown` |
 | `route` | string | Where the request was sent: `upstream`, `local`, or `shadow` for a shadow run |
 | `reason` | string | What decided it: `passthrough` (nothing matched), `model alias <name>`, or `rule <name>`. When a rule's local route could not be used, the reason says why and ends `; sent upstream`. For a refused request, why. |
-| `stages` | string[] | Changes made to the request on the way: `set_model`, `lift_tool_additions`, `drop_deferred_tools` |
+| `stages` | string[] | Changes made to the request on the way: `set_model`, `lift_tool_additions`, `drop_deferred_tools` for a local request; `drop_unsigned_thinking` for an upstream one whose history a local model had a turn in |
 | `backend` | string | Which backend answered: `upstream`, `local`, or `none` if Janus refused the request itself |
 | `status` | int | HTTP status, or `0` if no response was started |
 | `outcome` | string | See below |
@@ -44,6 +44,7 @@ ignore fields they do not know.
 | `unread` | string | Why a Messages response has no `usage`, e.g. `content-encoding br` |
 | `fault` | string | What went wrong reading the response from the backend when it broke off part-way, e.g. a dropped connection. Absent for a response that arrived whole, and for one the client abandoned. |
 | `capture` | string | The capture's path under `captures/`, without extension |
+| `attempt` | object | Present when the local model was tried with Claude as the fallback: `model`, `verdict`, `why`, `duration_ms`, and for a rejected attempt its `usage`. See below. |
 | `shadow_of` | string | Present on a shadow run: the id of the real request it repeated on the local model. Shadow records have `route` `shadow` and an id ending `-shadow`, and are left out of every total. |
 | `compare` | object | On a shadow run that came back whole: `upstream_stop`, `local_stop`, `upstream_tools`, `local_tools`, `stop_match`, `tools_match`, and `upstream_ms` (how long the real answer took) |
 
@@ -58,6 +59,18 @@ ignore fields they do not know.
 | `cancelled` | The client disconnected first |
 | `no_response` | Nothing came back from the backend |
 | `skipped` | A shadow run that was not attempted; `reason` says why |
+
+### `attempt`
+
+| `verdict` | The local model's answer | Who answered the client |
+| --- | --- | --- |
+| `accepted` | Passed the checks | The local model. The record's `backend`, `response`, and `usage` are its own. |
+| `rejected` | Failed a check; `why` says which | Claude. The record is Claude's answer, and `attempt.usage` is what the local model spent first. |
+| `failed` | None: it could not be reached, timed out, or returned an error | Claude |
+
+`attempt.duration_ms` is how long the local model was given before the
+decision. For a rejected or failed attempt, that time was spent before
+Claude was asked, and is included in the record's own `duration_ms`.
 
 ### `usage`
 
@@ -174,6 +187,9 @@ Each request produces three files sharing a name:
 A request that was shadowed has three more files beside it:
 `.shadow.md`, `.shadow.request.txt` (what was sent to the local model), and
 `.shadow.response.txt`. They are pruned together with the capture.
+
+A request whose local answer was rejected in favour of Claude's has
+`.attempt.response.txt` beside it: the answer that was thrown away.
 
 `janus replay` adds `.replay.md` and `.replay.response.txt` beside a
 capture, holding the local model's answer to it. They too are pruned with

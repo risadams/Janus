@@ -124,6 +124,7 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 	printTable(w, "model", rep.ByModel, nil)
 	printTable(w, "backend", rep.ByBackend, nil)
 
+	printLocalFirst(w, rep.LocalFirst)
 	printShadow(w, rep.Shadow)
 
 	outcomes := make([]string, 0, len(rep.Outcomes))
@@ -183,6 +184,24 @@ func printTable(w io.Writer, by string, rows []ledger.Row, total *ledger.Row) {
 		line(*total)
 	}
 	tw.Flush()
+}
+
+// printLocalFirst reports how often trying the local model first paid off.
+func printLocalFirst(w io.Writer, rows []ledger.LocalFirstRow) {
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\nLocal first (the local model tried, with Claude as the fallback)\n")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintf(tw, "  class\ttried\taccepted\trejected\tfailed\taccepted %%\tattempt time\t\n")
+	for _, r := range rows {
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%.0f%%\t%.1fs\t\n", r.Class, commas(r.Tried), commas(r.Accepted),
+			commas(r.Rejected), commas(r.Failed), 100*float64(r.Accepted)/float64(r.Tried), float64(r.MedianMs)/1000)
+	}
+	tw.Flush()
+	fmt.Fprintf(w, "  Accepted answers came from the local model. Rejected ones failed a check and\n"+
+		"  failed ones found it unavailable; Claude answered both, after the attempt time\n"+
+		"  (a median) had already been spent.\n")
 }
 
 // printShadow reports how the local model did when run alongside real

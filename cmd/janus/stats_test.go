@@ -247,3 +247,27 @@ func TestStatsShadowSection(t *testing.T) {
 		t.Logf("report was:\n%s", out)
 	}
 }
+
+func TestStatsLocalFirstSection(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	l := ledger.Open(dir)
+	when := time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC)
+	for i, verdict := range []string{"accepted", "accepted", "accepted", "rejected", "failed"} {
+		l.Append(ledger.Record{V: 1, ID: string(rune('a' + i)), Time: when, Class: "subagent", Backend: "upstream", Outcome: ledger.OutcomeOK,
+			Attempt: &ledger.Attempt{Model: "qwen/qwen3.8-27b", Verdict: verdict, DurationMs: 10500}})
+	}
+	out, _, _ := stats(t, "-dir", dir)
+	squeezed := strings.Join(strings.Fields(out), " ")
+	for _, want := range []string{
+		"Local first (the local model tried, with Claude as the fallback)",
+		"class tried accepted rejected failed accepted % attempt time",
+		"subagent 5 3 1 1 60% 10.5s",
+	} {
+		if !strings.Contains(squeezed, want) {
+			t.Errorf("report is missing %q\n%s", want, out)
+		}
+	}
+	if clean, _, _ := stats(t, "-dir", seedLedger(t)); strings.Contains(clean, "Local first") {
+		t.Error("a ledger with no attempts shows a local-first section")
+	}
+}

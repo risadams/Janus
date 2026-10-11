@@ -7,14 +7,17 @@ API and a local model in LM Studio. Claude is the brain, the local model is
 the workhorse, and Janus decides which one each piece of work needs,
 local-first, to keep upstream token spend down.
 
-**Status:** M2 in progress. Janus is a transparent proxy that keeps the
-books, and can send chosen requests to the local model by rule. In practice
-that means Claude Code's subagents can run on LM Studio while the main
-conversation stays with Claude, with no change to Claude Code: see the
-[recipe](docs/recipes/claude-code.md). A shadow rule runs the local model
-alongside Claude's real answers so you can compare the two before trusting
-it, and `janus replay` does the same on traffic already captured. Janus does not yet check live local answers or escalate a poor one to
-Claude.
+**Status:** M3 in progress. Janus is a transparent proxy that keeps the
+books and can send chosen requests to the local model by rule. Claude
+Code's subagents can run on LM Studio while the main conversation stays
+with Claude, with no change to Claude Code: see the
+[recipe](docs/recipes/claude-code.md).
+
+There are three levels of trust in the local model, each a rule: `shadow`
+runs it alongside Claude and only compares; `local-then-escalate` checks
+each local answer and asks Claude instead if it is broken; `local` uses it
+outright. If LM Studio is down, requests go to Claude. The checks catch
+broken answers, not wrong ones.
 
 - [Charter](docs/CHARTER.md): what Janus is, goals, scope, risks
 - [Requirements](docs/REQUIREMENTS.md)
