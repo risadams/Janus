@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func quiet(string, ...any) {}
+func quiet(Exchange) {}
 
 // start runs janus in front of the given upstream handler and returns
 // janus's URL.
@@ -225,36 +225,194 @@ func TestUpstreamUnreachable(t *testing.T) {
 	}
 }
 
-func TestLogsOneLinePerRequest(t *testing.T) {
-	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusTeapot)
-	}))
+// serve runs janus in front of upstream, makes one request, and returns the
+// response body with the Exchange janus reported for it.
+func serve(t *testing.T, upstream http.HandlerFunc, method, path string) ([]byte, Exchange) {
+	t.Helper()
+	up := httptest.NewServer(upstream)
 	defer up.Close()
 	u, _ := url.Parse(up.URL)
 
-	// The line is written after the response has gone out, so wait for it
-	// rather than reading shared state as soon as the client returns.
-	lines := make(chan string, 2)
-	front := httptest.NewServer(New(u, func(f string, a ...any) { lines <- fmt.Sprintf(f, a...) }))
+	// The exchange is reported after the response has gone out, so wait
+	// for it rather than reading shared state when the client returns.
+	reported := make(chan Exchange, 2)
+	front := httptest.NewServer(New(u, func(ex Exchange) { reported <- ex }))
 	defer front.Close()
 
-	resp, err := plainClient.Get(front.URL + "/v1/models")
+	req, _ := http.NewRequest(method, front.URL+path, strings.NewReader("{}"))
+	resp, err := plainClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	select {
-	case line := <-lines:
-		if !strings.HasPrefix(line, "GET /v1/models -> 418") {
-			t.Errorf("log line = %q, want it to start GET /v1/models -> 418", line)
+	case ex := <-reported:
+		select {
+		case extra := <-reported:
+			t.Errorf("a second exchange was reported: %+v", extra)
+		case <-time.After(50 * time.Millisecond):
 		}
+		return body, ex
 	case <-time.After(3 * time.Second):
-		t.Fatal("no log line was written for the request")
+		t.Fatal("no exchange was reported for the request")
+		return nil, Exchange{}
 	}
-	select {
-	case extra := <-lines:
-		t.Errorf("a second log line was written: %q", extra)
-	case <-time.After(50 * time.Millisecond):
+}
+
+const sampleStream = "event: message_start\n" +
+	`data: {"type":"message_start","message":{"id":"msg_1","model":"claude-opus-5-5","usage":{"input_tokens":2,"cache_read_input_tokens":900,"output_tokens":1}}}` + "\n\n" +
+	"event: content_block_start\n" +
+	`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}` + "\n\n" +
+	"event: message_delta\n" +
+	`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":42}}` + "\n\n" +
+	"event: message_stop\n" +
+	`data: {"type":"message_stop"}` + "\n\n"
+
+func TestReportsMessagesUsageWithoutChangingTheStream(t *testing.T) {
+	body, ex := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		// Split mid-event, as a real network would.
+		io.WriteString(w, sampleStream[:70])
+		w.(http.Flusher).Flush()
+		io.WriteString(w, sampleStream[70:])
+	}, "POST", "/v1/messages")
+
+	if string(body) != sampleStream {
+		t.Error("the stream the client received differs from what the upstream sent")
+	}
+	if ex.Method != "POST" || ex.Path != "/v1/messages" || ex.Status != 200 || ex.Duration <= 0 {
+		t.Errorf("exchange = %+v", ex)
+	}
+	s := ex.Summary
+	if s == nil {
+		t.Fatalf("no summary for a Messages response (unread: %q)", ex.Unread)
+	}
+	if !s.Complete || s.Model != "claude-opus-5-5" || s.StopReason != "end_turn" ||
+		s.Usage.Input != 2 || s.Usage.Output != 42 || s.Usage.CacheRead == nil || *s.Usage.CacheRead != 900 {
+		t.Errorf("summary = %+v", *s)
+	}
+}
+
+func TestReportsAPIErrorBody(t *testing.T) {
+	_, ex := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		io.WriteString(w, `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`)
+	}, "POST", "/v1/messages")
+
+	if ex.Status != 429 || ex.Summary == nil || ex.Summary.Error == nil || ex.Summary.Error.Type != "rate_limit_error" {
+		t.Errorf("exchange = %+v, summary = %+v", ex, ex.Summary)
+	}
+}
+
+func TestOnlyMessagesResponsesAreRead(t *testing.T) {
+	for _, c := range []struct{ method, path string }{
+		{"GET", "/v1/models"},
+		{"GET", "/v1/messages"},
+		{"POST", "/v1/messages/count_tokens"},
+		{"HEAD", "/api/hello"},
+	} {
+		_, ex := serve(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"type":"message","usage":{"input_tokens":1,"output_tokens":1}}`)
+		}, c.method, c.path)
+		if ex.Summary != nil || ex.Unread != "" {
+			t.Errorf("%s %s: summary=%+v unread=%q, want neither", c.method, c.path, ex.Summary, ex.Unread)
+		}
+		if ex.Status != 200 || ex.Path != c.path {
+			t.Errorf("%s %s: exchange = %+v", c.method, c.path, ex)
+		}
+	}
+}
+
+func TestReadsGzipStreamAndRelaysItCompressed(t *testing.T) {
+	var sent bytes.Buffer
+	body, ex := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Encoding", "gzip")
+		// Compress and flush event by event, as the real API does.
+		zw := gzip.NewWriter(io.MultiWriter(w, &sent))
+		for _, part := range strings.SplitAfter(sampleStream, "\n\n") {
+			io.WriteString(zw, part)
+			zw.Flush()
+			w.(http.Flusher).Flush()
+		}
+		zw.Close()
+	}, "POST", "/v1/messages")
+
+	if !bytes.Equal(body, sent.Bytes()) {
+		t.Error("the compressed bytes the client received differ from what the upstream sent")
+	}
+	if ex.Summary == nil {
+		t.Fatalf("no summary for a gzip response (unread: %q)", ex.Unread)
+	}
+	if s := ex.Summary; !s.Complete || s.StopReason != "end_turn" || s.Usage.Output != 42 {
+		t.Errorf("summary = %+v", *s)
+	}
+}
+
+func TestCorruptGzipIsRelayedAndReportedUnread(t *testing.T) {
+	junk := []byte("this is not gzip at all")
+	body, ex := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Write(junk)
+	}, "POST", "/v1/messages")
+
+	if !bytes.Equal(body, junk) {
+		t.Error("body changed in transit")
+	}
+	if ex.Summary != nil || !strings.HasPrefix(ex.Unread, "gzip: ") {
+		t.Errorf("summary=%+v unread=%q, want no summary and a gzip reason", ex.Summary, ex.Unread)
+	}
+}
+
+func TestGzipStreamCutOffIsIncompleteNotUnread(t *testing.T) {
+	_, ex := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Encoding", "gzip")
+		zw := gzip.NewWriter(w)
+		io.WriteString(zw, sampleStream[:strings.Index(sampleStream, "event: message_delta")])
+		zw.Flush()
+		w.(http.Flusher).Flush()
+		panic(http.ErrAbortHandler)
+	}, "POST", "/v1/messages")
+
+	if ex.Summary == nil || ex.Unread != "" {
+		t.Fatalf("summary=%v unread=%q, want a summary of what arrived", ex.Summary, ex.Unread)
+	}
+	if ex.Summary.Complete || ex.Summary.Model != "claude-opus-5-5" {
+		t.Errorf("summary = %+v, want incomplete", *ex.Summary)
+	}
+}
+
+func TestUnsupportedEncodingIsRelayedButNotRead(t *testing.T) {
+	body, ex := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "br")
+		w.Write([]byte{0x0b, 0x02, 0x80, 0x68, 0x69, 0x03})
+	}, "POST", "/v1/messages")
+
+	if !bytes.Equal(body, []byte{0x0b, 0x02, 0x80, 0x68, 0x69, 0x03}) {
+		t.Error("compressed body changed in transit")
+	}
+	if ex.Summary != nil || ex.Unread != "content-encoding br" {
+		t.Errorf("summary=%+v unread=%q, want no summary and the reason", ex.Summary, ex.Unread)
+	}
+}
+
+func TestReportsAStreamThatFailsPartWay(t *testing.T) {
+	_, ex := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, sampleStream[:strings.Index(sampleStream, "event: message_delta")])
+		w.(http.Flusher).Flush()
+		panic(http.ErrAbortHandler) // drop the connection mid-stream
+	}, "POST", "/v1/messages")
+
+	if ex.Summary == nil {
+		t.Fatal("no summary for a stream that was cut off")
+	}
+	if ex.Summary.Complete || ex.Summary.Model != "claude-opus-5-5" || len(ex.Summary.Blocks) != 1 {
+		t.Errorf("summary = %+v, want incomplete with what arrived before the cut", *ex.Summary)
 	}
 }

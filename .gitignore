@@ -17,3 +17,7 @@
 .idea/
 .DS_Store
 Thumbs.db
+
+# Real traffic captures for local testing: they hold account identifiers
+# and prompts, and must never be committed
+/.captures/

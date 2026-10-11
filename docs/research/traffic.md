@@ -148,6 +148,10 @@ All of these appeared in real requests or responses, and the typed model in
 - `message_delta` with `stop_details` and `container`.
 - `ping` events in the stream.
 - Fourteen `anthropic-beta` values on every request.
+- Responses are gzip-compressed. Claude Code offers `gzip, deflate, br,
+  zstd` and the API answered with gzip, streams included. blush hid this by
+  forcing `Accept-Encoding: identity`; it was found when Janus, which
+  leaves the header alone, first tried to read a response (2026-10-11).
 
 ## Replay against the local model
 
