@@ -1,0 +1,67 @@
+# Recipe: keep working when Claude is down
+
+Have the local model stand in when Anthropic cannot answer: an outage, an
+overload, no network, or a rate limit. On a subscription, running out of
+usage arrives as a rate limit, so this covers that too.
+
+## Set it up
+
+You need a local model configured, as in
+[the subagents recipe](claude-code.md#1-tell-janus-about-the-local-model).
+Then name it as the stand-in on a rule that sends requests upstream:
+
+```json
+"routing": [
+  { "name": "everything", "route": "upstream", "ifDown": "janus-local" }
+],
+"features": { "route": true, "escalate": false, "compress": false, "guard": false }
+```
+
+A rule with no `class` matches every request. Put it last if you have
+other rules; the first rule that matches decides.
+
+## What happens
+
+Each request goes to Claude as usual. If Claude is unreachable, or answers
+with a `429` or a `500` and above (which includes "overloaded"), the same
+request is sent to the local model and its answer returned. The response
+carries an `X-Janus-Fallback` header, the console line shows that Claude
+was tried first and why it failed, the ledger records it, and
+`janus stats` counts how often it happened.
+
+Errors about the request itself, such as an expired login or a bad
+request, are passed to Claude Code untouched. The local model would not
+fix them.
+
+## What to expect
+
+- **The answers are the local model's.** It is standing in for Claude on
+  work that was meant for Claude, including the main conversation. Expect
+  slower and weaker; the aim is to keep going, not to match.
+- **Claude Code is not told.** It sees a normal response naming the model
+  it asked for. Watch Janus's console to know which you are talking to.
+- **Requests too large for the local model fail** with Claude's original
+  error, since there is nowhere else to send them. A long main
+  conversation can outgrow a local context.
+- **It only works before an answer starts.** If Claude fails part-way
+  through a streamed answer, what was already sent cannot be taken back.
+- **Picking up again is safe.** When Claude is back, the conversation
+  goes upstream with the local model's turns in it. Janus removes the one
+  thing Anthropic would reject, the local model's unsigned thinking.
+
+## Trying it
+
+Point `upstream.baseUrl` at a port with nothing on it, restart Janus, and
+use Claude Code. Each request should be answered locally, with the console
+line showing the failed attempt on Claude first. Put the URL back
+afterwards.
+
+## With a local-only policy
+
+Content the [local-only policy](../GUARD.md#local-only-content) protects
+is never sent upstream by a fallback in the other direction: when LM
+Studio is the one that is down, a request that must stay local is refused
+rather than sent to Claude.
+
+The [reference](../CONFIG.md#keep-working-when-claude-is-down) has the
+details.
