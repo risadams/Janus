@@ -175,6 +175,10 @@ A request that was shadowed has three more files beside it:
 `.shadow.md`, `.shadow.request.txt` (what was sent to the local model), and
 `.shadow.response.txt`. They are pruned together with the capture.
 
+`janus replay` adds `.replay.md` and `.replay.response.txt` beside a
+capture, holding the local model's answer to it. They too are pruned with
+the capture.
+
 Captures hold everything Claude Code sent and received: your prompts, the
 files it read, command output. Treat the directory accordingly. The
 request body also contains Claude Code's account and device identifiers.

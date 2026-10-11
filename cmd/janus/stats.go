@@ -210,7 +210,7 @@ func printShadow(w io.Writer, rows []ledger.ShadowRow) {
 		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", r.Class,
 			commas(r.Runs), commas(r.Skipped), commas(r.Failed), commas(r.Compared),
 			share(r.StopMatch, r.Compared), share(r.ToolsMatch, r.Compared), share(r.BothMatch, r.Compared),
-			seconds(r.LocalMedianMs, r.Compared > 0), seconds(r.UpstreamMedianMs, r.Compared > 0))
+			seconds(r.LocalMedianMs, r.Compared > 0), seconds(r.UpstreamMedianMs, r.Compared > 0 && r.UpstreamMedianMs > 0))
 	}
 	tw.Flush()
 	fmt.Fprintf(w, "  \"same stop\" and \"same tools\" compare the shape of the two answers, not their\n"+

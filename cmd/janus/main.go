@@ -53,6 +53,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return runDoctor(args[1:], stdout, stderr)
 		case "route":
 			return runRoute(args[1:], stdout, stderr)
+		case "replay":
+			return runReplay(args[1:], stdout, stderr)
 		}
 	}
 
