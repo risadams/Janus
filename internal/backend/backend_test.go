@@ -345,3 +345,60 @@ func TestRenameModelPassesOnAReadFailure(t *testing.T) {
 		}
 	}
 }
+
+func TestRepairForUpstreamDropsOnlyUnsignedThinking(t *testing.T) {
+	// A conversation with one turn from Claude (signed thinking, empty
+	// text, as Claude Code receives it) and one from a local model
+	// (unsigned thinking, in the two forms it can arrive in).
+	claude := `{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"c2lnbmVk"},{"type":"tool_use","id":"toolu_01","name":"Read","input":{}}]}`
+	raw := `{"model":"claude-opus-5-5","messages":[` +
+		`{"role":"user","content":"count the lines"},` +
+		claude + `,` +
+		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"2"}]},` +
+		`{"role":"assistant","content":[{"type":"thinking","thinking":"The user wants a count","signature":""},{"type":"tool_use","id":"587714761","name":"Bash","input":{}}]},` +
+		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"587714761","content":"1"}]},` +
+		`{"role":"assistant","content":[{"type":"thinking","thinking":"no signature field at all"}]},` +
+		`{"role":"user","content":[{"type":"thinking","thinking":"not an assistant turn","signature":""}]}` +
+		`]}`
+	req, err := anthropic.ParseRequest([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !RepairForUpstream(req) {
+		t.Fatal("nothing was repaired")
+	}
+	out, err := anthropic.ParseRequest(req.Bytes())
+	if err != nil {
+		t.Fatalf("repaired request does not parse: %v", err)
+	}
+	msgs := out.Messages()
+
+	if string(msgs[1].Raw()) != claude {
+		t.Errorf("Claude's own turn was changed:\n%s", msgs[1].Raw())
+	}
+	if blocks := msgs[3].Blocks(); len(blocks) != 1 || blocks[0].Type != "tool_use" {
+		t.Errorf("the local turn should keep only its tool call: %s", msgs[3].Raw())
+	}
+	if blocks := msgs[5].Blocks(); len(blocks) != 1 || blocks[0].Type != "text" {
+		t.Errorf("a turn that was only thinking should become a placeholder, not empty: %s", msgs[5].Raw())
+	}
+	if blocks := msgs[6].Blocks(); len(blocks) != 1 || blocks[0].Type != "thinking" {
+		t.Errorf("only assistant turns are repaired: %s", msgs[6].Raw())
+	}
+	for _, i := range []int{0, 2, 4} {
+		if string(msgs[i].Raw()) != string(req.Messages()[i].Raw()) || !strings.Contains(raw, string(msgs[i].Raw())) {
+			t.Errorf("messages[%d] changed", i)
+		}
+	}
+}
+
+// A conversation that only ever went to Claude must come through
+// untouched, byte for byte.
+func TestRepairForUpstreamLeavesClaudeOnlyHistoryAlone(t *testing.T) {
+	req := loadRequest(t) // has a signed thinking block with empty text
+	before := string(req.Bytes())
+	if RepairForUpstream(req) || req.Modified() || string(req.Bytes()) != before {
+		t.Error("a request with no unsigned thinking was modified")
+	}
+}

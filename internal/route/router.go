@@ -129,8 +129,18 @@ func (r *Router) Plan(ctx context.Context, header http.Header, req *anthropic.Re
 // Explain is Plan with its reasoning: one line per step considered, ending
 // with the decision.
 func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic.Request) (plan proxy.Plan, refusal *proxy.Refusal, trace []string) {
+	// Whatever sends a request upstream, a history that a local model had a
+	// turn in is repaired first, or the API would reject it. For a
+	// conversation that only ever went to Claude this finds nothing and
+	// the request goes exactly as it arrived.
 	upstream := func(reason string) proxy.Plan {
-		return proxy.Plan{Backend: r.Upstream, Route: RouteUpstream, Reason: reason}
+		plan := proxy.Plan{Backend: r.Upstream, Route: RouteUpstream, Reason: reason}
+		if backend.RepairForUpstream(req) {
+			plan.Body = req.Bytes()
+			plan.Stages = []string{backend.StageDropThinking}
+			trace = append(trace, "removed the unsigned thinking a local answer left in the history, which the API would reject")
+		}
+		return plan
 	}
 	facts := FactsOf(header, req)
 
