@@ -23,8 +23,9 @@ answers, not wrong ones.
 With `features.guard` on, Janus looks for credentials in requests going
 upstream and records what it finds. With `guard.redact` as well, it
 replaces each one with a placeholder before the request leaves and puts it
-back in the answer, so Claude can use a secret without seeing it: see
-[the guard](docs/GUARD.md).
+back in the answer, so Claude can use a secret without seeing it.
+`janus audit` shows what went to Anthropic and, with `-verify`, re-reads
+what was sent to check it. See [the guard](docs/GUARD.md).
 
 `janus mcp` is a separate piece: an MCP server giving Claude a tool that
 has the local model read files and report back. It trades time for

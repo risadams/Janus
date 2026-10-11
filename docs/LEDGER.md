@@ -204,6 +204,7 @@ Each request produces three files sharing a name:
 | `.md` | The readable render: headers with credentials redacted, model, system prompt, tools, messages, and the response assembled from its stream. Start here. |
 | `.request.txt` | The request body exactly as the client sent it |
 | `.response.txt` | The response body, decompressed |
+| `.sent.txt` | Only when Janus changed the request before sending it: the request as it went. `janus audit -body` prints it. |
 
 A request that was shadowed has three more files beside it:
 `.shadow.md`, `.shadow.request.txt` (what was sent to the local model), and

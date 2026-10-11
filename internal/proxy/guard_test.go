@@ -148,6 +148,10 @@ func TestSecretsAreRedactedGoingUpAndRestoredComingDown(t *testing.T) {
 	if !strings.Contains(string(res.Exchange.RequestBody), fakeKey) {
 		t.Error("the kept request should be the client's original")
 	}
+	// SentBody is the evidence of what left: exactly what the upstream got.
+	if string(res.Exchange.SentBody) != res.UpstreamBody || strings.Contains(string(res.Exchange.SentBody), fakeKey) {
+		t.Error("SentBody should be the redacted request exactly as the upstream received it")
+	}
 	// (The upstream cut the placeholder across two events, so only its
 	// first half can be looked for here.)
 	if strings.Contains(string(res.Exchange.ResponseBody), fakeKey) || !strings.Contains(string(res.Exchange.ResponseBody), "JANUS_R") {
@@ -191,6 +195,9 @@ func TestRedactorLeavesCleanRequestsAlone(t *testing.T) {
 	}
 	if g := res.Exchange.Guard; g == nil || g.Replaced != 0 || g.Report.Findings != 0 {
 		t.Errorf("guard = %+v", g)
+	}
+	if res.Exchange.SentBody != nil {
+		t.Error("a request sent as received should have no separate SentBody")
 	}
 }
 

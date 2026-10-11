@@ -378,3 +378,32 @@ func TestWriteAttemptSavesTheRejectedAnswerBesideTheCapture(t *testing.T) {
 		t.Error("the attempt file is not grouped with its capture for pruning")
 	}
 }
+
+func TestWriteSavesWhatWasSentWhenItDiffers(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "captures")
+	w := New(dir, 0, 0)
+
+	plain, _ := w.Write(exchange())
+	if _, err := os.Stat(filepath.Join(dir, plain) + ".sent.txt"); err == nil {
+		t.Error("a request sent as received got a .sent.txt")
+	}
+
+	changed := exchange()
+	changed.ID = "20261011T143928.000-ffffff"
+	changed.SentBody = []byte(`{"model":"claude-opus-5-5","messages":[{"role":"user","content":"key JANUS_REDACTED_0123456789ab"}]}`)
+	name, err := w.Write(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, name) + ".sent.txt"
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != string(changed.SentBody) {
+		t.Errorf(".sent.txt: %q, %v", data, err)
+	}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %o, want 600", info.Mode().Perm())
+	}
+	if stem(path) != filepath.Join(dir, name) {
+		t.Error(".sent.txt is not grouped with its capture for pruning")
+	}
+}

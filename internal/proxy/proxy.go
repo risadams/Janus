@@ -83,8 +83,13 @@ type Exchange struct {
 	// with KeepBodies; it is decompressed where janus can do that, and
 	// otherwise the bytes as they arrived. Either may be cut short at
 	// maxKept, which the Truncated flags report.
-	RequestBody       []byte
-	RequestTruncated  bool
+	RequestBody      []byte
+	RequestTruncated bool
+	// SentBody is the request as it was actually sent to the backend,
+	// when that differs from RequestBody: after redaction, repair, or
+	// adaptation for the local model. Nil means it was sent as received.
+	// Kept only with KeepBodies.
+	SentBody          []byte
 	ResponseHeader    http.Header
 	ResponseBody      []byte
 	ResponseTruncated bool
@@ -244,6 +249,9 @@ type exchangeState struct {
 	redaction *guard.Redaction
 	guard     *Guard
 	restorer  *guard.Restorer
+	// sent is the body last handed to a backend, if it was not the
+	// client's own.
+	sent []byte
 	// served is an answer given to the client from memory, by a trial
 	// that passed, rather than relayed.
 	served *Fetched
@@ -492,7 +500,7 @@ func New(opts Options) http.Handler {
 			if body == nil {
 				body = original
 			}
-			state.redaction = nil
+			state.redaction, state.sent = nil, plan.Body
 			if opts.Redactor == nil || plan.Backend.Name() != "upstream" {
 				return body, nil
 			}
@@ -508,6 +516,9 @@ func New(opts Options) http.Handler {
 			}
 			state.redaction = rd
 			state.guard.Report, state.guard.Replaced = rd.Report, rd.Replaced
+			if rd.Active() {
+				state.sent = rd.Body
+			}
 			return rd.Body, nil
 		}
 		// blocked answers the client when prepare fails. Nothing has been
@@ -613,6 +624,9 @@ func New(opts Options) http.Handler {
 			// doing, already recorded as Cancelled.
 			if state.fault != nil && !ex.Cancelled {
 				ex.Fault = state.fault.Error()
+			}
+			if state.keep && state.sent != nil && sw.status != 0 {
+				ex.SentBody = state.sent
 			}
 			if requestBody != nil {
 				ex.RequestBody, ex.RequestTruncated = requestBody.snapshot()
