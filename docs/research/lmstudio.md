@@ -17,13 +17,18 @@ clean-up and response normalisation, listed under "What Janus must do".
 
 ## Setup
 
-- LM Studio server on `http://localhost:1234`, Apple M5 Max, 36 GB. Janus
-  itself will address it as `http://studio.tuesday.local:1234` (FR-3.5). At
-  the time of this spike LM Studio was listening on `127.0.0.1` only, so
-  that hostname refused connections; "Serve on Local Network" has to be
-  enabled in LM Studio first.
-  LM Studio's version could not be read from the machine and is not
-  recorded; re-run these checks when it is upgraded.
+- LM Studio (the Bionic app) on an Apple M5 Max, 36 GB. The spike was run
+  against `http://localhost:1234`, because the server was then bound to
+  `127.0.0.1` only. Later the same day it was rebound to all interfaces and
+  now also answers at `http://studio.tuesday.local:1234`, the address Janus
+  uses (FR-3.5). A `/v1/messages` request through the hostname was checked
+  and works.
+- To serve on the network, set it in the Bionic app or in its own config
+  file, `~/.lmstudio/apps/bionic/.internal/http-server-config.json`
+  (`port`, `networkInterface`, `autoStartOnLaunch`), edited while the app is
+  quit. Do not use `lms server start` with Bionic: it tries to wake a
+  separate headless service, which takes local inference away from the app
+  and stops its server.
 - Models tried: `qwen/qwen3.8-27b` (MLX 4-bit) and
   `gemma-4-e4b-it-obliterated` (GGUF Q4_K_M). Both advertise `tool_use`.
 - Every result below is from a hand-run `curl`, one or two runs each. These
