@@ -66,6 +66,7 @@ type siteOptions struct {
 	upstream http.HandlerFunc // how the fake Anthropic answers; a stream if nil
 	lmStudio http.HandlerFunc
 	noLocal  bool // LM Studio is not there at all
+	noGuard  bool // no policy and no redactor: janus as a plain proxy
 }
 
 func newSite(t *testing.T, o siteOptions) *site {
@@ -108,6 +109,9 @@ func newSite(t *testing.T, o siteOptions) *site {
 	}
 	if o.redact {
 		opts.Redactor = guard.NewRedactor(&guard.Detector{})
+	}
+	if o.noGuard {
+		opts.Policy, opts.LocalOnly, opts.Redactor = nil, nil, nil
 	}
 	s.janus = httptest.NewServer(proxy.New(opts))
 	t.Cleanup(s.janus.Close)

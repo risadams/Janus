@@ -7,7 +7,7 @@ API and a local model in LM Studio. Claude is the brain, the local model is
 the workhorse, and Janus decides which one each piece of work needs,
 local-first, to keep upstream token spend down.
 
-**Status:** M3 in progress. Janus is a transparent proxy that keeps the
+**Status:** M6 (privacy) complete; M5 and M7 to come. Janus is a transparent proxy that keeps the
 books and can send chosen requests to the local model by rule. Claude
 Code's subagents can run on LM Studio while the main conversation stays
 with Claude, with no change to Claude Code: see the

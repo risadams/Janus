@@ -259,6 +259,25 @@ What it depends on:
 - **The detector.** "Contain nothing that looks like a secret" means
   nothing a detector recognises. It is evidence, not proof.
 
+## The leak tests
+
+"Nothing protected goes upstream" is a test that runs on every change, in
+`internal/route/leak_test.go`. It sends a conversation seeded with every
+kind of secret the guard knows, in every part of a request that carries
+text, together with local-only content in each form the policy recognises.
+It sends it down every route janus has: straight through, token counting,
+the override header, each kind of rule, every fallback and escalation, and
+with Anthropic failing. Then it reads every byte the stand-in for
+Anthropic received.
+
+A second test runs the same conversation with the guard off and requires
+the check to find every item, so that the first cannot pass by looking in
+the wrong place.
+
+The secrets are invented, and what the test proves is bounded by what the
+detectors and the policy recognise: it shows that nothing recognised gets
+past on any route, not that everything is recognised.
+
 ## Local-only content
 
 Detectors go by what content looks like. The local-only policy goes by
