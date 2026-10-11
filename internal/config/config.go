@@ -159,7 +159,7 @@ func Default() Config {
 	return Config{
 		Listen:   "127.0.0.1:8787",
 		Upstream: Backend{BaseURL: "https://api.anthropic.com"},
-		Local:    Local{BaseURL: "http://studio.tuesday.local:1234"},
+		Local:    Local{BaseURL: "http://studio.local:1234"},
 		Logging:  Logging{Dir: "logs", Capture: true, RetainDays: 7, MaxMegabytes: 1024},
 	}
 }
@@ -248,7 +248,7 @@ func (c Config) Validate() error {
 	}
 
 	errs = append(errs, checkURL("upstream.baseUrl", c.Upstream.BaseURL, "https://api.anthropic.com"))
-	errs = append(errs, checkURL("local.baseUrl", c.Local.BaseURL, "http://studio.tuesday.local:1234"))
+	errs = append(errs, checkURL("local.baseUrl", c.Local.BaseURL, "http://studio.local:1234"))
 
 	for _, f := range []struct {
 		name string

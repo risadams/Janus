@@ -19,10 +19,12 @@ clean-up and response normalisation, listed under "What Janus must do".
 
 - LM Studio (the Bionic app) on an Apple M5 Max, 36 GB. The spike was run
   against `http://localhost:1234`, because the server was then bound to
-  `127.0.0.1` only. Later the same day it was rebound to all interfaces and
-  now also answers at `http://studio.tuesday.local:1234`, the address Janus
-  uses (FR-3.5). A `/v1/messages` request through the hostname was checked
-  and works.
+  `127.0.0.1` only. Later the same day it was rebound to all interfaces.
+  Janus addresses it as `http://studio.local:1234` (FR-3.5), the machine's
+  Bonjour name. An earlier revision of this project used
+  `studio.tuesday.local`, a name served by the local router that stopped
+  resolving when the router's DNS restarted; `studio.local` does not
+  depend on the router.
 - To serve on the network, set it in the Bionic app or in its own config
   file, `~/.lmstudio/apps/bionic/.internal/http-server-config.json`
   (`port`, `networkInterface`, `autoStartOnLaunch`), edited while the app is

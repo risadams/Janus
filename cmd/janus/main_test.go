@@ -70,7 +70,7 @@ func TestBannerGivesTheClaudeCodeCommand(t *testing.T) {
 		"ANTHROPIC_BASE_URL=http://127.0.0.1:8787 ENABLE_TOOL_SEARCH=true claude",
 		`$env:ANTHROPIC_BASE_URL="http://127.0.0.1:8787"`,
 		"https://api.anthropic.com",
-		"http://studio.tuesday.local:1234",
+		"http://studio.local:1234",
 		filepath.Join("logs", "ledger"),
 		filepath.Join("logs", "captures"),
 	} {

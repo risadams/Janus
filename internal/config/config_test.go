@@ -106,7 +106,7 @@ func TestValidate(t *testing.T) {
 		{"remote allowed when asked", func(c *Config) { c.Listen = "0.0.0.0:8787"; c.AllowRemote = true }, ""},
 		{"listen without port", func(c *Config) { c.Listen = "127.0.0.1" }, "host:port"},
 		{"upstream missing", func(c *Config) { c.Upstream.BaseURL = "" }, "upstream.baseUrl is not set"},
-		{"local not a url", func(c *Config) { c.Local.BaseURL = "studio.tuesday.local:1234" }, "local.baseUrl"},
+		{"local not a url", func(c *Config) { c.Local.BaseURL = "studio.local:1234" }, "local.baseUrl"},
 		{"unbuilt feature switched on", func(c *Config) { c.Features.Escalate = true }, "features.escalate is not available"},
 		{"route with nothing to route to", func(c *Config) { c.Features.Route = true }, "local.models is empty"},
 		{"route with a local model", func(c *Config) {

@@ -37,7 +37,7 @@ points at the [roadmap](ROADMAP.md).
 | FR-3.2 | Send Messages-shaped requests to LM Studio: natively where LM Studio offers an Anthropic-compatible endpoint, otherwise by translating to and from OpenAI chat completions, including tool calls and streaming. | M | M2 |
 | FR-3.3 | Configurable mapping from requested model names to local models, with per-model context limit and timeout. | M | M2 |
 | FR-3.4 | Requests that exceed the local model's context window are never sent to it. | M | M2 |
-| FR-3.5 | The LM Studio base URL is a config setting, overridable by flag and environment, and is never hard-coded. The default is `http://studio.tuesday.local:1234`, not `localhost`, so that Janus always talks to the intended LM Studio instance whichever machine it runs on. | M | M1 |
+| FR-3.5 | The LM Studio base URL is a config setting, overridable by flag and environment, and is never hard-coded. The default is `http://studio.local:1234`, not `localhost`, so that Janus always talks to the intended LM Studio instance whichever machine it runs on. | M | M1 |
 
 ### FR-4 Classification and routing
 

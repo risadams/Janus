@@ -15,7 +15,7 @@ and switch routing on:
 ```json
 {
   "local": {
-    "baseUrl": "http://studio.tuesday.local:1234",
+    "baseUrl": "http://studio.local:1234",
     "models": {
       "janus-local": { "model": "qwen/qwen3.8-27b" }
     }
