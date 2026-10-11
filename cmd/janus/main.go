@@ -1,9 +1,9 @@
 // main.go — entry point for the janus binary.
 //
-// For now janus is a transparent proxy: it loads its config, listens on
-// loopback, and forwards everything to the upstream API untouched. Routing
-// to the local model, and everything built on it, arrives in later
-// milestones.
+// For now janus is a transparent proxy that keeps the books: it forwards
+// everything to the upstream API untouched, and records what each request
+// was and what it cost. Routing to the local model, and everything built on
+// it, arrives in later milestones.
 package main
 
 import (
@@ -18,10 +18,13 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/risadams/janus/internal/capture"
 	"github.com/risadams/janus/internal/config"
+	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
 )
 
@@ -82,8 +85,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	printBanner(stdout, cfg, ln.Addr().String())
 
 	logger := log.New(stderr, "", log.LstdFlags)
-	srv := &http.Server{Handler: proxy.New(upstream, func(ex proxy.Exchange) {
-		logger.Print(formatExchange(ex))
+	led := ledger.Open(filepath.Join(cfg.Logging.Dir, "ledger"))
+	var captures *capture.Writer
+	if cfg.Logging.Capture {
+		captures = capture.New(filepath.Join(cfg.Logging.Dir, "captures"), cfg.Logging.RetainDays, cfg.Logging.MaxMegabytes)
+	}
+
+	srv := &http.Server{Handler: proxy.New(proxy.Options{
+		Upstream:   upstream,
+		KeepBodies: captures != nil,
+		Done:       func(ex proxy.Exchange) { record(ex, led, captures, logger) },
 	})}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -103,6 +114,25 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// record writes down one finished request: its capture, its ledger line,
+// and a line on the console. It runs after the response has gone out, and
+// a failure here is logged and nothing more: logging must never be the
+// reason a request fails.
+func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, logger *log.Logger) {
+	rec := ledger.FromExchange(ex)
+	if captures != nil {
+		name, err := captures.Write(ex)
+		if err != nil {
+			logger.Printf("janus: %v", err)
+		}
+		rec.Capture = name
+	}
+	if err := led.Append(rec); err != nil {
+		logger.Printf("janus: %v", err)
+	}
+	logger.Print(formatExchange(ex))
 }
 
 // formatExchange is the one line janus logs per request. For a Messages
@@ -155,7 +185,13 @@ func printBanner(w io.Writer, cfg config.Config, addr string) {
 	fmt.Fprintf(w, "%s\n\n", versionLine())
 	fmt.Fprintf(w, "  Listening   %s\n", base)
 	fmt.Fprintf(w, "  Upstream    %s\n", cfg.Upstream.BaseURL)
-	fmt.Fprintf(w, "  Local       %s (not used yet)\n\n", cfg.Local.BaseURL)
+	fmt.Fprintf(w, "  Local       %s (not used yet)\n", cfg.Local.BaseURL)
+	fmt.Fprintf(w, "  Ledger      %s\n", filepath.Join(cfg.Logging.Dir, "ledger"))
+	if cfg.Logging.Capture {
+		fmt.Fprintf(w, "  Captures    %s (full prompts and responses)\n\n", filepath.Join(cfg.Logging.Dir, "captures"))
+	} else {
+		fmt.Fprintf(w, "  Captures    off\n\n")
+	}
 	fmt.Fprintf(w, "Point Claude Code at janus:\n\n")
 	fmt.Fprintf(w, "  # bash / zsh / fish\n")
 	fmt.Fprintf(w, "  ANTHROPIC_BASE_URL=%s ENABLE_TOOL_SEARCH=true claude\n\n", base)

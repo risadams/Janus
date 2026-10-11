@@ -44,20 +44,29 @@ type Features struct {
 	Guard    bool `json:"guard"`
 }
 
-// Logging controls what janus writes to disk.
+// Logging controls what janus writes to disk. Everything goes under Dir:
+// the ledger, which is always kept, in Dir/ledger, and captures in
+// Dir/captures.
 type Logging struct {
 	Dir string `json:"dir"`
+	// Capture saves every request and response in full. Captures contain
+	// prompts, code, and tool output, so they are pruned by the two limits
+	// below; zero for either means no limit.
+	Capture      bool `json:"capture"`
+	RetainDays   int  `json:"retainDays"`
+	MaxMegabytes int  `json:"maxMegabytes"`
 }
 
-// Default is a pass-through proxy on loopback: the Anthropic API upstream,
-// LM Studio addressed by hostname rather than localhost so the same config
-// reaches the intended instance from any machine, and every feature off.
+// Default is a pass-through proxy on loopback that keeps a ledger and a
+// week of captures: the Anthropic API upstream, LM Studio addressed by
+// hostname rather than localhost so the same config reaches the intended
+// instance from any machine, and every feature off.
 func Default() Config {
 	return Config{
 		Listen:   "127.0.0.1:8787",
 		Upstream: Backend{BaseURL: "https://api.anthropic.com"},
 		Local:    Backend{BaseURL: "http://studio.tuesday.local:1234"},
-		Logging:  Logging{Dir: "logs"},
+		Logging:  Logging{Dir: "logs", Capture: true, RetainDays: 7, MaxMegabytes: 1024},
 	}
 }
 
@@ -154,6 +163,12 @@ func (c Config) Validate() error {
 
 	if c.Logging.Dir == "" {
 		errs = append(errs, errors.New(`logging.dir is empty; set a directory, for example "logs"`))
+	}
+	if c.Logging.RetainDays < 0 {
+		errs = append(errs, fmt.Errorf("logging.retainDays is %d; use 0 to keep captures forever, or a number of days", c.Logging.RetainDays))
+	}
+	if c.Logging.MaxMegabytes < 0 {
+		errs = append(errs, fmt.Errorf("logging.maxMegabytes is %d; use 0 for no size limit, or a number of megabytes", c.Logging.MaxMegabytes))
 	}
 	return errors.Join(errs...)
 }

@@ -27,7 +27,7 @@ func start(t *testing.T, upstream http.Handler, basePath string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	front := httptest.NewServer(New(u, quiet))
+	front := httptest.NewServer(New(Options{Upstream: u, Done: quiet}))
 	t.Cleanup(front.Close)
 	return front.URL
 }
@@ -201,7 +201,7 @@ func TestUpstreamUnreachable(t *testing.T) {
 	dead := httptest.NewServer(http.NotFoundHandler())
 	u, _ := url.Parse(dead.URL)
 	dead.Close()
-	front := httptest.NewServer(New(u, quiet))
+	front := httptest.NewServer(New(Options{Upstream: u, Done: quiet}))
 	defer front.Close()
 
 	resp, err := plainClient.Get(front.URL + "/v1/messages")
@@ -229,6 +229,11 @@ func TestUpstreamUnreachable(t *testing.T) {
 // response body with the Exchange janus reported for it.
 func serve(t *testing.T, upstream http.HandlerFunc, method, path string) ([]byte, Exchange) {
 	t.Helper()
+	return serveWith(t, upstream, method, path, false)
+}
+
+func serveWith(t *testing.T, upstream http.HandlerFunc, method, path string, keepBodies bool) ([]byte, Exchange) {
+	t.Helper()
 	up := httptest.NewServer(upstream)
 	defer up.Close()
 	u, _ := url.Parse(up.URL)
@@ -236,10 +241,11 @@ func serve(t *testing.T, upstream http.HandlerFunc, method, path string) ([]byte
 	// The exchange is reported after the response has gone out, so wait
 	// for it rather than reading shared state when the client returns.
 	reported := make(chan Exchange, 2)
-	front := httptest.NewServer(New(u, func(ex Exchange) { reported <- ex }))
+	front := httptest.NewServer(New(Options{Upstream: u, Done: func(ex Exchange) { reported <- ex }, KeepBodies: keepBodies}))
 	defer front.Close()
 
-	req, _ := http.NewRequest(method, front.URL+path, strings.NewReader("{}"))
+	req, _ := http.NewRequest(method, front.URL+path, strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("Authorization", "Bearer secret-token")
 	resp, err := plainClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -414,5 +420,148 @@ func TestReportsAStreamThatFailsPartWay(t *testing.T) {
 	}
 	if ex.Summary.Complete || ex.Summary.Model != "claude-opus-5-5" || len(ex.Summary.Blocks) != 1 {
 		t.Errorf("summary = %+v, want incomplete with what arrived before the cut", *ex.Summary)
+	}
+}
+
+func TestExchangeIdentifiesAndTimesTheRequest(t *testing.T) {
+	before := time.Now()
+	_, ex := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Request-Id", "req_abc")
+		time.Sleep(20 * time.Millisecond)
+		io.WriteString(w, sampleStream)
+	}, "POST", "/v1/messages")
+
+	if len(ex.ID) != len("20261011T143927.123-ab12cd") || ex.ID[8] != 'T' || ex.ID[19] != '-' {
+		t.Errorf("ID = %q, want a timestamp and a suffix", ex.ID)
+	}
+	if ex.Start.Before(before) || ex.Start.After(time.Now()) {
+		t.Errorf("Start = %v", ex.Start)
+	}
+	if ex.TTFB < 20*time.Millisecond || ex.TTFB > ex.Duration {
+		t.Errorf("TTFB = %v, Duration = %v; want 20ms <= TTFB <= Duration", ex.TTFB, ex.Duration)
+	}
+	if ex.Header.Get("Authorization") != "Bearer secret-token" {
+		t.Errorf("request headers were not carried: %v", ex.Header)
+	}
+	if ex.ResponseHeader.Get("Request-Id") != "req_abc" {
+		t.Errorf("response headers were not carried: %v", ex.ResponseHeader)
+	}
+	if ex.Cancelled || !ex.IsMessages() {
+		t.Errorf("cancelled=%v messages=%v", ex.Cancelled, ex.IsMessages())
+	}
+
+	_, other := serve(t, func(http.ResponseWriter, *http.Request) {}, "POST", "/v1/messages")
+	if other.ID == ex.ID {
+		t.Error("two requests got the same ID")
+	}
+	if other.TTFB != 0 {
+		t.Errorf("TTFB = %v for a response with no body, want 0", other.TTFB)
+	}
+}
+
+func TestKeepsBodiesOnlyWhereNeeded(t *testing.T) {
+	upstream := func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"ok":true}`)
+	}
+
+	_, ex := serveWith(t, upstream, "POST", "/v1/messages", false)
+	if string(ex.RequestBody) != `{"model":"m"}` || ex.ResponseBody != nil {
+		t.Errorf("Messages without KeepBodies: request=%q response=%q, want the request only", ex.RequestBody, ex.ResponseBody)
+	}
+
+	_, ex = serveWith(t, upstream, "POST", "/v1/messages/count_tokens", false)
+	if ex.RequestBody != nil || ex.ResponseBody != nil {
+		t.Errorf("other path without KeepBodies: request=%q response=%q, want neither", ex.RequestBody, ex.ResponseBody)
+	}
+
+	_, ex = serveWith(t, upstream, "POST", "/v1/messages/count_tokens", true)
+	if string(ex.RequestBody) != `{"model":"m"}` || string(ex.ResponseBody) != `{"ok":true}` {
+		t.Errorf("with KeepBodies: request=%q response=%q, want both", ex.RequestBody, ex.ResponseBody)
+	}
+	if ex.Summary != nil {
+		t.Error("a non-Messages response was summarised because its body was kept")
+	}
+}
+
+func TestKeptResponseIsDecompressed(t *testing.T) {
+	_, ex := serveWith(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Encoding", "gzip")
+		zw := gzip.NewWriter(w)
+		io.WriteString(zw, sampleStream)
+		zw.Close()
+	}, "POST", "/v1/messages", true)
+
+	if string(ex.ResponseBody) != sampleStream {
+		t.Errorf("kept response = %q, want the decompressed stream", ex.ResponseBody)
+	}
+	if ex.Summary == nil || ex.Summary.Usage.Output != 42 {
+		t.Errorf("summary = %+v", ex.Summary)
+	}
+}
+
+func TestKeptResponseInUnsupportedEncodingIsRaw(t *testing.T) {
+	raw := []byte{0x0b, 0x02, 0x80, 0x68, 0x69, 0x03}
+	_, ex := serveWith(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "br")
+		w.Write(raw)
+	}, "POST", "/v1/messages", true)
+
+	if !bytes.Equal(ex.ResponseBody, raw) || ex.Unread != "content-encoding br" || ex.Summary != nil {
+		t.Errorf("body=%v unread=%q summary=%v", ex.ResponseBody, ex.Unread, ex.Summary)
+	}
+}
+
+func TestReportsClientDisconnectAsCancelled(t *testing.T) {
+	started := make(chan struct{})
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, sampleStream[:70])
+		w.(http.Flusher).Flush()
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer up.Close()
+	u, _ := url.Parse(up.URL)
+	reported := make(chan Exchange, 1)
+	front := httptest.NewServer(New(Options{Upstream: u, Done: func(ex Exchange) { reported <- ex }}))
+	defer front.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, "POST", front.URL+"/v1/messages", strings.NewReader("{}"))
+	resp, err := plainClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	<-started
+	cancel()
+
+	select {
+	case ex := <-reported:
+		if !ex.Cancelled || ex.Status != 200 {
+			t.Errorf("cancelled=%v status=%d, want a cancelled 200", ex.Cancelled, ex.Status)
+		}
+		if ex.Summary == nil || ex.Summary.Complete {
+			t.Errorf("summary = %+v, want an incomplete one", ex.Summary)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("a cancelled request was never reported")
+	}
+}
+
+func TestCappedBuffer(t *testing.T) {
+	b := &cappedBuffer{limit: 5}
+	for _, part := range []string{"abc", "defg", "hi"} {
+		if n, err := b.Write([]byte(part)); n != len(part) || err != nil {
+			t.Fatalf("Write(%q) = %d, %v; it must always accept everything", part, n, err)
+		}
+	}
+	data, truncated := b.snapshot()
+	if string(data) != "abcde" || !truncated {
+		t.Errorf("snapshot = %q truncated=%v, want abcde and true", data, truncated)
 	}
 }

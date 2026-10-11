@@ -1,0 +1,180 @@
+package capture
+
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/risadams/janus/internal/proxy"
+)
+
+// Writer saves each exchange as three files under
+// <dir>/<day>/<id>_<path>:
+//
+//	.md            the readable render; start here
+//	.request.txt   the request body exactly as the client sent it
+//	.response.txt  the response body, decompressed
+//
+// Captures hold prompts, code, and tool output in full, so every file is
+// created readable by its owner only, and old ones are pruned.
+type Writer struct {
+	dir string
+	// retain is how long captures are kept; maxBytes is how much disk they
+	// may use. Zero means no limit.
+	retain   time.Duration
+	maxBytes int64
+
+	mu     sync.Mutex
+	writes int
+}
+
+// pruneEvery is how many captures are written between prunes.
+const pruneEvery = 50
+
+// New returns a Writer and prunes what is already there.
+func New(dir string, retainDays, maxMegabytes int) *Writer {
+	w := &Writer{
+		dir:      dir,
+		retain:   time.Duration(retainDays) * 24 * time.Hour,
+		maxBytes: int64(maxMegabytes) << 20,
+	}
+	w.Prune(time.Now())
+	return w
+}
+
+// Write saves one exchange and returns its name: the path under the
+// captures directory, without extension, which the ledger records.
+func (w *Writer) Write(ex proxy.Exchange) (name string, err error) {
+	day := ex.Start.UTC().Format("2006-01-02")
+	name = filepath.Join(day, ex.ID+"_"+sanitize(ex.Path))
+	base := filepath.Join(w.dir, name)
+
+	if err := os.MkdirAll(filepath.Dir(base), 0o700); err != nil {
+		return "", fmt.Errorf("capture: %w", err)
+	}
+	for ext, content := range map[string][]byte{
+		".request.txt":  ex.RequestBody,
+		".response.txt": ex.ResponseBody,
+		".md":           []byte(Render(ex)),
+	} {
+		if err := os.WriteFile(base+ext, content, 0o600); err != nil {
+			return "", fmt.Errorf("capture: %w", err)
+		}
+	}
+
+	w.mu.Lock()
+	w.writes++
+	due := w.writes%pruneEvery == 0
+	w.mu.Unlock()
+	if due {
+		w.Prune(time.Now())
+	}
+	return name, nil
+}
+
+// sanitize turns a request path into something safe in a file name:
+// "/v1/messages" becomes "v1-messages".
+func sanitize(path string) string {
+	var b strings.Builder
+	for _, r := range strings.Trim(path, "/") {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '.':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	if b.Len() == 0 {
+		return "root"
+	}
+	if b.Len() > 80 {
+		return b.String()[:80]
+	}
+	return b.String()
+}
+
+// Prune deletes captures older than the retention period, then the oldest
+// remaining ones until the total fits the size limit. It only ever touches
+// day directories and the capture files inside them.
+func (w *Writer) Prune(now time.Time) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	days, err := os.ReadDir(w.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("capture: %w", err)
+	}
+
+	type file struct {
+		path string
+		size int64
+	}
+	var files []file
+	var total int64
+	var dayDirs []string
+	for _, d := range days {
+		day, err := time.Parse("2006-01-02", d.Name())
+		if err != nil || !d.IsDir() {
+			continue // not something janus made
+		}
+		dayDir := filepath.Join(w.dir, d.Name())
+		// A day directory covers 24 hours, so it is only wholly past
+		// retention once its last moment is.
+		if w.retain > 0 && now.Sub(day.Add(24*time.Hour)) > w.retain {
+			os.RemoveAll(dayDir)
+			continue
+		}
+		dayDirs = append(dayDirs, dayDir)
+		filepath.WalkDir(dayDir, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil || entry.IsDir() {
+				return nil
+			}
+			if info, err := entry.Info(); err == nil {
+				files = append(files, file{path, info.Size()})
+				total += info.Size()
+			}
+			return nil
+		})
+	}
+
+	if w.maxBytes > 0 && total > w.maxBytes {
+		// Names begin with the day and then a timestamped ID, so sorting by
+		// path is sorting by age.
+		sort.Slice(files, func(i, j int) bool { return files[i].path < files[j].path })
+		removing := ""
+		for _, f := range files {
+			// Finish removing a capture once started, so that no capture is
+			// left with only some of its three files.
+			if total <= w.maxBytes && stem(f.path) != removing {
+				break
+			}
+			if os.Remove(f.path) == nil {
+				total -= f.size
+				removing = stem(f.path)
+			}
+		}
+		for _, dir := range dayDirs {
+			os.Remove(dir) // succeeds only if the directory is now empty
+		}
+	}
+	return nil
+}
+
+// stem is a capture file's path without its extension, which the three
+// files of one capture share.
+func stem(path string) string {
+	for _, ext := range []string{".request.txt", ".response.txt", ".md"} {
+		if s, ok := strings.CutSuffix(path, ext); ok {
+			return s
+		}
+	}
+	return path
+}

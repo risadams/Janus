@@ -11,7 +11,7 @@ the defaults below and carries on.
   "upstream": { "baseUrl": "https://api.anthropic.com" },
   "local": { "baseUrl": "http://studio.tuesday.local:1234" },
   "features": { "route": false, "escalate": false, "compress": false, "guard": false },
-  "logging": { "dir": "logs" }
+  "logging": { "dir": "logs", "capture": true, "retainDays": 7, "maxMegabytes": 1024 }
 }
 ```
 
@@ -22,7 +22,10 @@ the defaults below and carries on.
 | `upstream.baseUrl` | The Anthropic API, or a gateway in front of it. |
 | `local.baseUrl` | The LM Studio server. Not used yet. |
 | `features.*` | One switch per mechanism. None is implemented yet, and Janus refuses to start if any is true. |
-| `logging.dir` | Where logs will be written. Not used yet. |
+| `logging.dir` | Where the ledger and captures are written. See [the ledger and captures](LEDGER.md). |
+| `logging.capture` | Save every request and response in full. On by default. Captures contain your prompts and code. |
+| `logging.retainDays` | Delete captures older than this. `0` keeps them forever. |
+| `logging.maxMegabytes` | Delete the oldest captures once they exceed this. `0` means no limit. |
 
 A field left out of the file keeps its default. A field Janus does not
 recognise is an error, so typos are caught.
