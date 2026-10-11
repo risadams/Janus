@@ -292,14 +292,24 @@ func TestSubmitNeverBlocksAndOverflowIsRecorded(t *testing.T) {
 	})
 	defer once.Do(func() { close(release) })
 
+	// Start one and wait until LM Studio has it, so that it is in progress
+	// and the queue is known to be empty before the burst.
+	first, firstRec := real("r00")
+	h.runner.Submit(first, firstRec)
+	select {
+	case <-h.requests:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the first shadow never reached LM Studio")
+	}
+
 	const burst = queueSize + 6
 	started := time.Now()
-	for i := 0; i < burst; i++ {
+	for i := 1; i < burst; i++ {
 		ex, rec := real(fmt.Sprintf("r%02d", i))
 		h.runner.Submit(ex, rec)
 	}
 	if took := time.Since(started); took > time.Second {
-		t.Fatalf("submitting %d shadows took %s with LM Studio stuck; Submit must not wait", burst, took)
+		t.Fatalf("submitting %d shadows took %s with LM Studio stuck; Submit must not wait", burst-1, took)
 	}
 
 	// One is in progress and queueSize are waiting, so the rest overflowed.
