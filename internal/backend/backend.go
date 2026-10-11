@@ -24,6 +24,11 @@ type Backend interface {
 	Health(ctx context.Context) error
 }
 
+// RouteHeader is a request header a client can set to choose the route
+// itself, overriding the rules. It is an instruction to janus and is never
+// passed on to a backend.
+const RouteHeader = "X-Janus-Route"
+
 // Upstream is the Anthropic API, or a gateway in front of it. Requests go
 // to it as the client sent them.
 type Upstream struct {
@@ -43,10 +48,12 @@ func NewUpstream(base *url.URL, client *http.Client) *Upstream {
 func (u *Upstream) Name() string  { return "upstream" }
 func (u *Upstream) URL() *url.URL { return u.base }
 
-// Prepare leaves the request as the client sent it, with one exception:
+// Prepare leaves the request as the client sent it, with two exceptions:
 // on a Messages call, Accept-Encoding is narrowed so that janus can read
-// the response.
+// the response; and the route override header, if the client set one, is
+// removed.
 func (u *Upstream) Prepare(out *http.Request, messages bool) {
+	out.Header.Del(RouteHeader)
 	if messages {
 		narrowEncoding(out.Header)
 	}

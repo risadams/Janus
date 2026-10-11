@@ -101,6 +101,11 @@ type Rule struct {
 	// Local names the entry of local.models to use. Required unless Route
 	// is "upstream".
 	Local string `json:"local,omitempty"`
+	// IfDown names an entry of local.models to answer instead when this
+	// rule sends a request upstream and Claude cannot answer it: it is
+	// unreachable, rate limited, overloaded, or failing. For the upstream
+	// and shadow routes. Left out, the failure reaches the client.
+	IfDown string `json:"ifDown,omitempty"`
 	// SkipChecks turns off named checks on the local answer, for the
 	// local-then-escalate route: empty, truncated, tools, schema, refusal.
 	SkipChecks []string `json:"skipChecks,omitempty"`
@@ -280,6 +285,14 @@ func (c Config) Validate() error {
 		}
 		if len(rule.SkipChecks) > 0 && rule.Route != "local-then-escalate" {
 			errs = append(errs, fmt.Errorf("%s.skipChecks only applies when route is local-then-escalate", where))
+		}
+		if rule.IfDown != "" {
+			if _, ok := c.Local.Models[rule.IfDown]; !ok {
+				errs = append(errs, fmt.Errorf("%s.ifDown %q is not an entry of local.models", where, rule.IfDown))
+			}
+			if rule.Route != "upstream" && rule.Route != "shadow" {
+				errs = append(errs, fmt.Errorf("%s.ifDown only applies when route is upstream or shadow; the other routes already try the local model", where))
+			}
 		}
 		switch {
 		case rule.MaxSeconds < 0:

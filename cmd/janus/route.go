@@ -22,13 +22,14 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("janus route", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: janus route [-config file] [-class main|subagent|unknown] <request file>")
+		fmt.Fprintln(stderr, "usage: janus route [-config file] [-class main|subagent|unknown] [-override value] <request file>")
 		fmt.Fprintln(stderr, "\nSays where a saved Messages request would be sent, and why. The request file")
 		fmt.Fprintln(stderr, "is a request body, such as a capture's .request.txt.")
 		fs.PrintDefaults()
 	}
 	configPath := fs.String("config", config.DefaultPath, "path to the config file")
 	class := fs.String("class", "", "treat the request as this class instead of working it out")
+	override := fs.String("override", "", "explain it as if the client sent this X-Janus-Route header")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -62,6 +63,9 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "janus route: %v\n", err)
 		return 2
+	}
+	if *override != "" {
+		header.Set(backend.RouteHeader, *override)
 	}
 	facts := route.FactsOf(header, req)
 	tools := "no tools"
@@ -97,7 +101,14 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "          if it cannot be reached or answers with an error, Claude answers instead\n")
 		}
 	default:
-		fmt.Fprintf(stdout, "Decision  upstream, untouched\n")
+		if plan.Body != nil {
+			fmt.Fprintf(stdout, "Decision  upstream, after: %s\n", strings.Join(plan.Stages, ", "))
+		} else {
+			fmt.Fprintf(stdout, "Decision  upstream, untouched\n")
+		}
+		if plan.Fallback != nil {
+			fmt.Fprintf(stdout, "          if Claude cannot answer (unreachable, rate limited, overloaded, failing),\n          the local model answers instead\n")
+		}
 		if plan.Shadow != nil {
 			fmt.Fprintf(stdout, "          then run again on %s for comparison; that answer is only recorded\n", plan.Shadow.Model)
 		}

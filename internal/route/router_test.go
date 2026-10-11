@@ -997,11 +997,11 @@ func TestLocalRuleFallsBackWhenTheSendFails(t *testing.T) {
 	}{
 		"dropped":      {func(w http.ResponseWriter, r *http.Request) { panic(http.ErrAbortHandler) }, "could not reach local", true},
 		"too slow":     {func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }, "local did not answer within 300ms", true},
-		"server error": {func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }, "local it answered HTTP 503", true},
+		"server error": {func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }, "local answered HTTP 503", true},
 		"rejects the request": {func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(400)
 			io.WriteString(w, `{"type":"error","error":{"type":"invalid_request_error","message":"no"}}`)
-		}, "local it answered HTTP 400", false},
+		}, "local answered HTTP 400", false},
 	}
 	for name, c := range cases {
 		res, _, upstreamBody := escalate(t, RouteLocal, c.local, opusRequest)
@@ -1137,6 +1137,263 @@ func TestTrialTimeoutIsTheShorterOfTheTwo(t *testing.T) {
 		plan, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
 		if plan.Timeout != c.want {
 			t.Errorf("%s with model %s and trial %s: timeout %s, want %s", c.routeName, c.model, c.trial, plan.Timeout, c.want)
+		}
+	}
+}
+
+func withOverride(h http.Header, value string) http.Header {
+	h.Set("X-Janus-Route", value)
+	return h
+}
+
+func TestOverrideHeaderBeatsTheRules(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, qwen)
+	r.Rules = []Rule{{Name: "subagents", Class: Subagent, Route: RouteLocal, Local: qwen["janus-local"]}}
+
+	// Upstream, though a rule says local.
+	plan, refusal, trace := r.Explain(context.Background(), withOverride(subagentHeader(), "upstream"), parse(t, opusRequest))
+	if refusal != nil || plan.Backend.Name() != "upstream" || plan.Reason != "override upstream" || plan.Body != nil || plan.Else != nil {
+		t.Errorf("override upstream: plan = %+v, refusal = %+v", plan, refusal)
+	}
+	if trace[0] != "override upstream: upstream" {
+		t.Errorf("trace = %q", trace)
+	}
+
+	// Local, though no rule matches the main loop. With one model
+	// configured it need not be named.
+	for _, value := range []string{"local", "local=janus-local", " local "} {
+		plan, refusal, _ := r.Explain(context.Background(), withOverride(mainHeader(), value), parse(t, opusRequest))
+		if refusal != nil || plan.Backend.Name() != "local" || plan.BackendModel != "qwen/qwen3.8-27b" || plan.ResponseModel != "claude-opus-5-5" {
+			t.Errorf("override %q: plan = %+v, refusal = %+v", value, plan, refusal)
+		}
+		// Forced local is a promise not to go upstream: no fallback.
+		if plan.Else != nil || plan.Fallback != nil || plan.Accept != nil {
+			t.Errorf("override %q: a forced local plan has a fallback", value)
+		}
+	}
+}
+
+func TestOverrideRefusals(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL, _ := url.Parse(dead.URL)
+	dead.Close()
+	two := map[string]LocalModel{"small": {ID: "gemma-4-e4b"}, "large": {ID: "qwen/qwen3.8-27b"}}
+
+	cases := map[string]struct {
+		router     *Router
+		value      string
+		wantStatus int
+		wantIn     string
+	}{
+		"not a route":                          {router(local, qwen), "sideways", 400, `"sideways" is not upstream, local, or local=`},
+		"a local model that is not configured": {router(local, qwen), "local=other", 400, `"other" is not an entry of local.models`},
+		"several models and none named":        {router(local, two), "local", 400, "several local models are configured"},
+		"no local model at all":                {router(local, nil), "local", 400, "no local model is configured"},
+		// The point of forcing local: if it cannot be done, the request
+		// is refused, not quietly sent to Claude.
+		"forced local with LM Studio down": {router(backend.NewLocal(deadURL, nil), qwen), "local", 502, "could not reach LM Studio"},
+	}
+	for name, c := range cases {
+		plan, refusal, _ := c.router.Explain(context.Background(), withOverride(mainHeader(), c.value), parse(t, opusRequest))
+		if refusal == nil {
+			t.Errorf("%s: not refused; plan = %+v", name, plan)
+			continue
+		}
+		if refusal.Status != c.wantStatus || !strings.Contains(refusal.Message, c.wantIn) {
+			t.Errorf("%s: refusal = %d %q, want %d containing %q", name, refusal.Status, refusal.Message, c.wantStatus, c.wantIn)
+		}
+	}
+	// Naming one of several works.
+	if plan, refusal, _ := router(local, two).Explain(context.Background(), withOverride(mainHeader(), "local=large"), parse(t, opusRequest)); refusal != nil || plan.BackendModel != "qwen/qwen3.8-27b" {
+		t.Errorf("local=large: plan = %+v, refusal = %+v", plan, refusal)
+	}
+}
+
+// claudeDown runs one main-loop request through janus with a rule that
+// sends it upstream and names a local model for when Claude is down.
+func claudeDown(t *testing.T, upstream http.HandlerFunc, lms http.HandlerFunc, body string) (status int, respHeader http.Header, respBody string, ex proxy.Exchange, modelLookups *int) {
+	t.Helper()
+	modelLookups = new(int)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v0/models" {
+			*modelLookups++
+			io.WriteString(w, modelList)
+			return
+		}
+		if r.Header.Get("Authorization") != "" || r.Header.Get("X-Janus-Route") != "" {
+			t.Errorf("LM Studio was sent a credential or the override header: %v", r.Header)
+		}
+		io.Copy(io.Discard, r.Body)
+		if lms != nil {
+			lms(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, localStream)
+	}))
+	t.Cleanup(srv.Close)
+	localURL, _ := url.Parse(srv.URL)
+
+	up := httptest.NewServer(upstream)
+	t.Cleanup(up.Close)
+	u, _ := url.Parse(up.URL)
+	model := LocalModel{ID: "qwen/qwen3.8-27b", Timeout: time.Second}
+	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: backend.NewLocal(localURL, nil),
+		Rules: []Rule{{Name: "main", Class: Main, Route: RouteUpstream, IfDown: &model}}}
+	reported := make(chan proxy.Exchange, 1)
+	janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: r.Upstream, Plan: r.Plan, Done: func(ex proxy.Exchange) { reported <- ex }}))
+	t.Cleanup(janus.Close)
+
+	req, _ := http.NewRequest("POST", janus.URL+"/v1/messages", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer secret-token")
+	req.Header.Set("X-Claude-Code-Session-Id", "s1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, resp.Header, string(b), <-reported, modelLookups
+}
+
+func upstreamSays(status int, body string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Request-Id", "req_up")
+		w.WriteHeader(status)
+		io.WriteString(w, body)
+	}
+}
+
+func TestLocalStandsInWhenClaudeIsDown(t *testing.T) {
+	cases := map[string]struct {
+		upstream http.HandlerFunc
+		whyHas   string
+	}{
+		"overloaded":   {upstreamSays(529, `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`), "upstream answered HTTP 529"},
+		"rate limited": {upstreamSays(429, `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`), "upstream answered HTTP 429"},
+		"server error": {upstreamSays(500, `{"type":"error","error":{"type":"api_error","message":"oops"}}`), "upstream answered HTTP 500"},
+		"dropped":      {func(w http.ResponseWriter, r *http.Request) { panic(http.ErrAbortHandler) }, "could not reach upstream"},
+	}
+	for name, c := range cases {
+		status, header, body, ex, _ := claudeDown(t, c.upstream, nil, opusRequest)
+
+		want := strings.Replace(localStream, `"model":"qwen/qwen3.8-27b"`, `"model":"claude-opus-5-5"`, 1)
+		if status != 200 || body != want {
+			t.Errorf("%s: status %d, body:\n%s", name, status, body)
+		}
+		// The stand-in is marked, on the response and in the record.
+		if got := header.Get("X-Janus-Fallback"); !strings.HasPrefix(got, "local answered because ") || !strings.Contains(got, c.whyHas) {
+			t.Errorf("%s: X-Janus-Fallback = %q", name, got)
+		}
+		if ex.Backend != "local" || ex.Route != "local" || !strings.HasPrefix(ex.Reason, "rule main: ") || !strings.HasSuffix(ex.Reason, "; sent local") {
+			t.Errorf("%s: exchange = backend %q route %q reason %q", name, ex.Backend, ex.Route, ex.Reason)
+		}
+		if a := ex.Attempt; a == nil || a.Backend != "upstream" || a.Accepted || !a.Fault {
+			t.Errorf("%s: attempt = %+v", name, a)
+		}
+		if ex.Summary == nil || ex.Summary.Model != "qwen/qwen3.8-27b" {
+			t.Errorf("%s: summary = %+v", name, ex.Summary)
+		}
+	}
+}
+
+// Errors that mean the request was wrong, not that Claude was down, reach
+// the client untouched and the local model is never consulted.
+func TestRequestErrorsFromClaudeAreNotStoodInFor(t *testing.T) {
+	for _, status := range []int{400, 401, 403, 404, 413} {
+		errBody := `{"type":"error","error":{"type":"invalid_request_error","message":"no"}}`
+		got, header, body, ex, lookups := claudeDown(t, upstreamSays(status, errBody), func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("status %d: the local model was asked", status)
+		}, opusRequest)
+
+		if got != status || body != errBody || header.Get("Request-Id") != "req_up" || header.Get("X-Janus-Fallback") != "" {
+			t.Errorf("status %d: client got %d %q, headers %v", status, got, body, header)
+		}
+		if ex.Backend != "upstream" || ex.Attempt != nil || *lookups != 0 {
+			t.Errorf("status %d: backend %q, attempt %+v, LM Studio lookups %d", status, ex.Backend, ex.Attempt, *lookups)
+		}
+	}
+}
+
+// The fallback is planned only when it is needed. A healthy Claude never
+// causes LM Studio to be contacted at all.
+func TestHealthyClaudeNeverTouchesLMStudio(t *testing.T) {
+	status, _, body, ex, lookups := claudeDown(t, upstreamSays(200, `{"type":"message","model":"claude-opus-5-5","content":[],"usage":{"input_tokens":1,"output_tokens":1}}`), nil, opusRequest)
+	if status != 200 || !strings.Contains(body, "claude-opus-5-5") || ex.Backend != "upstream" || ex.Attempt != nil {
+		t.Errorf("status %d, backend %q, attempt %+v", status, ex.Backend, ex.Attempt)
+	}
+	if *lookups != 0 {
+		t.Errorf("LM Studio was contacted %d times for a request Claude answered", *lookups)
+	}
+}
+
+// When Claude is down and the local model cannot help either, the client
+// gets Claude's error exactly as Claude sent it.
+func TestClaudesErrorStandsWhenLocalCannotHelp(t *testing.T) {
+	errBody := `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`
+	big := `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"` + strings.Repeat("word ", 40000) + `"}]}`
+
+	// Too large for the local model.
+	status, header, body, ex, _ := claudeDown(t, upstreamSays(529, errBody), func(w http.ResponseWriter, r *http.Request) {
+		t.Error("the local model was sent a request too large for it")
+	}, big)
+	if status != 529 || body != errBody || header.Get("Request-Id") != "req_up" {
+		t.Errorf("too large: client got %d %q", status, body)
+	}
+	if ex.Backend != "upstream" || ex.Attempt != nil || ex.Summary == nil || ex.Summary.Error == nil || ex.Summary.Error.Type != "overloaded_error" {
+		t.Errorf("too large: exchange = backend %q attempt %+v summary %+v", ex.Backend, ex.Attempt, ex.Summary)
+	}
+}
+
+func TestBothDownGivesTheClientAnError(t *testing.T) {
+	// Claude drops the connection and LM Studio fails too: there is
+	// nothing to relay, so janus says what happened.
+	status, _, body, ex, _ := claudeDown(t, func(w http.ResponseWriter, r *http.Request) { panic(http.ErrAbortHandler) },
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }, opusRequest)
+	if status != http.StatusBadGateway && status != 500 {
+		t.Errorf("status %d, body %s", status, body)
+	}
+	if ex.Attempt == nil || ex.Attempt.Backend != "upstream" {
+		t.Errorf("attempt = %+v", ex.Attempt)
+	}
+}
+
+func TestOverrideHeaderIsNotForwarded(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	var seen http.Header
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Clone()
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"type":"message","model":"claude-opus-5-5","content":[]}`)
+	}))
+	defer up.Close()
+	u, _ := url.Parse(up.URL)
+	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local, Aliases: qwen}
+	janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: r.Upstream, Plan: r.Plan, Done: func(proxy.Exchange) {}}))
+	defer janus.Close()
+
+	req, _ := http.NewRequest("POST", janus.URL+"/v1/messages", strings.NewReader(opusRequest))
+	req.Header.Set("X-Janus-Route", "upstream")
+	req.Header.Set("Authorization", "Bearer secret-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if seen.Get("X-Janus-Route") != "" || seen.Get("Authorization") != "Bearer secret-token" {
+		t.Errorf("upstream saw X-Janus-Route %q, Authorization %q", seen.Get("X-Janus-Route"), seen.Get("Authorization"))
+	}
+}
+
+func TestUpstreamDown(t *testing.T) {
+	for status, want := range map[int]bool{200: false, 400: false, 401: false, 404: false, 429: true, 500: true, 503: true, 529: true} {
+		if got := upstreamDown(status); got != want {
+			t.Errorf("upstreamDown(%d) = %v, want %v", status, got, want)
 		}
 	}
 }

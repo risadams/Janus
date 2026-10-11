@@ -110,6 +110,26 @@ tools: Read, Bash
 You count lines in the files you are given and report one count per file.
 ```
 
+## Two more things worth setting up
+
+**Keep working when Claude is down.** Add `ifDown` to a rule for the main
+conversation, and the local model answers when Claude is unreachable, rate
+limited, or failing:
+
+```json
+{ "name": "main", "class": "main", "route": "upstream", "ifDown": "janus-local" }
+```
+
+**Override for one session.** To bypass local routing, or to keep a session
+off Anthropic entirely, start Claude Code with a header:
+
+```bash
+ANTHROPIC_CUSTOM_HEADERS="X-Janus-Route: upstream" claude
+ANTHROPIC_CUSTOM_HEADERS="X-Janus-Route: local" claude
+```
+
+Both are described in [Configuration](../CONFIG.md#keep-working-when-claude-is-down).
+
 ## What to expect
 
 - **It is slower.** In the test runs a local turn took 7 to 24 seconds,

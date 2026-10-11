@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 	"sync"
 	"time"
 
@@ -161,6 +162,14 @@ type Plan struct {
 	// times out, or it answers with an error status. Nil means there is
 	// no fallback and the failure is the client's answer.
 	Else *Plan
+	// Fallback is Else worked out only when it is needed, for a fallback
+	// that costs something to plan. It reports false if there is nowhere
+	// to fall back to after all, and the failure then stands. Else, if
+	// set, takes precedence.
+	Fallback func(ctx context.Context) (Plan, bool)
+	// FallBackOn says which response statuses count as this plan's backend
+	// failing. Nil means any error status, 400 and above.
+	FallBackOn func(status int) bool
 	// Accept, when set, makes this plan a trial. The backend's whole
 	// answer is held back and shown to Accept; the client gets it only if
 	// Accept passes it, and otherwise gets Else's answer, never knowing
@@ -207,16 +216,31 @@ type exchangeState struct {
 	// served is an answer given to the client from memory, by a trial
 	// that passed, rather than relayed.
 	served *Fetched
-	// fallBack switches to the plan's Else and serves it. It is set by the
-	// handler for plans that have one, and cleared once used.
-	fallBack func(w http.ResponseWriter, why string, fault bool)
+	// fallBack switches to the plan's fallback and serves it, reporting
+	// false if there turned out to be none. It is set by the handler for
+	// plans that may have one, and cleared once used.
+	fallBack func(w http.ResponseWriter, why string, fault bool) bool
+	// next is a fallback already worked out, by the response hook, which
+	// has to know there is one before it throws a response away.
+	next *Plan
+	// resolve works out the plan's fallback.
+	resolve func() (Plan, bool)
+}
+
+// failed reports whether a status from a plan's backend counts as the
+// backend failing, so that the plan's fallback should be used.
+func failed(plan Plan, status int) bool {
+	if plan.FallBackOn != nil {
+		return plan.FallBackOn(status)
+	}
+	return status >= 400
 }
 
 // errBackendStatus turns an error status from a backend with a fallback
 // into a failure, so that the fallback is used.
 type errBackendStatus int
 
-func (e errBackendStatus) Error() string { return fmt.Sprintf("it answered HTTP %d", int(e)) }
+func (e errBackendStatus) Error() string { return fmt.Sprintf("answered HTTP %d", int(e)) }
 
 // trialLimit bounds the answer a trial will hold.
 const trialLimit = 8 << 20
@@ -254,8 +278,20 @@ func New(opts Options) http.Handler {
 			if state == nil {
 				return nil
 			}
-			if state.fallBack != nil && resp.StatusCode >= 400 {
-				return errBackendStatus(resp.StatusCode)
+			if state.fallBack != nil && failed(state.plan, resp.StatusCode) {
+				// Only give up this response if there really is somewhere
+				// else to go. Otherwise it is the answer, error and all.
+				if next, ok := state.resolve(); ok {
+					state.next = &next
+					return errBackendStatus(resp.StatusCode)
+				}
+				state.fallBack = nil
+			}
+			if a := state.attempt; a != nil && !a.Accepted {
+				// Say so on the response, for anything that looks: this
+				// answer is not from the backend that was meant to give it.
+				note := fmt.Sprintf("%s answered because %s", state.plan.Backend.Name(), a.Why)
+				resp.Header.Set("X-Janus-Fallback", strings.Join(strings.Fields(note), " "))
 			}
 			state.responseHeader = resp.Header.Clone()
 			if state.messages || state.keep {
@@ -294,13 +330,16 @@ func New(opts Options) http.Handler {
 				status = http.StatusGatewayTimeout
 			case errors.As(err, &bad):
 				why = name + " " + bad.Error()
-				fault = int(bad) >= 500
+				// A rate limit is the backend being unavailable too; any
+				// other 4xx is about this one request.
+				fault = int(bad) >= 500 || int(bad) == http.StatusTooManyRequests
 			}
 			if state.fallBack != nil {
 				// Nothing has been written yet: the error handler runs
 				// before any of the response is relayed.
-				state.fallBack(w, why, fault)
-				return
+				if state.fallBack(w, why, fault) {
+					return
+				}
 			}
 			state.backendFault = fault
 			writeError(w, status, "api_error", "janus: "+why)
@@ -386,17 +425,31 @@ func New(opts Options) http.Handler {
 			return original
 		}
 
-		if state.messages && !truncated && state.plan.Else != nil {
-			// The plan has a fallback. Record the attempt, switch to the
-			// fallback, and serve that.
-			state.fallBack = func(w http.ResponseWriter, why string, fault bool) {
+		if state.messages && !truncated && (state.plan.Else != nil || state.plan.Fallback != nil) {
+			state.resolve = func() (Plan, bool) {
+				if state.plan.Else != nil {
+					return *state.plan.Else, true
+				}
+				return state.plan.Fallback(base)
+			}
+			// The plan may have a fallback. Record the attempt, switch to
+			// the fallback, and serve that.
+			state.fallBack = func(w http.ResponseWriter, why string, fault bool) bool {
 				tried := state.plan
 				state.fallBack = nil
+				next := state.next
+				if next == nil {
+					resolved, ok := state.resolve()
+					if !ok {
+						return false
+					}
+					next = &resolved
+				}
 				if state.attempt == nil {
 					state.attempt = &Attempt{Backend: tried.Backend.Name(), Model: tried.BackendModel, Stages: tried.Stages,
 						Why: why, Fault: fault, Duration: time.Since(start)}
 				}
-				state.plan = *tried.Else
+				state.plan = *next
 				state.plan.Reason = fmt.Sprintf("%s: %s; sent %s", tried.Reason, why, state.plan.Backend.Name())
 
 				body := sendBody(state.plan)
@@ -405,6 +458,7 @@ func New(opts Options) http.Handler {
 				ctx, cancel := withTimeout(state.plan)
 				defer cancel()
 				rp.ServeHTTP(w, r.WithContext(ctx))
+				return true
 			}
 		}
 
@@ -476,7 +530,7 @@ func New(opts Options) http.Handler {
 			return
 		}
 
-		if state.fallBack != nil && state.plan.Accept != nil {
+		if state.fallBack != nil && state.plan.Accept != nil && state.plan.Else != nil {
 			// A trial: get the whole answer, judge it, and only then
 			// decide what the client receives.
 			tried := state.plan

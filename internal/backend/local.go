@@ -63,6 +63,7 @@ func (l *Local) Prepare(out *http.Request, messages bool) {
 	for _, h := range credentialHeaders {
 		out.Header.Del(h)
 	}
+	out.Header.Del(RouteHeader)
 	out.Header.Set("Accept-Encoding", "identity")
 }
 

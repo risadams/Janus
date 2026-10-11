@@ -145,6 +145,11 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		fmt.Fprintf(w, "\n%s requests could not be priced and are in no cost above:\n%s\n",
 			commas(rep.Total.Unpriced), strings.Join(reasons, "\n"))
 	}
+	if rep.StoodIn > 0 {
+		fmt.Fprintf(w, "\nNOTE: %s requests were answered by the local model because Claude could not\n"+
+			"answer them (unreachable, rate limited, overloaded, or failing). Search the\n"+
+			"ledger for \"sent local\" to see which.\n", commas(rep.StoodIn))
+	}
 	if rep.Unread > 0 {
 		fmt.Fprintf(w, "\nWARNING: %s responses were relayed but could not be read, so their tokens\n"+
 			"are missing from every figure above. Run janus stats -json, or search the\n"+
