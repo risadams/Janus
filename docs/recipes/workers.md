@@ -5,10 +5,17 @@ the local model read files and answer a question about them. Claude gets a
 short answer with `file:line` references, and the files themselves never
 enter its context.
 
-**Read this first.** In the one case measured so far, delegating a read
-saved 23% of a small cost and took 27 times as long, because Claude would
-not have read the file in full anyway. The tool is for a narrower job than
-it first appears. See [the measurement](../research/delegation.md).
+**Read this first.** It trades time for upstream usage, and the rate is
+steep. Measured on two tasks:
+
+| Task | Upstream saving | Slowdown |
+| --- | --- | --- |
+| Summarise 164 kB of source code | 41% | 12 times slower (8 minutes against 39 seconds) |
+| Find one failing line in a 250 kB log | 23% | 27 times slower |
+
+And Claude does not choose it on its own: with the tool available and no
+instruction to use it, Claude read the files its own way. You have to ask
+for it. See [the measurements](../research/delegation.md).
 
 ## What it is for
 
@@ -55,6 +62,17 @@ Questions that can only be answered by reading all of a large text:
    ```
 
 3. Start Claude Code. The tool appears as `mcp__janus__ask_files`.
+
+4. Ask for it. In a prompt, or in a project's `CLAUDE.md` if you want it
+   used as a matter of course:
+
+   ```
+   When a task needs you to read a lot of text you do not need verbatim
+   (summarising, explaining, surveying), use the janus ask_files tool to
+   read it. Keep searching for specific strings yourself.
+   ```
+
+   Only do this where waiting several minutes is acceptable.
 
 This is separate from the proxy. It works whether or not Claude Code is
 pointed at Janus, and whether or not routing is on.
