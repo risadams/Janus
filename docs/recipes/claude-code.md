@@ -149,8 +149,9 @@ Both are described in [Configuration](../CONFIG.md#keep-working-when-claude-is-d
   context is. With a rule, the same request goes to Claude instead.
 - **Quality is the local model's.** A subagent that reads files and
   reports back is within reach of a good local model; one that must make
-  hard judgements may not be. Janus does not yet check local answers or
-  fall back to Claude. That is the next milestone.
+  hard judgements may not be. To have Janus check each local answer and
+  ask Claude when one is broken, use a
+  [`local-then-escalate` rule](local-first.md).
 
 In the test, the same small task cost $0.24 at list price with everything
 upstream and $0.05 to $0.11 with the subagent local. That is two runs of a

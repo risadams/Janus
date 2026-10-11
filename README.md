@@ -36,11 +36,25 @@ upstream usage at a steep rate (41% less cost and 12 times slower, on the
 task that suited it best), and Claude only uses it when asked; read
 [the recipe](docs/recipes/workers.md) before using it.
 
-- [Charter](docs/CHARTER.md): what Janus is, goals, scope, risks
-- [Requirements](docs/REQUIREMENTS.md)
-- [Roadmap](docs/ROADMAP.md)
+**Using it**
+
+- [Quickstart](docs/QUICKSTART.md): install, run, and the first saving
+- Recipes: [subagents on the local model](docs/recipes/claude-code.md),
+  [local first with Claude as the net](docs/recipes/local-first.md),
+  [keep working when Claude is down](docs/recipes/outage.md),
+  [keep secrets and files from leaving](docs/recipes/privacy.md),
+  [hand reading to the local model](docs/recipes/workers.md)
+- [Configuration](docs/CONFIG.md), [the guard](docs/GUARD.md), and
+  [the ledger and captures](docs/LEDGER.md)
+- [What Janus changes, and how to check](docs/WHAT-JANUS-CHANGES.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Threat model](docs/THREAT-MODEL.md): what it protects against, and what it does not
-- [Decisions](docs/adr/) and [research notes](docs/research/)
+
+**About the project**
+
+- [Charter](docs/CHARTER.md), [requirements](docs/REQUIREMENTS.md), and [roadmap](docs/ROADMAP.md)
+- [Decisions](docs/adr/) and [research notes](docs/research/), including
+  [performance](docs/research/performance.md)
 - [Milestones and issues](https://github.com/risadams/Janus/milestones)
 
 ## Installing
