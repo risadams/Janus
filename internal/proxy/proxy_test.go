@@ -422,6 +422,9 @@ func TestReportsAStreamThatFailsPartWay(t *testing.T) {
 	if ex.Summary.Complete || ex.Summary.Model != "claude-opus-5-5" || len(ex.Summary.Blocks) != 1 {
 		t.Errorf("summary = %+v, want incomplete with what arrived before the cut", *ex.Summary)
 	}
+	if ex.Fault == "" {
+		t.Error("a response the backend dropped part-way has no Fault saying so")
+	}
 }
 
 func TestExchangeIdentifiesAndTimesTheRequest(t *testing.T) {
@@ -545,6 +548,9 @@ func TestReportsClientDisconnectAsCancelled(t *testing.T) {
 	case ex := <-reported:
 		if !ex.Cancelled || ex.Status != 200 {
 			t.Errorf("cancelled=%v status=%d, want a cancelled 200", ex.Cancelled, ex.Status)
+		}
+		if ex.Fault != "" {
+			t.Errorf("Fault = %q; the client leaving is not a fault in the backend", ex.Fault)
 		}
 		if ex.Summary == nil || ex.Summary.Complete {
 			t.Errorf("summary = %+v, want an incomplete one", ex.Summary)

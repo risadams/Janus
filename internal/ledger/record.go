@@ -49,6 +49,9 @@ type Record struct {
 	Usage    *Usage    `json:"usage,omitempty"`
 	// Unread says why a Messages response has no usage.
 	Unread string `json:"unread,omitempty"`
+	// Fault is what went wrong reading the response from the backend when
+	// it broke off part-way.
+	Fault string `json:"fault,omitempty"`
 	// Capture is the capture's path under the captures directory, without
 	// extension, when one was written.
 	Capture string `json:"capture,omitempty"`
@@ -141,6 +144,7 @@ func FromExchange(ex proxy.Exchange) Record {
 		TTFBMs:     ex.TTFB.Milliseconds(),
 		DurationMs: ex.Duration.Milliseconds(),
 		Unread:     ex.Unread,
+		Fault:      ex.Fault,
 	}
 
 	if rec.Stages == nil {
