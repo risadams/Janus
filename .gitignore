@@ -1,0 +1,19 @@
+# Go build output
+/janus
+/janus.exe
+*.exe
+*.test
+
+# janus's own config, logs, and ledger — created on first run, never checked in
+/janus.config.json
+/logs
+/ledger
+
+# Coverage output
+*.out
+
+# Editor/OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

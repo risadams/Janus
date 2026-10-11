@@ -5,9 +5,22 @@ API and a local model in LM Studio. Claude is the brain, the local model is
 the workhorse, and Janus decides which one each piece of work needs,
 local-first, to keep upstream token spend down.
 
-**Status:** planning. Nothing runs yet.
+**Status:** M0, foundations. The binary builds and reports its version;
+nothing proxies yet.
 
 - [Charter](docs/CHARTER.md): what Janus is, goals, scope, risks
 - [Requirements](docs/REQUIREMENTS.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Decisions](docs/adr/) and [research notes](docs/research/)
 - [Milestones and issues](https://github.com/risadams/Janus/milestones)
+
+## Building
+
+```bash
+go build ./cmd/janus
+go test ./...
+```
+
+## License
+
+[MIT](LICENSE)
