@@ -315,8 +315,8 @@ func TestStatsGuardNote(t *testing.T) {
 	out, _, _ := stats(t, "-dir", dir)
 	squeezed := strings.Join(strings.Fields(out), " ")
 	for _, want := range []string{
-		"GUARD: 3 requests that went upstream carried something that looks like a secret (aws_access_key 3, url_password 3).",
-		"Nothing was removed or blocked",
+		"GUARD: 3 requests bound for upstream carried something that looks like a secret (aws_access_key 3, url_password 3).",
+		"3 of them were sent with the secrets in them: the guard was only detecting.",
 		"counted each time",
 	} {
 		if !strings.Contains(squeezed, want) {
@@ -325,5 +325,32 @@ func TestStatsGuardNote(t *testing.T) {
 	}
 	if clean, _, _ := stats(t, "-dir", seedLedger(t)); strings.Contains(clean, "GUARD") {
 		t.Error("a ledger with no findings shows a guard note")
+	}
+}
+
+func TestStatsGuardNoteWhenRedacting(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	l := ledger.Open(dir)
+	one := 1
+	for i := 0; i < 2; i++ {
+		l.Append(ledger.Record{V: 1, ID: string(rune('a' + i)), Time: time.Now(), Class: "main", Backend: "upstream", Outcome: ledger.OutcomeOK,
+			Guard: &ledger.Guard{Findings: 1, Kinds: map[string]int{"aws_access_key": 1}, Redacted: &one, Restored: 2}})
+	}
+	l.Append(ledger.Record{V: 1, ID: "x", Time: time.Now(), Class: "main", Backend: "none", Outcome: ledger.OutcomeHTTPError,
+		Guard: &ledger.Guard{Blocked: "the request could not be read to check it for secrets"}})
+
+	out, _, _ := stats(t, "-dir", dir)
+	squeezed := strings.Join(strings.Fields(out), " ")
+	for _, want := range []string{
+		"GUARD: 2 requests bound for upstream carried something that looks like a secret (aws_access_key 2).",
+		"2 had their secrets replaced with placeholders before being sent, and 4 placeholders were turned back into secrets in the answers.",
+		"1 exchanges were stopped because they could not be made safe.",
+	} {
+		if !strings.Contains(squeezed, want) {
+			t.Errorf("report is missing %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(squeezed, "only detecting") {
+		t.Errorf("a fully redacted ledger is described as exposed:\n%s", out)
 	}
 }

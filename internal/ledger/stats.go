@@ -211,8 +211,15 @@ func Summarise(records []Record, prices Prices) Report {
 			}
 			attempts[rec.Class].add(*rec.Attempt)
 		}
+		if g := rec.Guard; g != nil && g.Blocked != "" {
+			rep.Guard.Blocked++
+		}
 		if g := rec.Guard; g != nil && g.Findings > 0 {
 			rep.Guard.Requests++
+			if g.Redacted != nil {
+				rep.Guard.Redacted++
+			}
+			rep.Guard.Restored += g.Restored
 			rep.Guard.Findings += g.Findings
 			if rep.Guard.Kinds == nil {
 				rep.Guard.Kinds = map[string]int{}
@@ -416,4 +423,11 @@ type GuardTotals struct {
 	Requests int            `json:"requests"`
 	Findings int            `json:"findings"`
 	Kinds    map[string]int `json:"kinds,omitempty"`
+	// Redacted is how many of those requests had their secrets replaced
+	// before they were sent; the rest went upstream with secrets in them.
+	Redacted int `json:"redacted"`
+	// Restored counts placeholders put back in answers, and Blocked the
+	// exchanges that were stopped.
+	Restored int `json:"restored"`
+	Blocked  int `json:"blocked"`
 }

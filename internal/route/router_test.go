@@ -14,6 +14,7 @@ import (
 
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/backend"
+	"github.com/risadams/janus/internal/guard"
 	"github.com/risadams/janus/internal/proxy"
 )
 
@@ -1395,5 +1396,59 @@ func TestUpstreamDown(t *testing.T) {
 		if got := upstreamDown(status); got != want {
 			t.Errorf("upstreamDown(%d) = %v, want %v", status, got, want)
 		}
+	}
+}
+
+// Redaction is for what goes to Anthropic. A request routed to the local
+// model keeps its secrets: it does not leave the user's own machines, and
+// the local model needs the real values to do the work.
+func TestRedactionAppliesToUpstreamOnly(t *testing.T) {
+	key := strings.Join([]string{"AKIA", "Q7RZ2LP9XVB4NKD8"}, "")
+	body := `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"aws_access_key_id = ` + key + `"}]}`
+	run := func(header map[string]string) (localSaw, upstreamSaw string, ex proxy.Exchange) {
+		local, sawLocal := lmStudio(t, nil)
+		up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			upstreamSaw = string(b)
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"type":"message","model":"claude-opus-5-5","content":[],"usage":{"input_tokens":1,"output_tokens":1}}`)
+		}))
+		defer up.Close()
+		u, _ := url.Parse(up.URL)
+		r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local,
+			Rules: []Rule{{Name: "subagents", Class: Subagent, Route: RouteLocal, Local: qwen["janus-local"]}}}
+		reported := make(chan proxy.Exchange, 1)
+		janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: r.Upstream, Plan: r.Plan, Redactor: guard.NewRedactor(&guard.Detector{}),
+			Done: func(ex proxy.Exchange) { reported <- ex }}))
+		defer janus.Close()
+
+		req, _ := http.NewRequest("POST", janus.URL+"/v1/messages", strings.NewReader(body))
+		for k, v := range header {
+			req.Header.Set(k, v)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		select {
+		case got := <-sawLocal:
+			localSaw = string(got.Body)
+		default:
+		}
+		return localSaw, upstreamSaw, <-reported
+	}
+
+	// A subagent turn, sent local by the rule: the local model gets the key.
+	localSaw, upstreamSaw, ex := run(map[string]string{"X-Claude-Code-Session-Id": "s", "X-Claude-Code-Agent-Id": "a"})
+	if !strings.Contains(localSaw, key) || upstreamSaw != "" || ex.Guard != nil {
+		t.Errorf("local route: local saw key=%v, upstream asked=%v, guard=%+v", strings.Contains(localSaw, key), upstreamSaw != "", ex.Guard)
+	}
+
+	// A main-loop turn, sent upstream: the key is replaced.
+	localSaw, upstreamSaw, ex = run(map[string]string{"X-Claude-Code-Session-Id": "s"})
+	if localSaw != "" || strings.Contains(upstreamSaw, key) || !strings.Contains(upstreamSaw, "JANUS_REDACTED_") || ex.Guard == nil || ex.Guard.Replaced != 1 {
+		t.Errorf("upstream route: upstream saw key=%v, guard=%+v", strings.Contains(upstreamSaw, key), ex.Guard)
 	}
 }

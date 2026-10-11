@@ -129,13 +129,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	var detector *guard.Detector
+	var redactor *guard.Redactor
 	if cfg.Features.Guard {
 		detector = newDetector(cfg)
+		if cfg.Guard.Redact {
+			redactor = guard.NewRedactor(detector)
+		}
 	}
 
 	srv := &http.Server{Handler: proxy.New(proxy.Options{
 		Upstream:   upstream,
 		Plan:       plan,
+		Redactor:   redactor,
 		KeepBodies: captures != nil,
 		Done: func(ex proxy.Exchange) {
 			rec := record(ex, led, captures, detector, logger)
@@ -210,9 +215,26 @@ func trialTimeout(r config.Rule) time.Duration {
 func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, detector *guard.Detector, logger *log.Logger) ledger.Record {
 	rec := ledger.FromExchange(ex)
 	found := ""
-	if report, scanned := scanForSecrets(detector, ex); scanned && report.Findings > 0 {
-		rec.Guard = &ledger.Guard{Findings: report.Findings, Kinds: report.Kinds, Where: report.Where}
-		found = fmt.Sprintf(" [guard: %d found going upstream: %s]", report.Findings, report.Summary())
+	switch g := ex.Guard; {
+	case g != nil:
+		// The redactor dealt with this request on its way out.
+		if g.Report.Findings > 0 || g.Blocked != "" {
+			replaced := g.Replaced
+			rec.Guard = &ledger.Guard{Findings: g.Report.Findings, Kinds: g.Report.Kinds, Where: g.Report.Where,
+				Redacted: &replaced, Restored: g.Restored, Blocked: g.Blocked}
+		}
+		switch {
+		case g.Blocked != "":
+			found = " [guard: stopped: " + g.Blocked + "]"
+		case g.Replaced > 0:
+			found = fmt.Sprintf(" [guard: %d kept from going upstream (%s), %d put back in the answer]", g.Replaced, g.Report.Summary(), g.Restored)
+		}
+	default:
+		// Detect only: look at what was sent, after the fact.
+		if report, scanned := scanForSecrets(detector, ex); scanned && report.Findings > 0 {
+			rec.Guard = &ledger.Guard{Findings: report.Findings, Kinds: report.Kinds, Where: report.Where}
+			found = fmt.Sprintf(" [guard: %d found going upstream: %s]", report.Findings, report.Summary())
+		}
 	}
 	if captures != nil {
 		name, err := captures.Write(ex)
@@ -397,7 +419,11 @@ func printBanner(w io.Writer, cfg config.Config, addr string) {
 		}
 	}
 	if cfg.Features.Guard {
-		fmt.Fprintf(w, "  Guard       looking for secrets in requests going upstream; detect only, nothing is changed\n")
+		if cfg.Guard.Redact {
+			fmt.Fprintf(w, "  Guard       replacing secrets with placeholders in requests going upstream, and putting them back in answers\n")
+		} else {
+			fmt.Fprintf(w, "  Guard       looking for secrets in requests going upstream; detect only, nothing is changed\n")
+		}
 	}
 	fmt.Fprintf(w, "  Ledger      %s\n", filepath.Join(cfg.Logging.Dir, "ledger"))
 	if cfg.Logging.Capture {

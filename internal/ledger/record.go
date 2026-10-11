@@ -81,6 +81,15 @@ type Guard struct {
 	Kinds    map[string]int `json:"kinds"`
 	// Where lists the parts of the request that held at least one.
 	Where []string `json:"where"`
+	// Redacted is how many distinct secrets were replaced with
+	// placeholders before the request was sent. Absent in detect-only
+	// mode, where nothing is replaced and the secrets went upstream.
+	Redacted *int `json:"redacted,omitempty"`
+	// Restored is how many placeholders were turned back into secrets in
+	// the answer.
+	Restored int `json:"restored,omitempty"`
+	// Blocked says why the exchange was stopped, if it was.
+	Blocked string `json:"blocked,omitempty"`
 }
 
 // Worker describes one piece of delegated work.
