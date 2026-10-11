@@ -20,6 +20,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"syscall"
@@ -368,8 +369,17 @@ func formatExchange(ex proxy.Exchange) string {
 	return line
 }
 
+// versionLine is what `janus version` prints. A release build has its
+// version set by the linker; one made with `go install ...@v1.2.3` takes it
+// from the module; anything else is "dev".
 func versionLine() string {
-	return "janus " + version
+	v := version
+	if v == "dev" {
+		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+			v = info.Main.Version
+		}
+	}
+	return "janus " + v
 }
 
 // routingSummary describes, one line each, what the config routes where:

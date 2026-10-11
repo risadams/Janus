@@ -42,12 +42,41 @@ task that suited it best), and Claude only uses it when asked; read
 - [Decisions](docs/adr/) and [research notes](docs/research/)
 - [Milestones and issues](https://github.com/risadams/Janus/milestones)
 
+## Installing
+
+Download the archive for your machine from the
+[releases page](https://github.com/risadams/Janus/releases), check it, and
+unpack it. There is one binary and nothing else to install.
+
+```bash
+# macOS on Apple silicon. Put the current version in place of 1.0.0; the
+# other builds are darwin_amd64, linux_amd64, and linux_arm64.
+curl -LO https://github.com/risadams/Janus/releases/download/v1.0.0/janus_1.0.0_darwin_arm64.tar.gz
+curl -LO https://github.com/risadams/Janus/releases/download/v1.0.0/checksums.txt
+shasum -a 256 -c checksums.txt --ignore-missing
+tar -xzf janus_1.0.0_darwin_arm64.tar.gz
+./janus_1.0.0_darwin_arm64/janus version
+```
+
+On Windows, download `janus_1.0.0_windows_amd64.zip`, unpack it, and run
+`janus.exe` from a terminal. Compare its SHA-256 with `checksums.txt`
+using `Get-FileHash`.
+
+The binaries are not signed. A copy downloaded with a browser on macOS is
+quarantined and will be refused; `curl` does not set the quarantine, or
+clear it with `xattr -d com.apple.quarantine janus`.
+
+With Go 1.25 or later you can build it instead:
+
+```bash
+go install github.com/risadams/janus/cmd/janus@latest
+```
+
 ## Running
 
 ```bash
-go build ./cmd/janus
-./janus doctor   # check the setup first
-./janus
+janus doctor   # check the setup first
+janus
 ```
 
 `janus doctor` checks the config, the port, the upstream, LM Studio, and
