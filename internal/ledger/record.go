@@ -55,6 +55,10 @@ type Record struct {
 	// Capture is the capture's path under the captures directory, without
 	// extension, when one was written.
 	Capture string `json:"capture,omitempty"`
+	// Attempt is present when the local model was tried for a request that
+	// had Claude as a fallback: by a local-then-escalate rule, or by a
+	// local rule whose send failed.
+	Attempt *Attempt `json:"attempt,omitempty"`
 	// ShadowOf marks a shadow run: the same request answered a second time
 	// by the local model, for comparison. It holds the id of the real
 	// request. Shadow records are kept out of every total; they did not
@@ -63,6 +67,29 @@ type Record struct {
 	// Compare sets a shadow's answer beside the real one.
 	Compare *Compare `json:"compare,omitempty"`
 }
+
+// Attempt is what became of trying the local model first.
+type Attempt struct {
+	Model string `json:"model"`
+	// Verdict is "accepted" (the local answer was given to the client, and
+	// this record's response and usage are the local model's), "rejected"
+	// (the local answer failed a check and Claude answered), or "failed"
+	// (the local model was unavailable and Claude answered).
+	Verdict string `json:"verdict"`
+	// Why says what was wrong, for a rejected or failed attempt.
+	Why        string `json:"why,omitempty"`
+	DurationMs int64  `json:"duration_ms"`
+	// Usage is what a rejected attempt spent on the local model. For an
+	// accepted one, see the record's own usage.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+// Verdicts of an attempt.
+const (
+	VerdictAccepted = "accepted"
+	VerdictRejected = "rejected"
+	VerdictFailed   = "failed"
+)
 
 // Compare is how a shadow run's answer differed from the real one. It
 // compares shape, not meaning: whether the two stopped for the same reason
@@ -149,6 +176,25 @@ func FromExchange(ex proxy.Exchange) Record {
 
 	if rec.Stages == nil {
 		rec.Stages = []string{}
+	}
+
+	if a := ex.Attempt; a != nil {
+		rec.Attempt = &Attempt{Model: a.Model, Why: a.Why, DurationMs: a.Duration.Milliseconds()}
+		switch {
+		case a.Accepted:
+			rec.Attempt.Verdict, rec.Attempt.Why = VerdictAccepted, ""
+		case a.Fault:
+			rec.Attempt.Verdict = VerdictFailed
+		default:
+			rec.Attempt.Verdict = VerdictRejected
+		}
+		if !a.Accepted && a.Summary != nil && a.Summary.Error == nil {
+			u := a.Summary.Usage
+			rec.Attempt.Usage = &Usage{Input: u.Input, Output: u.Output, CacheRead: u.CacheRead, CacheWrite: u.CacheWrite}
+			if u.CacheRead != nil && *u.CacheRead <= u.Input {
+				rec.Attempt.Usage.Input = u.Input - *u.CacheRead // as for any local answer
+			}
+		}
 	}
 
 	if ex.IsMessages() && len(ex.RequestBody) > 0 && !ex.RequestTruncated {

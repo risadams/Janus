@@ -133,6 +133,9 @@ type Report struct {
 	ByBackend []Row     `json:"by_backend"`
 	// Outcomes counts requests by outcome.
 	Outcomes map[string]int `json:"outcomes"`
+	// LocalFirst summarises, by class, requests where the local model was
+	// tried with Claude as the fallback.
+	LocalFirst []LocalFirstRow `json:"local_first,omitempty"`
 	// Shadow summarises shadow runs by class. They are in no other figure.
 	Shadow []ShadowRow `json:"shadow,omitempty"`
 	// Unread counts Messages responses janus relayed but could not read.
@@ -163,6 +166,7 @@ func Summarise(records []Record, prices Prices) Report {
 	}
 
 	shadows := map[string]*shadowTally{}
+	attempts := map[string]*attemptTally{}
 	first := true
 	for _, rec := range records {
 		if rec.ShadowOf != "" {
@@ -176,6 +180,12 @@ func Summarise(records []Record, prices Prices) Report {
 			rep.From, first = rec.Time, false
 		}
 		rep.To = rec.Time
+		if rec.Attempt != nil {
+			if attempts[rec.Class] == nil {
+				attempts[rec.Class] = &attemptTally{}
+			}
+			attempts[rec.Class].add(*rec.Attempt)
+		}
 		rep.Outcomes[rec.Outcome]++
 		if rec.Unread != "" {
 			rep.Unread++
@@ -196,6 +206,12 @@ func Summarise(records []Record, prices Prices) Report {
 		rep.Shadow = append(rep.Shadow, tally.row(class))
 	}
 	sort.Slice(rep.Shadow, func(i, j int) bool { return rep.Shadow[i].Class < rep.Shadow[j].Class })
+	for class, tally := range attempts {
+		row := tally.row
+		row.Class, row.MedianMs = class, medianOf(tally.ms)
+		rep.LocalFirst = append(rep.LocalFirst, row)
+	}
+	sort.Slice(rep.LocalFirst, func(i, j int) bool { return rep.LocalFirst[i].Class < rep.LocalFirst[j].Class })
 	return rep
 }
 
@@ -285,4 +301,38 @@ func medianOf(values []int64) int64 {
 	sorted := append([]int64(nil), values...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
 	return sorted[len(sorted)/2]
+}
+
+// LocalFirstRow is how trying the local model first went for one class.
+type LocalFirstRow struct {
+	Class string `json:"class"`
+	// Tried is every request the local model was tried for. Accepted were
+	// answered by it; Rejected failed a check and Failed found it
+	// unavailable, and both of those were answered by Claude instead.
+	Tried    int `json:"tried"`
+	Accepted int `json:"accepted"`
+	Rejected int `json:"rejected"`
+	Failed   int `json:"failed"`
+	// MedianMs is the median time the local attempts took, whatever became
+	// of them. For a rejected or failed attempt that time was spent before
+	// Claude was even asked.
+	MedianMs int64 `json:"median_ms"`
+}
+
+type attemptTally struct {
+	row LocalFirstRow
+	ms  []int64
+}
+
+func (t *attemptTally) add(a Attempt) {
+	t.row.Tried++
+	switch a.Verdict {
+	case VerdictAccepted:
+		t.row.Accepted++
+	case VerdictRejected:
+		t.row.Rejected++
+	default:
+		t.row.Failed++
+	}
+	t.ms = append(t.ms, a.DurationMs)
 }

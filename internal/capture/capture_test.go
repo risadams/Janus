@@ -358,3 +358,23 @@ func TestWriteShadowSitsBesideTheRealCaptureAndIsPrunedWithIt(t *testing.T) {
 		t.Errorf("after pruning to nothing, these remain:\n%s", left)
 	}
 }
+
+func TestWriteAttemptSavesTheRejectedAnswerBesideTheCapture(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "captures")
+	w := New(dir, 0, 0)
+	name, _ := w.Write(exchange())
+	if err := w.WriteAttempt(name, []byte(`{"type":"message","content":[]}`)); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, name) + ".attempt.response.txt"
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != `{"type":"message","content":[]}` {
+		t.Errorf("attempt file: %q, %v", data, err)
+	}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %o, want 600", info.Mode().Perm())
+	}
+	if stem(path) != filepath.Join(dir, name) {
+		t.Error("the attempt file is not grouped with its capture for pruning")
+	}
+}

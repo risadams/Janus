@@ -252,3 +252,42 @@ func TestShadowRunsAreSummarisedApartFromEverythingElse(t *testing.T) {
 		t.Errorf("main shadow row = %+v", got)
 	}
 }
+
+func TestLocalFirstSummary(t *testing.T) {
+	u := &Usage{Input: 2, Output: 100}
+	with := func(id, class, verdict string, ms int64) Record {
+		r := rec(id, at(10, 1), class, u)
+		r.Attempt = &Attempt{Model: "qwen/qwen3.8-27b", Verdict: verdict, DurationMs: ms}
+		if verdict == VerdictAccepted {
+			r.Backend, r.Response.Model = "local", "qwen/qwen3.8-27b"
+		}
+		return r
+	}
+	rep := Summarise([]Record{
+		with("a", "subagent", VerdictAccepted, 9000),
+		with("b", "subagent", VerdictAccepted, 12000),
+		with("c", "subagent", VerdictRejected, 30000),
+		with("d", "subagent", VerdictFailed, 5),
+		with("e", "main", VerdictRejected, 40000),
+		rec("f", at(10, 2), "main", u), // never tried locally
+	}, DefaultPrices)
+
+	if len(rep.LocalFirst) != 2 || rep.LocalFirst[0].Class != "main" {
+		t.Fatalf("rows = %+v", rep.LocalFirst)
+	}
+	want := LocalFirstRow{Class: "subagent", Tried: 4, Accepted: 2, Rejected: 1, Failed: 1, MedianMs: 12000}
+	if rep.LocalFirst[1] != want {
+		t.Errorf("subagent row = %+v, want %+v", rep.LocalFirst[1], want)
+	}
+	if rep.LocalFirst[0].Tried != 1 || rep.LocalFirst[0].Rejected != 1 {
+		t.Errorf("main row = %+v", rep.LocalFirst[0])
+	}
+	// The requests themselves are counted as usual: accepted ones under
+	// local at no cost, the rest under upstream.
+	if rep.Total.Requests != 6 || len(rep.ByBackend) != 2 {
+		t.Errorf("total = %+v, backends = %+v", rep.Total, rep.ByBackend)
+	}
+	if len(Summarise([]Record{rec("x", at(10, 1), "main", u)}, DefaultPrices).LocalFirst) != 0 {
+		t.Error("a report with no attempts has a local-first section")
+	}
+}

@@ -266,3 +266,43 @@ func TestLocalExchangeRecord(t *testing.T) {
 		t.Errorf("a local answer should cost nothing upstream and not be unpriced: %+v", rep.Total)
 	}
 }
+
+func TestAttemptRecords(t *testing.T) {
+	// Accepted: the record is the local answer, and the attempt says so.
+	accepted := exchange()
+	accepted.Backend, accepted.Route, accepted.Reason = "local", "local", "rule subagents: local answer accepted"
+	accepted.Summary = &anthropic.Summary{Model: "qwen/qwen3.8-27b", StopReason: "end_turn", Complete: true, Usage: anthropic.Usage{Input: 300, Output: 30, CacheRead: n(100)}}
+	accepted.Attempt = &proxy.Attempt{Backend: "local", Model: "qwen/qwen3.8-27b", Accepted: true, Duration: 9 * time.Second}
+	rec := FromExchange(accepted)
+	if a := rec.Attempt; a == nil || a.Verdict != VerdictAccepted || a.Why != "" || a.DurationMs != 9000 || a.Usage != nil {
+		t.Errorf("accepted attempt = %+v", a)
+	}
+	if rec.Backend != "local" || rec.Usage.Input != 200 {
+		t.Errorf("an accepted record should be the local answer: backend %q, usage %+v", rec.Backend, rec.Usage)
+	}
+
+	// Rejected: the record is Claude's answer; the attempt holds why, and
+	// what the local model spent.
+	rejected := exchange() // an upstream exchange
+	rejected.Reason = "rule subagents: the local answer has no text and no tool call; sent upstream"
+	rejected.Attempt = &proxy.Attempt{Backend: "local", Model: "qwen/qwen3.8-27b", Why: "the local answer has no text and no tool call", Duration: 4 * time.Second,
+		Summary: &anthropic.Summary{Complete: true, Usage: anthropic.Usage{Input: 65, Output: 14, CacheRead: n(60)}}}
+	rec = FromExchange(rejected)
+	if a := rec.Attempt; a == nil || a.Verdict != VerdictRejected || !strings.Contains(a.Why, "no text") || a.Usage == nil || a.Usage.Input != 5 || a.Usage.Output != 14 {
+		t.Errorf("rejected attempt = %+v usage %+v", a, a.Usage)
+	}
+	if rec.Backend != "upstream" || rec.Response.Model != "claude-opus-5-5" {
+		t.Errorf("a rejected record should be Claude's answer: %+v", rec.Response)
+	}
+
+	// Failed: the local model was not there.
+	failed := exchange()
+	failed.Attempt = &proxy.Attempt{Backend: "local", Model: "qwen/qwen3.8-27b", Fault: true, Why: "could not reach local: connection refused", Duration: 3 * time.Millisecond}
+	if a := FromExchange(failed).Attempt; a.Verdict != VerdictFailed || a.Usage != nil {
+		t.Errorf("failed attempt = %+v", a)
+	}
+
+	if FromExchange(exchange()).Attempt != nil {
+		t.Error("an ordinary exchange has an attempt")
+	}
+}

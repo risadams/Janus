@@ -123,6 +123,30 @@ func TestValidate(t *testing.T) {
 			c.Routing = []Rule{{Class: "subagent", Route: "shadow", Local: "janus-local"}}
 		}, ""},
 		{"shadow rule naming no model", func(c *Config) { c.Routing = []Rule{{Route: "shadow"}} }, "routing[0].local is not set"},
+		{"an escalate rule with a check skipped", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Route: "local-then-escalate", Local: "janus-local", SkipChecks: []string{"refusal"}}}
+		}, ""},
+		{"an escalate rule with a time budget", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Route: "local-then-escalate", Local: "janus-local", MaxSeconds: 45}}
+		}, ""},
+		{"maxSeconds on a route that streams", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Route: "local", Local: "janus-local", MaxSeconds: 45}}
+		}, "maxSeconds only applies"},
+		{"negative maxSeconds", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Route: "local-then-escalate", Local: "janus-local", MaxSeconds: -1}}
+		}, "maxSeconds is negative"},
+		{"an unknown check", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Route: "local-then-escalate", Local: "janus-local", SkipChecks: []string{"vibes"}}}
+		}, `routing[0].skipChecks has "vibes"`},
+		{"skipChecks on a route that does not check", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Route: "local", Local: "janus-local", SkipChecks: []string{"refusal"}}}
+		}, "skipChecks only applies"},
 		{"rule with an unknown class", func(c *Config) { c.Routing = []Rule{{Class: "sidekick", Route: "upstream"}} }, `routing[0].class "sidekick"`},
 		{"rule with no route", func(c *Config) { c.Routing = []Rule{{Name: "x", Class: "main"}} }, "routing[0] (x).route is not set"},
 		{"rule with an unknown route", func(c *Config) { c.Routing = []Rule{{Route: "sideways"}} }, `routing[0].route "sideways"`},

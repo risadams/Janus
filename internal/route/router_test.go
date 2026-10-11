@@ -526,14 +526,183 @@ func TestRuleFallsBackUpstreamWhenLocalCannotTakeIt(t *testing.T) {
 	}
 }
 
-func TestEscalateRouteGoesUpstreamForNow(t *testing.T) {
+func TestEscalateRulePlansATrialWithAFallback(t *testing.T) {
 	local, _ := lmStudio(t, nil)
 	r := router(local, nil)
 	r.Rules = []Rule{{Name: "careful", Route: RouteEscalate, Local: qwen["janus-local"]}}
+	req := parse(t, opusRequest)
 
+	plan, refusal, trace := r.Explain(context.Background(), mainHeader(), req)
+	if refusal != nil || plan.Backend.Name() != "local" || plan.Reason != "rule careful" || plan.ResponseModel != "claude-opus-5-5" {
+		t.Fatalf("plan = %+v, refusal = %+v", plan, refusal)
+	}
+	if plan.Accept == nil || plan.Else == nil {
+		t.Fatalf("an escalate plan needs both a check and a fallback: accept %v, else %v", plan.Accept != nil, plan.Else != nil)
+	}
+	// The fallback is the request as it arrived, to the model it asked for.
+	if e := plan.Else; e.Backend.Name() != "upstream" || e.Body != nil || e.ResponseModel != "" || e.Else != nil || e.Accept != nil || req.Modified() {
+		t.Errorf("fallback = %+v", *e)
+	}
+	if !strings.Contains(trace[0], "rule careful: local first, on qwen/qwen3.8-27b") {
+		t.Errorf("trace = %q", trace)
+	}
+
+	// The check is the validators, run against the tools the request offers.
+	good := proxy.Fetched{Status: 200, Header: http.Header{"Content-Type": {"application/json"}}, Summary: anthropic.Summary{Complete: true},
+		Body: []byte(`{"type":"message","stop_reason":"tool_use","content":[{"type":"tool_use","id":"1","name":"Read","input":{}}]}`)}
+	if ok, why := plan.Accept(good); !ok {
+		t.Errorf("a good answer was rejected: %s", why)
+	}
+	bad := good
+	bad.Body = []byte(`{"type":"message","stop_reason":"tool_use","content":[{"type":"tool_use","id":"1","name":"Launch","input":{}}]}`)
+	if ok, why := plan.Accept(bad); ok || !strings.Contains(why, `calls "Launch"`) {
+		t.Errorf("a call to a tool that was not offered: ok=%v why=%q", ok, why)
+	}
+	empty := good
+	empty.Body = []byte(`{"type":"message","stop_reason":"end_turn","content":[]}`)
+	if ok, why := plan.Accept(empty); ok || !strings.Contains(why, "no text and no tool call") {
+		t.Errorf("an empty answer: ok=%v why=%q", ok, why)
+	}
+}
+
+func TestSkipChecksReachesTheValidators(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	r.Rules = []Rule{{Route: RouteEscalate, Local: qwen["janus-local"], SkipChecks: []string{"refusal"}}}
 	plan, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
-	if plan.Backend.Name() != "upstream" || plan.Reason != "rule careful: local-then-escalate is not available yet; sent upstream" {
-		t.Errorf("plan = %+v", plan)
+
+	refusal := proxy.Fetched{Status: 200, Header: http.Header{"Content-Type": {"application/json"}}, Summary: anthropic.Summary{Complete: true},
+		Body: []byte(`{"type":"message","stop_reason":"end_turn","content":[{"type":"text","text":"I cannot help with that."}]}`)}
+	if ok, why := plan.Accept(refusal); !ok {
+		t.Errorf("the refusal check was skipped but still failed: %s", why)
+	}
+}
+
+func TestLocalRuleHasAFallbackAndAliasDoesNot(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, qwen)
+	r.Rules = []Rule{{Name: "subagents", Class: Subagent, Route: RouteLocal, Local: qwen["janus-local"]}}
+
+	plan, _, _ := r.Explain(context.Background(), subagentHeader(), parse(t, opusRequest))
+	if plan.Else == nil || plan.Else.Backend.Name() != "upstream" || plan.Accept != nil {
+		t.Errorf("a local rule should fall back upstream and not put the answer on trial: %+v", plan)
+	}
+	alias, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, `{"model":"janus-local","messages":[{"role":"user","content":"hi"}]}`))
+	if alias.Else != nil || alias.Accept != nil {
+		t.Errorf("an alias has no upstream model to fall back to: %+v", alias)
+	}
+}
+
+// The fallback for a conversation a local model already had a turn in must
+// be repaired, like any other request going upstream.
+func TestFallbackPlanIsRepaired(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	for _, routeName := range []string{RouteLocal, RouteEscalate} {
+		r := router(local, nil)
+		r.Rules = []Rule{{Route: routeName, Local: qwen["janus-local"]}}
+		plan, _, _ := r.Explain(context.Background(), subagentHeader(), parse(t, mixedHistory))
+
+		if plan.Backend.Name() != "local" || !strings.Contains(string(plan.Body), "local scratch work") {
+			t.Errorf("%s: the local attempt should keep the local thinking", routeName)
+		}
+		if e := plan.Else; e == nil || e.Body == nil || strings.Contains(string(e.Body), "local scratch work") || strings.Join(e.Stages, ",") != "drop_unsigned_thinking" {
+			t.Errorf("%s: the fallback was not repaired: %+v", routeName, e)
+		}
+	}
+}
+
+func TestBreakerOpensAfterRepeatedFaultsAndClosesOnSuccess(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, qwen)
+	r.Rules = []Rule{{Name: "subagents", Class: Subagent, Route: RouteEscalate, Local: qwen["janus-local"]}}
+	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.Local)
+	r.health.now = func() time.Time { return now }
+	plan := func() proxy.Plan {
+		p, _, _ := r.Explain(context.Background(), subagentHeader(), parse(t, opusRequest))
+		return p
+	}
+	fault := proxy.Exchange{Backend: "upstream", Attempt: &proxy.Attempt{Backend: "local", Fault: true}}
+	poor := proxy.Exchange{Backend: "upstream", Attempt: &proxy.Attempt{Backend: "local", Why: "empty"}}
+
+	// A poor answer is the backend working. Any number of them leaves the
+	// breaker closed.
+	for i := 0; i < 10; i++ {
+		r.Report(poor)
+	}
+	r.Report(fault)
+	r.Report(fault)
+	if plan().Backend.Name() != "local" {
+		t.Fatal("the breaker opened before three faults in a row")
+	}
+	r.Report(fault)
+	skipped := plan()
+	if skipped.Backend.Name() != "upstream" || !strings.Contains(skipped.Reason, "failed 3 times in a row and is being skipped until 12:00:30") {
+		t.Fatalf("after three faults: %+v", skipped)
+	}
+	// An alias is not skipped: there is nowhere else for it to go.
+	if alias, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, `{"model":"janus-local","messages":[{"role":"user","content":"hi"}]}`)); alias.Backend.Name() != "local" {
+		t.Errorf("an alias request was skipped by the breaker: %+v", alias)
+	}
+
+	// After the cooldown one request is let through, and a success closes
+	// the breaker.
+	now = now.Add(31 * time.Second)
+	if plan().Backend.Name() != "local" {
+		t.Fatal("the breaker did not let a request through after the cooldown")
+	}
+	r.Report(fault) // the trial request failed too: straight back to skipping
+	if plan().Backend.Name() != "upstream" {
+		t.Fatal("a failure after the cooldown should reopen the breaker at once")
+	}
+	now = now.Add(31 * time.Second)
+	r.Report(proxy.Exchange{Backend: "local", Status: 200, Attempt: &proxy.Attempt{Backend: "local", Accepted: true}})
+	r.Report(fault)
+	r.Report(fault)
+	if plan().Backend.Name() != "local" {
+		t.Error("a success should reset the count of faults")
+	}
+}
+
+func TestReportCountsDirectLocalFailures(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	r.Rules = []Rule{{Route: RouteLocal, Local: qwen["janus-local"]}}
+	for _, ex := range []proxy.Exchange{
+		{Backend: "local", Status: 502, BackendFault: true},
+		{Backend: "local", Status: 500},
+		{Backend: "local", Status: 504, BackendFault: true},
+	} {
+		r.Report(ex)
+	}
+	if p, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest)); p.Backend.Name() != "upstream" {
+		t.Errorf("three failed local exchanges did not open the breaker: %+v", p)
+	}
+	// Upstream exchanges say nothing about the local backend.
+	r2 := router(local, nil)
+	r2.Rules = r.Rules
+	for i := 0; i < 5; i++ {
+		r2.Report(proxy.Exchange{Backend: "upstream", Status: 529})
+	}
+	if p, _, _ := r2.Explain(context.Background(), mainHeader(), parse(t, opusRequest)); p.Backend.Name() != "local" {
+		t.Error("upstream failures opened the local breaker")
+	}
+}
+
+// LM Studio being unreachable when the plan is made counts as a fault too.
+func TestUnreachableAtPlanTimeFeedsTheBreaker(t *testing.T) {
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL, _ := url.Parse(dead.URL)
+	dead.Close()
+	r := router(backend.NewLocal(deadURL, nil), nil)
+	r.Rules = []Rule{{Name: "s", Route: RouteLocal, Local: qwen["janus-local"]}}
+
+	var reasons []string
+	for i := 0; i < 4; i++ {
+		p, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
+		reasons = append(reasons, p.Reason)
+	}
+	if !strings.Contains(reasons[2], "could not reach LM Studio") || !strings.Contains(reasons[3], "failed 3 times in a row") {
+		t.Errorf("reasons:\n%s", strings.Join(reasons, "\n"))
 	}
 }
 
@@ -639,7 +808,6 @@ func TestUpstreamPlansRepairMixedHistory(t *testing.T) {
 		"no rule matches":              router(local, nil),
 		"an upstream rule":             {Upstream: router(local, nil).Upstream, Local: local, Rules: []Rule{{Route: RouteUpstream}}},
 		"a shadow rule":                {Upstream: router(local, nil).Upstream, Local: local, Rules: []Rule{{Route: RouteShadow, Local: qwen["janus-local"]}}},
-		"an escalate rule":             {Upstream: router(local, nil).Upstream, Local: local, Rules: []Rule{{Route: RouteEscalate, Local: qwen["janus-local"]}}},
 		"a local rule that falls back": {Upstream: router(local, nil).Upstream, Local: backend.NewLocal(deadURL, nil), Rules: []Rule{{Route: RouteLocal, Local: qwen["janus-local"]}}},
 	}
 	for name, r := range cases {
@@ -698,5 +866,277 @@ func TestMixedConversationReachesTheUpstreamRepaired(t *testing.T) {
 	// The kept request is still what the client sent.
 	if !strings.Contains(string(res.Exchange.RequestBody), "local scratch work") {
 		t.Error("the kept request should be the client's original")
+	}
+}
+
+// escalate runs one subagent request through janus with a local-first
+// rule, against the given LM Studio behaviour, and reports whether the
+// upstream was asked.
+func escalate(t *testing.T, routeName string, lms http.HandlerFunc, body string) (res result, sawLocal chan received, upstreamBody *string) {
+	t.Helper()
+	local, sawLocal := lmStudio(t, lms)
+	upstreamBody = new(string)
+	rules := []Rule{{Name: "subagents", Class: Subagent, Route: routeName, Local: LocalModel{ID: "qwen/qwen3.8-27b", Timeout: 300 * time.Millisecond}}}
+	res = throughRules(t, local, rules, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		*upstreamBody = string(b)
+		if r.Header.Get("Authorization") != "Bearer secret-token" {
+			t.Error("the upstream request lost its credentials")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"type":"message","model":"claude-opus-5-5","content":[{"type":"text","text":"Claude's answer."}],"stop_reason":"end_turn","usage":{"input_tokens":3,"output_tokens":4}}`)
+	}, body)
+	return res, sawLocal, upstreamBody
+}
+
+func jsonAnswer(body string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, body)
+	}
+}
+
+func TestEscalateAcceptsAGoodLocalAnswer(t *testing.T) {
+	res, sawLocal, upstreamBody := escalate(t, RouteEscalate, nil, opusRequest) // the default fake answers with a text stream
+
+	if *upstreamBody != "" {
+		t.Fatal("the upstream was asked although the local answer was good")
+	}
+	if got := <-sawLocal; got.Header.Get("Authorization") != "" || parse(t, string(got.Body)).Model() != "qwen/qwen3.8-27b" {
+		t.Errorf("LM Studio got auth %q, model %q", got.Header.Get("Authorization"), parse(t, string(got.Body)).Model())
+	}
+	// The client gets the local answer whole, under the name it asked for.
+	want := strings.Replace(localStream, `"model":"qwen/qwen3.8-27b"`, `"model":"claude-opus-5-5"`, 1)
+	if res.Status != 200 || res.Body != want {
+		t.Errorf("status %d, body:\n%s", res.Status, res.Body)
+	}
+	ex := res.Exchange
+	if ex.Backend != "local" || ex.Route != "local" || ex.Reason != "rule subagents: local answer accepted" {
+		t.Errorf("exchange = backend %q route %q reason %q", ex.Backend, ex.Route, ex.Reason)
+	}
+	if ex.Attempt == nil || !ex.Attempt.Accepted || ex.Attempt.Fault || ex.Attempt.Model != "qwen/qwen3.8-27b" {
+		t.Errorf("attempt = %+v", ex.Attempt)
+	}
+	if ex.Summary == nil || ex.Summary.Model != "qwen/qwen3.8-27b" || ex.Summary.Usage.Output != 30 || string(ex.ResponseBody) != localStream {
+		t.Errorf("the exchange should record the local answer as it really was: %+v", ex.Summary)
+	}
+}
+
+func TestEscalateRejectsPoorAnswersAndAsksClaude(t *testing.T) {
+	cases := map[string]struct {
+		local  string
+		whyHas string
+	}{
+		"empty, though it claims success": {`{"type":"message","model":"q","content":[],"stop_reason":"end_turn","usage":{"input_tokens":65,"output_tokens":14}}`, "no text and no tool call"},
+		"a tool that was not offered":     {`{"type":"message","model":"q","content":[{"type":"tool_use","id":"1","name":"Launch","input":{}}],"stop_reason":"tool_use"}`, `calls "Launch"`},
+		"ran out of tokens":               {`{"type":"message","model":"q","content":[{"type":"text","text":"The"}],"stop_reason":"max_tokens"}`, "ran out of tokens"},
+		"a refusal":                       {`{"type":"message","model":"q","content":[{"type":"text","text":"I cannot access files."}],"stop_reason":"end_turn"}`, "refusal"},
+		"not a message at all":            {`{"something":"else"}`, "could not be read"},
+	}
+	for name, c := range cases {
+		res, _, upstreamBody := escalate(t, RouteEscalate, jsonAnswer(c.local), opusRequest)
+
+		// One clean response: Claude's, with no trace of the local attempt.
+		if res.Status != 200 || !strings.Contains(res.Body, "Claude's answer.") || strings.Contains(res.Body, `"model":"q"`) {
+			t.Errorf("%s: status %d, body %s", name, res.Status, res.Body)
+		}
+		if *upstreamBody != opusRequest {
+			t.Errorf("%s: the upstream got %q, want the request exactly as the client sent it", name, *upstreamBody)
+		}
+		ex := res.Exchange
+		if ex.Backend != "upstream" || ex.Route != "upstream" || !strings.HasPrefix(ex.Reason, "rule subagents: ") || !strings.HasSuffix(ex.Reason, "; sent upstream") || !strings.Contains(ex.Reason, c.whyHas) {
+			t.Errorf("%s: exchange = backend %q route %q reason %q", name, ex.Backend, ex.Route, ex.Reason)
+		}
+		a := ex.Attempt
+		if a == nil || a.Accepted || a.Fault || !strings.Contains(a.Why, c.whyHas) || string(a.ResponseBody) != c.local {
+			t.Errorf("%s: attempt = %+v; a poor answer is not a fault, and should be kept for inspection", name, a)
+		}
+		if ex.Summary == nil || ex.Summary.Model != "claude-opus-5-5" {
+			t.Errorf("%s: the exchange's own summary should be Claude's: %+v", name, ex.Summary)
+		}
+	}
+}
+
+func TestEscalateTreatsALocalOutageAsAFaultAndAsksClaude(t *testing.T) {
+	cases := map[string]struct {
+		local  http.HandlerFunc
+		whyHas string
+	}{
+		"server error": {func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500); io.WriteString(w, "boom") }, "local answered HTTP 500"},
+		"dropped":      {func(w http.ResponseWriter, r *http.Request) { panic(http.ErrAbortHandler) }, "could not reach local"},
+		"too slow":     {func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }, "local did not answer within 300ms"},
+		"cut off mid-answer": {func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			io.WriteString(w, localStream[:150])
+			w.(http.Flusher).Flush()
+			panic(http.ErrAbortHandler)
+		}, "broke off"},
+	}
+	for name, c := range cases {
+		res, _, upstreamBody := escalate(t, RouteEscalate, c.local, opusRequest)
+		if res.Status != 200 || !strings.Contains(res.Body, "Claude's answer.") || *upstreamBody != opusRequest {
+			t.Errorf("%s: status %d, body %s", name, res.Status, res.Body)
+		}
+		if a := res.Exchange.Attempt; a == nil || a.Accepted || !a.Fault || !strings.Contains(a.Why, c.whyHas) {
+			t.Errorf("%s: attempt = %+v, want a fault mentioning %q", name, a, c.whyHas)
+		}
+		if res.Exchange.Cancelled {
+			t.Errorf("%s: recorded as the client cancelling", name)
+		}
+	}
+}
+
+// A plain local rule streams the answer as it comes, so it can only fall
+// back while nothing has reached the client: when the local model cannot
+// be reached, times out before answering, or answers with an error.
+func TestLocalRuleFallsBackWhenTheSendFails(t *testing.T) {
+	cases := map[string]struct {
+		local     http.HandlerFunc
+		whyHas    string
+		wantFault bool
+	}{
+		"dropped":      {func(w http.ResponseWriter, r *http.Request) { panic(http.ErrAbortHandler) }, "could not reach local", true},
+		"too slow":     {func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }, "local did not answer within 300ms", true},
+		"server error": {func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }, "local it answered HTTP 503", true},
+		"rejects the request": {func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(400)
+			io.WriteString(w, `{"type":"error","error":{"type":"invalid_request_error","message":"no"}}`)
+		}, "local it answered HTTP 400", false},
+	}
+	for name, c := range cases {
+		res, _, upstreamBody := escalate(t, RouteLocal, c.local, opusRequest)
+		if res.Status != 200 || !strings.Contains(res.Body, "Claude's answer.") || *upstreamBody != opusRequest {
+			t.Errorf("%s: status %d, body %s, upstream got %q", name, res.Status, res.Body, *upstreamBody)
+		}
+		ex := res.Exchange
+		if ex.Backend != "upstream" || !strings.Contains(ex.Reason, c.whyHas) || !strings.HasSuffix(ex.Reason, "; sent upstream") {
+			t.Errorf("%s: backend %q, reason %q", name, ex.Backend, ex.Reason)
+		}
+		if a := ex.Attempt; a == nil || a.Accepted || a.Fault != c.wantFault {
+			t.Errorf("%s: attempt = %+v, want fault %v", name, a, c.wantFault)
+		}
+	}
+}
+
+func TestLocalRuleThatWorksStreamsStraightThrough(t *testing.T) {
+	res, _, upstreamBody := escalate(t, RouteLocal, nil, opusRequest)
+	if *upstreamBody != "" || res.Exchange.Backend != "local" || res.Exchange.Attempt != nil || res.Exchange.Reason != "rule subagents" {
+		t.Errorf("exchange = %+v, upstream asked: %v", res.Exchange, *upstreamBody != "")
+	}
+}
+
+// An alias has nowhere to fall back to. Its failures reach the client, and
+// are marked so the breaker can count them.
+func TestAliasFailureIsNotHiddenAndIsMarkedAsAFault(t *testing.T) {
+	local, _ := lmStudio(t, func(w http.ResponseWriter, r *http.Request) { panic(http.ErrAbortHandler) })
+	res := through(t, local, qwen, func(http.ResponseWriter, *http.Request) {
+		t.Error("an alias request reached the upstream")
+	}, `{"model":"janus-local","messages":[{"role":"user","content":"hi"}]}`)
+
+	if res.Status != http.StatusBadGateway || !res.Exchange.BackendFault || res.Exchange.Attempt != nil {
+		t.Errorf("status %d, fault %v, attempt %+v", res.Status, res.Exchange.BackendFault, res.Exchange.Attempt)
+	}
+}
+
+// Three outages in a row and the router stops trying the local model; the
+// fourth request goes straight to Claude without waiting on it.
+func TestRepeatedOutagesStopLocalAttempts(t *testing.T) {
+	hits := 0
+	local, _ := lmStudio(t, func(w http.ResponseWriter, r *http.Request) { hits++; w.WriteHeader(500) })
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"type":"message","model":"claude-opus-5-5","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}`)
+	}))
+	defer up.Close()
+	u, _ := url.Parse(up.URL)
+	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local,
+		Rules: []Rule{{Name: "subagents", Class: Subagent, Route: RouteEscalate, Local: qwen["janus-local"]}}}
+	reasons := make(chan string, 8)
+	janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: r.Upstream, Plan: r.Plan, Done: func(ex proxy.Exchange) {
+		r.Report(ex)
+		reasons <- ex.Reason
+	}}))
+	defer janus.Close()
+
+	var got []string
+	for i := 0; i < 4; i++ {
+		req, _ := http.NewRequest("POST", janus.URL+"/v1/messages", strings.NewReader(opusRequest))
+		req.Header.Set("X-Claude-Code-Session-Id", "s")
+		req.Header.Set("X-Claude-Code-Agent-Id", "a")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("request %d: status %d; every request should still be answered", i+1, resp.StatusCode)
+		}
+		got = append(got, <-reasons)
+	}
+	if hits != 3 {
+		t.Errorf("the local model was tried %d times, want 3 and then no more", hits)
+	}
+	if !strings.Contains(got[2], "local answered HTTP 500") || !strings.Contains(got[3], "failed 3 times in a row and is being skipped") {
+		t.Errorf("reasons:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+// If the client gives up while the local model is still working, nothing
+// is sent to Claude on its behalf.
+func TestClientLeavingDuringATrialAsksNobodyElse(t *testing.T) {
+	started := make(chan struct{})
+	local, _ := lmStudio(t, func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+	})
+	up := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("the upstream was asked for a client that had already left")
+	}))
+	defer up.Close()
+	u, _ := url.Parse(up.URL)
+	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local,
+		Rules: []Rule{{Route: RouteEscalate, Local: LocalModel{ID: "qwen/qwen3.8-27b", Timeout: 5 * time.Second}}}}
+	reported := make(chan proxy.Exchange, 1)
+	janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: r.Upstream, Plan: r.Plan, Done: func(ex proxy.Exchange) { reported <- ex }}))
+	defer janus.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, "POST", janus.URL+"/v1/messages", strings.NewReader(opusRequest))
+	go http.DefaultClient.Do(req)
+	<-started
+	cancel()
+
+	select {
+	case ex := <-reported:
+		if !ex.Cancelled || ex.Status != 0 {
+			t.Errorf("exchange = cancelled %v status %d", ex.Cancelled, ex.Status)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the abandoned request was never reported")
+	}
+}
+
+func TestTrialTimeoutIsTheShorterOfTheTwo(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	cases := []struct {
+		routeName    string
+		model, trial time.Duration
+		want         time.Duration
+	}{
+		{RouteEscalate, 15 * time.Minute, 2 * time.Minute, 2 * time.Minute},
+		{RouteEscalate, 30 * time.Second, 2 * time.Minute, 30 * time.Second},
+		{RouteEscalate, 0, 2 * time.Minute, 2 * time.Minute},
+		{RouteEscalate, 15 * time.Minute, 0, 15 * time.Minute},
+		{RouteLocal, 15 * time.Minute, 2 * time.Minute, 15 * time.Minute}, // a streamed answer is not on trial
+	}
+	for _, c := range cases {
+		r := router(local, nil)
+		r.Rules = []Rule{{Route: c.routeName, Local: LocalModel{ID: "qwen/qwen3.8-27b", Timeout: c.model}, TrialTimeout: c.trial}}
+		plan, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
+		if plan.Timeout != c.want {
+			t.Errorf("%s with model %s and trial %s: timeout %s, want %s", c.routeName, c.model, c.trial, plan.Timeout, c.want)
+		}
 	}
 }
