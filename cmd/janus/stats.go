@@ -109,7 +109,7 @@ func parseWhen(s string, now time.Time) (time.Time, error) {
 
 func printReport(w io.Writer, dir string, rep ledger.Report) {
 	fmt.Fprintf(w, "Ledger %s\n", dir)
-	if rep.Total.Requests == 0 {
+	if rep.Total.Requests == 0 && len(rep.Delegated) == 0 && len(rep.Shadow) == 0 {
 		fmt.Fprintln(w, "No requests recorded in this range.")
 		if rep.Malformed > 0 {
 			fmt.Fprintf(w, "%d ledger lines could not be read and were skipped.\n", rep.Malformed)
@@ -120,11 +120,14 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 	fmt.Fprintf(w, "%s to %s (local time), %s requests\n",
 		rep.From.Local().Format(stamp), rep.To.Local().Format(stamp), commas(rep.Total.Requests))
 
-	printTable(w, "class", rep.ByClass, &rep.Total)
-	printTable(w, "model", rep.ByModel, nil)
-	printTable(w, "backend", rep.ByBackend, nil)
+	if rep.Total.Requests > 0 {
+		printTable(w, "class", rep.ByClass, &rep.Total)
+		printTable(w, "model", rep.ByModel, nil)
+		printTable(w, "backend", rep.ByBackend, nil)
+	}
 
 	printLocalFirst(w, rep.LocalFirst)
+	printDelegated(w, rep.Delegated)
 	printShadow(w, rep.Shadow)
 
 	outcomes := make([]string, 0, len(rep.Outcomes))
@@ -132,7 +135,9 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		outcomes = append(outcomes, fmt.Sprintf("%s %s", outcome, commas(count)))
 	}
 	sort.Strings(outcomes)
-	fmt.Fprintf(w, "\nOutcomes: %s\n", strings.Join(outcomes, ", "))
+	if len(outcomes) > 0 {
+		fmt.Fprintf(w, "\nOutcomes: %s\n", strings.Join(outcomes, ", "))
+	}
 
 	fmt.Fprintf(w, "\nCosts are estimates at Anthropic's list prices as of %s. A subscription\n"+
 		"is not billed per token, so read them as a measure of usage, not a bill.\n", rep.PricesChecked)
@@ -207,6 +212,33 @@ func printLocalFirst(w io.Writer, rows []ledger.LocalFirstRow) {
 	fmt.Fprintf(w, "  Accepted answers came from the local model. Rejected ones failed a check and\n"+
 		"  failed ones found it unavailable; Claude answered both, after the attempt time\n"+
 		"  (a median) had already been spent.\n")
+}
+
+// printDelegated reports the work Claude handed to the local model.
+func printDelegated(w io.Writer, rows []ledger.DelegatedRow) {
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\nDelegated work (tools Claude called that the local model carried out)\n")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintf(tw, "  tool\tcalls\tfailed\tfiles read\tsize read\tavoided at most\ttime\t\n")
+	for _, r := range rows {
+		read := fmt.Sprintf("%d kB", r.ReadBytes/1024)
+		if r.ReadBytes >= 1<<20 {
+			read = fmt.Sprintf("%.1f MB", float64(r.ReadBytes)/(1<<20))
+		}
+		took := "-"
+		if r.Calls > r.Failed {
+			took = fmt.Sprintf("%.1fs", float64(r.MedianMs)/1000)
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", r.Tool, commas(r.Calls), commas(r.Failed), commas(r.Files), read, commas(r.AvoidedTokens), took)
+	}
+	tw.Flush()
+	fmt.Fprintf(w, "  \"avoided at most\" is the input tokens Claude would have spent reading every\n"+
+		"  one of those files in full, less what the answers cost it. It is a ceiling: left\n"+
+		"  to itself Claude often searches a file and reads a little of it. Compare cost\n"+
+		"  per session with and without the tool to see what was really saved. Time is\n"+
+		"  the median per call.\n")
 }
 
 // printShadow reports how the local model did when run alongside real

@@ -45,6 +45,7 @@ ignore fields they do not know.
 | `fault` | string | What went wrong reading the response from the backend when it broke off part-way, e.g. a dropped connection. Absent for a response that arrived whole, and for one the client abandoned. |
 | `capture` | string | The capture's path under `captures/`, without extension |
 | `attempt` | object | Present when one backend was tried and another may have answered: `backend`, `model`, `verdict`, `why`, `duration_ms`, and for a rejected attempt its `usage`. See below. |
+| `worker` | object | Present on a record of delegated work, where Claude called a tool that the local model carried out: `tool`, `files`, `read_bytes`, `model_calls`, `answer_bytes`, `avoided_tokens`. Such a record has `class` `worker` and `method` `TOOL`, is not a proxied request, and is left out of the request totals. |
 | `shadow_of` | string | Present on a shadow run: the id of the real request it repeated on the local model. Shadow records have `route` `shadow` and an id ending `-shadow`, and are left out of every total. |
 | `compare` | object | On a shadow run that came back whole: `upstream_stop`, `local_stop`, `upstream_tools`, `local_tools`, `stop_match`, `tools_match`, and `upstream_ms` (how long the real answer took) |
 
@@ -59,6 +60,7 @@ ignore fields they do not know.
 | `cancelled` | The client disconnected first |
 | `no_response` | Nothing came back from the backend |
 | `skipped` | A shadow run that was not attempted; `reason` says why |
+| `tool_error` | Delegated work that did not produce an answer; `reason` says why |
 
 ### `attempt`
 
@@ -76,6 +78,19 @@ model's answer, and `reason` ends `; sent local`.
 `attempt.duration_ms` is how long the local model was given before the
 decision. For a rejected or failed attempt, that time was spent before
 Claude was asked, and is included in the record's own `duration_ms`.
+
+### `worker.avoided_tokens`
+
+The input tokens Claude would have spent reading every one of the files in
+full, less what the answer cost it. Files are counted at four bytes a token
+and the answer at three, so the arithmetic errs low.
+
+The assumption behind it does not. It supposes Claude would otherwise have
+read every byte, and Claude often searches a file and reads a little of
+it. In the one case measured, this figure was about 63,000 and the real
+saving about 4,000. Read it as the most that could have been saved. The
+real saving is the difference in cost between sessions with and without
+the tool. See [the measurement](research/delegation.md).
 
 ### `usage`
 

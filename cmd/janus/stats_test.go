@@ -281,3 +281,24 @@ func TestStatsNotesWhenLocalStoodInForClaude(t *testing.T) {
 		t.Errorf("report:\n%s", out)
 	}
 }
+
+func TestStatsDelegatedSection(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	l := ledger.Open(dir)
+	for i := 0; i < 2; i++ {
+		l.Append(ledger.Record{V: 1, ID: string(rune('a' + i)), Time: time.Now(), Class: "worker", Backend: "local", Outcome: ledger.OutcomeOK, DurationMs: 9500,
+			Worker: &ledger.Worker{Tool: "ask_files", Files: 4, ReadBytes: 1 << 20, AvoidedTokens: 250000}})
+	}
+	out, _, _ := stats(t, "-dir", dir)
+	squeezed := strings.Join(strings.Fields(out), " ")
+	for _, want := range []string{
+		"Delegated work (tools Claude called that the local model carried out)",
+		"tool calls failed files read size read avoided at most time",
+		"ask_files 2 0 8 2.0 MB 500,000 9.5s",
+		"It is a ceiling",
+	} {
+		if !strings.Contains(squeezed, want) {
+			t.Errorf("report is missing %q\n%s", want, out)
+		}
+	}
+}
