@@ -182,3 +182,13 @@ func TestSummariseOfNothing(t *testing.T) {
 		t.Errorf("report = %+v", rep)
 	}
 }
+
+func TestSummariseCountsUnreadResponses(t *testing.T) {
+	read := rec("a", at(10, 1), "main", &Usage{Output: 10})
+	unread := rec("b", at(10, 2), "main", nil)
+	unread.Unread = "content-encoding br"
+
+	if rep := Summarise([]Record{read, unread}, DefaultPrices); rep.Unread != 1 {
+		t.Errorf("Unread = %d, want 1", rep.Unread)
+	}
+}
