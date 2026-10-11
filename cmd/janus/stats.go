@@ -142,6 +142,11 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		fmt.Fprintf(w, "\n%s requests could not be priced and are in no cost above:\n%s\n",
 			commas(rep.Total.Unpriced), strings.Join(reasons, "\n"))
 	}
+	if rep.Unread > 0 {
+		fmt.Fprintf(w, "\nWARNING: %s responses were relayed but could not be read, so their tokens\n"+
+			"are missing from every figure above. Run janus stats -json, or search the\n"+
+			"ledger for \"unread\", to see why.\n", commas(rep.Unread))
+	}
 	if rep.Malformed > 0 {
 		fmt.Fprintf(w, "\n%d ledger lines could not be read and were skipped.\n", rep.Malformed)
 	}

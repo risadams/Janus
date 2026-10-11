@@ -13,7 +13,7 @@ points at the [roadmap](ROADMAP.md).
 | ID | Requirement | Pri | MS |
 | --- | --- | --- | --- |
 | FR-1.1 | Accept the Anthropic Messages API on a local port: `POST /v1/messages` (streaming and non-streaming) and `POST /v1/messages/count_tokens`. Any other path is forwarded upstream untouched. | M | M1 |
-| FR-1.2 | With all features disabled, the upstream request and the client response are byte-equivalent to a direct connection, apart from hop-by-hop headers. | M | M1 |
+| FR-1.2 | With all features disabled, the upstream request and the client response are byte-equivalent to a direct connection, apart from hop-by-hop headers and one named exception: on Messages requests Janus narrows `Accept-Encoding` to gzip (or to none, if the client did not offer gzip), so that every response can be read for the ledger. The client only ever receives an encoding it asked for. | M | M1 |
 | FR-1.3 | Client credentials (API key or OAuth bearer) pass through unchanged. Janus never stores, logs, or substitutes them. | M | M1 |
 | FR-1.4 | Streaming responses are relayed as they arrive. Buffering happens only where a feature explicitly needs it (FR-5.1). | M | M1 |
 | FR-1.5 | Unknown request fields, beta headers, and content block types are preserved, not dropped. | M | M1 |

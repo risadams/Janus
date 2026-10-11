@@ -133,6 +133,9 @@ type Report struct {
 	ByBackend []Row     `json:"by_backend"`
 	// Outcomes counts requests by outcome.
 	Outcomes map[string]int `json:"outcomes"`
+	// Unread counts Messages responses janus relayed but could not read.
+	// Their tokens are missing from every figure in the report.
+	Unread int `json:"unread,omitempty"`
 	// Unpriced counts, by reason, the requests left out of every cost.
 	Unpriced      map[string]int `json:"unpriced,omitempty"`
 	Malformed     int            `json:"malformed_lines,omitempty"`
@@ -163,6 +166,9 @@ func Summarise(records []Record, prices Prices) Report {
 		}
 		rep.To = rec.Time
 		rep.Outcomes[rec.Outcome]++
+		if rec.Unread != "" {
+			rep.Unread++
+		}
 
 		if reason := rep.Total.add(rec, prices); reason != "" {
 			rep.Unpriced[reason]++

@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -95,9 +97,10 @@ type stateKey struct{}
 
 // New returns a handler that forwards every request to the upstream and
 // relays the response as it arrives. Nothing in either direction is altered
-// beyond what HTTP requires of a proxy: hop-by-hop headers are dropped and
-// Host is set to the upstream's. Credentials pass through as the client
-// sent them.
+// beyond what HTTP requires of a proxy (hop-by-hop headers are dropped and
+// Host is set to the upstream's), with one exception: Accept-Encoding on
+// Messages requests, see narrowEncoding. Credentials pass through as the
+// client sent them.
 //
 // Traffic is also read on its way past, without being delayed or changed,
 // so that Done can be told what happened.
@@ -111,6 +114,9 @@ func New(opts Options) http.Handler {
 	rp := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(opts.Upstream)
+			if isMessages(r.In) {
+				narrowEncoding(r.Out.Header)
+			}
 		},
 		Transport: transport,
 		// Flush after every write, so a streamed completion reaches the
@@ -145,7 +151,7 @@ func New(opts Options) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		state := &exchangeState{
-			messages: r.Method == http.MethodPost && r.URL.Path == "/v1/messages",
+			messages: isMessages(r),
 			keep:     opts.KeepBodies,
 		}
 		sw := &statusWriter{ResponseWriter: w}
@@ -193,6 +199,51 @@ func New(opts Options) http.Handler {
 		}()
 		rp.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), stateKey{}, state)))
 	})
+}
+
+func isMessages(r *http.Request) bool {
+	return r.Method == http.MethodPost && r.URL.Path == "/v1/messages"
+}
+
+// narrowEncoding limits what a Messages request asks the upstream to
+// compress its response with to what janus can read: gzip, or nothing.
+//
+// This is the one request header janus changes. The ledger depends on
+// reading every response, the standard library cannot decode brotli or
+// zstd, and Claude Code offers both. The client still only ever receives
+// an encoding it asked for: gzip if it offered gzip, otherwise none.
+func narrowEncoding(h http.Header) {
+	offered := h.Values("Accept-Encoding")
+	if len(offered) == 0 {
+		return // no compression was asked for, and none will be used
+	}
+	if acceptsGzip(offered) {
+		h.Set("Accept-Encoding", "gzip")
+	} else {
+		h.Set("Accept-Encoding", "identity")
+	}
+}
+
+// acceptsGzip reports whether an Accept-Encoding header allows gzip, either
+// by name or through the wildcard, and not with a quality of zero.
+func acceptsGzip(values []string) bool {
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			coding, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+			coding = strings.ToLower(strings.TrimSpace(coding))
+			if coding != "gzip" && coding != "x-gzip" && coding != "*" {
+				continue
+			}
+			q := strings.TrimSpace(params)
+			if weight, ok := strings.CutPrefix(q, "q="); ok {
+				if f, err := strconv.ParseFloat(strings.TrimSpace(weight), 64); err == nil && f == 0 {
+					continue
+				}
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // newID is a timestamp to the millisecond plus a random suffix: unique

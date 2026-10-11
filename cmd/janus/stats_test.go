@@ -194,3 +194,17 @@ func TestCommas(t *testing.T) {
 		}
 	}
 }
+
+func TestStatsWarnsAboutUnreadResponses(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	ledger.Open(dir).Append(ledger.Record{V: 1, ID: "u", Time: time.Now(), Class: "main", Backend: "upstream",
+		Outcome: ledger.OutcomeOK, Unread: "content-encoding br"})
+
+	out, _, _ := stats(t, "-dir", dir)
+	if !strings.Contains(out, "WARNING: 1 responses were relayed but could not be read") {
+		t.Errorf("no warning about the unread response:\n%s", out)
+	}
+	if clean, _, _ := stats(t, "-dir", seedLedger(t)); strings.Contains(clean, "WARNING") {
+		t.Errorf("a warning was printed with nothing unread:\n%s", clean)
+	}
+}

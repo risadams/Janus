@@ -565,3 +565,42 @@ func TestCappedBuffer(t *testing.T) {
 		t.Errorf("snapshot = %q truncated=%v, want abcde and true", data, truncated)
 	}
 }
+
+func TestNarrowsAcceptEncodingOnMessagesOnly(t *testing.T) {
+	cases := []struct {
+		name, method, path string
+		offered            []string // nil means the header is not sent
+		want               string   // what the upstream should see; "" means no header
+	}{
+		{"claude code's list", "POST", "/v1/messages", []string{"gzip, deflate, br, zstd"}, "gzip"},
+		{"gzip among weighted codings", "POST", "/v1/messages", []string{"br;q=1.0, gzip;q=0.8, *;q=0.1"}, "gzip"},
+		{"wildcard", "POST", "/v1/messages", []string{"*"}, "gzip"},
+		{"x-gzip", "POST", "/v1/messages", []string{"X-GZIP"}, "gzip"},
+		{"split across header lines", "POST", "/v1/messages", []string{"br", "gzip"}, "gzip"},
+		{"gzip refused", "POST", "/v1/messages", []string{"br, gzip;q=0"}, "identity"},
+		{"only what janus cannot read", "POST", "/v1/messages", []string{"br, zstd"}, "identity"},
+		{"identity", "POST", "/v1/messages", []string{"identity"}, "identity"},
+		{"nothing offered", "POST", "/v1/messages", nil, ""},
+		{"other paths are left alone", "POST", "/v1/messages/count_tokens", []string{"gzip, deflate, br, zstd"}, "gzip, deflate, br, zstd"},
+		{"other methods are left alone", "GET", "/v1/messages", []string{"br, zstd"}, "br, zstd"},
+	}
+	for _, c := range cases {
+		var got []string
+		front := start(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got = r.Header.Values("Accept-Encoding")
+		}), "")
+		req, _ := http.NewRequest(c.method, front+c.path, strings.NewReader("{}"))
+		for _, v := range c.offered {
+			req.Header.Add("Accept-Encoding", v)
+		}
+		resp, err := plainClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+
+		if joined := strings.Join(got, ", "); joined != c.want {
+			t.Errorf("%s: upstream saw Accept-Encoding %q, want %q", c.name, joined, c.want)
+		}
+	}
+}
