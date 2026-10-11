@@ -44,6 +44,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 0
 		case "stats":
 			return runStats(args[1:], stdout, stderr)
+		case "doctor":
+			return runDoctor(args[1:], stdout, stderr)
 		}
 	}
 
@@ -175,13 +177,21 @@ func versionLine() string {
 	return "janus " + version
 }
 
-// printBanner says where janus is listening and gives the exact command
-// that points Claude Code at it, so nobody has to look up the variable.
+// printClaudeCommand gives the exact command that points Claude Code at
+// janus, so nobody has to look up the variable.
 //
 // ENABLE_TOOL_SEARCH is set because Claude Code turns tool search off when
 // its base URL is not Anthropic's own, and then sends every tool schema in
 // every request; setting it keeps the traffic shaped the way it is without
 // a proxy.
+func printClaudeCommand(w io.Writer, base string) {
+	fmt.Fprintf(w, "  # bash / zsh / fish\n")
+	fmt.Fprintf(w, "  ANTHROPIC_BASE_URL=%s ENABLE_TOOL_SEARCH=true claude\n\n", base)
+	fmt.Fprintf(w, "  # PowerShell\n")
+	fmt.Fprintf(w, "  $env:ANTHROPIC_BASE_URL=\"%s\"; $env:ENABLE_TOOL_SEARCH=\"true\"; claude\n\n", base)
+}
+
+// printBanner says where janus is listening and what it will write.
 func printBanner(w io.Writer, cfg config.Config, addr string) {
 	base := "http://" + addr
 	fmt.Fprintf(w, "%s\n\n", versionLine())
@@ -195,9 +205,6 @@ func printBanner(w io.Writer, cfg config.Config, addr string) {
 		fmt.Fprintf(w, "  Captures    off\n\n")
 	}
 	fmt.Fprintf(w, "Point Claude Code at janus:\n\n")
-	fmt.Fprintf(w, "  # bash / zsh / fish\n")
-	fmt.Fprintf(w, "  ANTHROPIC_BASE_URL=%s ENABLE_TOOL_SEARCH=true claude\n\n", base)
-	fmt.Fprintf(w, "  # PowerShell\n")
-	fmt.Fprintf(w, "  $env:ANTHROPIC_BASE_URL=\"%s\"; $env:ENABLE_TOOL_SEARCH=\"true\"; claude\n\n", base)
+	printClaudeCommand(w, base)
 	fmt.Fprintf(w, "Press Ctrl+C to stop.\n\n")
 }
