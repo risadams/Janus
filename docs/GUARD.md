@@ -262,6 +262,10 @@ What it depends on:
 For the wider picture, including the listening port, files on disk, and
 the connection to LM Studio, see the [threat model](THREAT-MODEL.md).
 
+What the guard costs in time is in the
+[performance notes](research/performance.md): a few milliseconds on an
+ordinary request, once it has seen the conversation.
+
 ## The leak tests
 
 "Nothing protected goes upstream" is a test that runs on every change, in

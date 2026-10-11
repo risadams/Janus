@@ -255,3 +255,74 @@ func TestScanHandlesLargeInput(t *testing.T) {
 		t.Errorf("%d findings in a large text, want the one key", len(found))
 	}
 }
+
+// Scan remembers what it found in a text, and must give the same answer
+// from memory as it gives fresh.
+func TestScanFromMemoryMatchesAFreshScan(t *testing.T) {
+	padding := strings.Repeat("an ordinary line of a log file\n", 20)
+	var texts []string
+	for _, p := range positives() {
+		texts = append(texts, padding+p.text+"\n"+padding)
+	}
+	for _, n := range negatives() {
+		texts = append(texts, padding+n+"\n"+padding)
+	}
+	d := &Detector{Entropy: true}
+	for _, text := range texts {
+		first, again, fresh := d.Scan(text), d.Scan(text), (&Detector{Entropy: true}).scan(text)
+		if fmt.Sprint(first) != fmt.Sprint(fresh) || fmt.Sprint(again) != fmt.Sprint(fresh) {
+			t.Errorf("first %v, again %v, fresh %v for %.60q", first, again, fresh, text)
+		}
+	}
+	if len(d.seen) != len(texts) {
+		t.Errorf("%d texts remembered, want %d", len(d.seen), len(texts))
+	}
+	if d.Scan("short " + positives()[3].text); len(d.seen) != len(texts) {
+		t.Error("a short text was remembered")
+	}
+}
+
+// A detector whose settings change must not answer from before the change.
+func TestScanMemoryFollowsTheSettings(t *testing.T) {
+	key := positives()[3].want
+	text := strings.Repeat("padding ", 50) + "found key " + key + " in the logs, order ACME-204857"
+	d := &Detector{}
+	if n := len(d.Scan(text)); n != 1 {
+		t.Fatalf("%d findings, want 1", n)
+	}
+	d.Allow = []string{key}
+	if n := len(d.Scan(text)); n != 0 {
+		t.Errorf("%d findings after allowing the key, want 0", n)
+	}
+	d.Patterns = []*regexp.Regexp{regexp.MustCompile(`ACME-[0-9]{6}`)}
+	if found := d.Scan(text); len(found) != 1 || found[0].Kind != "custom" {
+		t.Errorf("findings after adding a pattern = %v", found)
+	}
+}
+
+func TestScanMemoryIsBoundedAndSafeToShare(t *testing.T) {
+	d := &Detector{}
+	d.seen = map[[32]byte][]Finding{}
+	for i := 0; i < maxRemembered; i++ {
+		d.seen[[32]byte{byte(i), byte(i >> 8), byte(i >> 16)}] = nil
+	}
+	text := strings.Repeat("x ", 200) + positives()[3].text
+	if len(d.Scan(text)) != 1 || len(d.seen) != 1 {
+		t.Errorf("after overflowing, %d remembered, want 1", len(d.seen))
+	}
+
+	done := make(chan bool)
+	for g := 0; g < 8; g++ {
+		go func(g int) {
+			for i := 0; i < 200; i++ {
+				if len(d.Scan(fmt.Sprintf("%s %d", text, i%20))) != 1 {
+					t.Error("a concurrent scan lost a finding")
+				}
+			}
+			done <- true
+		}(g)
+	}
+	for g := 0; g < 8; g++ {
+		<-done
+	}
+}
