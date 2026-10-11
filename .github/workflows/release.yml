@@ -1,0 +1,67 @@
+name: release
+
+# A tag such as v1.2.3 builds the binaries and publishes a release. On a
+# pull request the same build runs and nothing is published, so that a
+# change which breaks the release is found before the tag is.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+      - name: Choose the version
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=v0.0.0-pr.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+      - run: go test ./...
+      - run: scripts/release.sh "${{ steps.version.outputs.version }}"
+      - name: Run the binary that was built
+        run: |
+          cd dist
+          sha256sum -c checksums.txt
+          tar -xzf janus_*_linux_amd64.tar.gz
+          got="$(./janus_*_linux_amd64/janus version)"
+          echo "$got"
+          test "$got" = "janus ${{ steps.version.outputs.version }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+          retention-days: 7
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "${GITHUB_REF_NAME}" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --generate-notes $prerelease

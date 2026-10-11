@@ -3,6 +3,7 @@
 /janus.exe
 *.exe
 *.test
+/dist
 
 # janus's own config, logs, and ledger — created on first run, never checked in
 /janus.config.json
