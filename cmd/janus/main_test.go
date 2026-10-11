@@ -247,6 +247,13 @@ func TestNewRouterResolvesRulesAndTimeouts(t *testing.T) {
 	if r.Rules[1].TrialTimeout != time.Duration(config.DefaultTrialSeconds)*time.Second || r.Rules[0].TrialTimeout != 0 {
 		t.Errorf("trial timeouts: escalate rule %s (want the default), local rule %s (want none)", r.Rules[1].TrialTimeout, r.Rules[0].TrialTimeout)
 	}
+	if r.Rules[2].IfDown != nil {
+		t.Errorf("a rule with no ifDown got one: %+v", r.Rules[2].IfDown)
+	}
+	cfg.Routing[2].IfDown = "quick"
+	if got := newRouter(cfg, nil, nil).Rules[2].IfDown; got == nil || got.ID != "gemma" {
+		t.Errorf("ifDown was not resolved: %+v", got)
+	}
 	if r.Rules[2].Route != "upstream" || r.Rules[2].Local.ID != "" {
 		t.Errorf("rules[2] = %+v", r.Rules[2])
 	}

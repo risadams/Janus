@@ -117,12 +117,14 @@ func TestRouteBadInput(t *testing.T) {
 }
 
 func TestBannerListsRoutes(t *testing.T) {
-	lines := routingSummary(testConfigWithRules())
+	cfg := testConfigWithRules()
+	cfg.Routing[2].IfDown = "janus-local"
+	lines := routingSummary(cfg)
 	want := []string{
 		`model "janus-local" -> local qwen/qwen3.8-27b`,
 		"rule small-subagents: class subagent, up to 40000 tokens, with tools -> local qwen/qwen3.8-27b",
 		"rule 2: model claude-haiku-5-5 -> local qwen/qwen3.8-27b first, Claude if its answer fails the checks or takes over 2m0s",
-		"rule rest: everything else -> upstream",
+		"rule rest: everything else -> upstream, or local qwen/qwen3.8-27b if Claude cannot answer",
 	}
 	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
 		t.Errorf("summary:\n%s\nwant:\n%s", strings.Join(lines, "\n"), strings.Join(want, "\n"))
@@ -142,4 +144,21 @@ func TestRouteExplainsLocalFirstAndFallback(t *testing.T) {
 
 	out, _ = explain(t, lms.URL, true, subagentsLocal, subagentBody)
 	wantLines(t, out, "Decision local: qwen/qwen3.8-27b answers", "if it cannot be reached or answers with an error, Claude answers instead")
+}
+
+func TestRouteExplainsOverrideAndStandIn(t *testing.T) {
+	lms := serverSaying(200, lmStudioModels)
+	defer lms.Close()
+
+	out, _ := explain(t, lms.URL, true, subagentsLocal, subagentBody, "-override", "upstream")
+	wantLines(t, out, "override upstream: upstream", "Decision upstream, untouched")
+
+	out, _ = explain(t, lms.URL, true, nil, mainBody, "-override", "local")
+	wantLines(t, out, "override local: local, to qwen/qwen3.8-27b", "Decision local: qwen/qwen3.8-27b answers")
+
+	out, _ = explain(t, lms.URL, true, nil, mainBody, "-override", "sideways")
+	wantLines(t, out, "Decision refused with HTTP 400", "is not upstream, local, or local=")
+
+	out, _ = explain(t, lms.URL, true, []map[string]any{{"name": "main", "class": "main", "route": "upstream", "ifDown": "janus-local"}}, mainBody)
+	wantLines(t, out, "rule main: upstream, or qwen/qwen3.8-27b if Claude cannot answer", "if Claude cannot answer (unreachable, rate limited, overloaded, failing),", "the local model answers instead")
 }

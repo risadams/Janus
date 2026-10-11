@@ -139,6 +139,15 @@ func TestValidate(t *testing.T) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
 			c.Routing = []Rule{{Route: "local-then-escalate", Local: "janus-local", MaxSeconds: -1}}
 		}, "maxSeconds is negative"},
+		{"an upstream rule with a local fallback", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Class: "main", Route: "upstream", IfDown: "janus-local"}}
+		}, ""},
+		{"ifDown naming a missing model", func(c *Config) { c.Routing = []Rule{{Route: "upstream", IfDown: "nope"}} }, `routing[0].ifDown "nope" is not an entry`},
+		{"ifDown on a route that is already local", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Route: "local", Local: "janus-local", IfDown: "janus-local"}}
+		}, "ifDown only applies"},
 		{"an unknown check", func(c *Config) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
 			c.Routing = []Rule{{Route: "local-then-escalate", Local: "janus-local", SkipChecks: []string{"vibes"}}}

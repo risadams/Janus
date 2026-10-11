@@ -133,6 +133,9 @@ type Report struct {
 	ByBackend []Row     `json:"by_backend"`
 	// Outcomes counts requests by outcome.
 	Outcomes map[string]int `json:"outcomes"`
+	// StoodIn counts requests the local model answered because Claude
+	// could not: unreachable, rate limited, overloaded, or failing.
+	StoodIn int `json:"stood_in,omitempty"`
 	// LocalFirst summarises, by class, requests where the local model was
 	// tried with Claude as the fallback.
 	LocalFirst []LocalFirstRow `json:"local_first,omitempty"`
@@ -180,7 +183,9 @@ func Summarise(records []Record, prices Prices) Report {
 			rep.From, first = rec.Time, false
 		}
 		rep.To = rec.Time
-		if rec.Attempt != nil {
+		if rec.Attempt != nil && rec.Attempt.Backend == "upstream" {
+			rep.StoodIn++
+		} else if rec.Attempt != nil {
 			if attempts[rec.Class] == nil {
 				attempts[rec.Class] = &attemptTally{}
 			}

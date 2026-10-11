@@ -173,6 +173,9 @@ func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local
 			Name: r.Name, Class: route.Class(r.Class), Model: r.Model, MaxTokens: r.MaxTokens, Tools: r.Tools,
 			Route: r.Route, Local: models[r.Local], SkipChecks: r.SkipChecks, TrialTimeout: trialTimeout(r),
 		}
+		if m, ok := models[r.IfDown]; ok {
+			rules[i].IfDown = &m
+		}
 	}
 	return &route.Router{Upstream: upstream, Local: local, Aliases: models, Rules: rules}
 }
@@ -311,6 +314,9 @@ func routingSummary(cfg config.Config) []string {
 		name := r.Name
 		if name == "" {
 			name = fmt.Sprintf("%d", i+1)
+		}
+		if r.IfDown != "" {
+			target += ", or local " + cfg.Local.Models[r.IfDown].Model + " if Claude cannot answer"
 		}
 		lines = append(lines, fmt.Sprintf("rule %s: %s -> %s", name, when, target))
 	}

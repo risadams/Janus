@@ -116,6 +116,7 @@ Outcome.
 | `name` | Shown in the ledger and in `janus route`. Optional. |
 | `skipChecks` | For `local-then-escalate`: checks to leave out. See below. |
 | `maxSeconds` | For `local-then-escalate`: how long the local model gets before Claude is asked. Default 120. |
+| `ifDown` | For `upstream` and `shadow`: an entry of `local.models` to answer instead when Claude cannot. See below. |
 
 **A rule never fails a request.** If a rule sends a request local and the
 local model cannot take it, the request goes to Claude instead and the
@@ -200,6 +201,67 @@ unavailable. A rejected answer is saved beside the request's capture as
 A conversation can move between the local model and Claude turn by turn.
 Janus removes the local model's thinking from the history before Claude
 sees it, because Claude rejects thinking it did not produce.
+
+### Keep working when Claude is down
+
+A rule that sends requests upstream can name a local model to stand in when
+Claude cannot answer:
+
+```json
+{ "name": "main", "class": "main", "route": "upstream", "ifDown": "janus-local" }
+```
+
+The local model answers when Claude is unreachable, or responds with a rate
+limit (429) or a server error (500 and above, which includes
+"overloaded"). On a subscription, a rate limit is what running out of usage
+looks like, so this also covers that.
+
+Any other error, such as a bad request or an expired login, is about the
+request and not about Claude being down. It reaches the client untouched
+and the local model is not consulted.
+
+- **It is degraded service.** The client is told the model it asked for
+  answered, so nothing in the conversation shows the difference. What does
+  show it: the response carries an `X-Janus-Fallback` header, the console
+  line says so, the ledger records it, and `janus stats` prints a note
+  with the count.
+- **It only works before the answer starts.** If Claude fails part-way
+  through a streamed answer, what was sent cannot be taken back.
+- **If the local model cannot help either** (too large a request, LM Studio
+  down), the client gets Claude's error exactly as Claude sent it.
+- **It costs nothing while Claude is healthy.** The fallback is only worked
+  out when it is needed; LM Studio is not contacted otherwise.
+- The conversation can go back to Claude on the next turn.
+
+With this on the main-conversation rule and a `local` rule for subagents, a
+whole Claude Code session runs with no connection to Anthropic at all. That
+was tested; it is as good as the local model is, and much slower.
+
+### Choosing the route yourself
+
+A request can say where it wants to go with a header, which beats every
+rule:
+
+| `X-Janus-Route` | Effect |
+| --- | --- |
+| `upstream` | Send it to Claude, whatever the rules say |
+| `local` | Send it to the local model, if exactly one is configured |
+| `local=<name>` | Send it to that entry of `local.models` |
+
+Claude Code sends extra headers from an environment variable, so this
+works for a whole session:
+
+```bash
+ANTHROPIC_CUSTOM_HEADERS="X-Janus-Route: upstream" claude   # bypass local routing for this session
+ANTHROPIC_CUSTOM_HEADERS="X-Janus-Route: local" claude      # keep this session off Anthropic
+```
+
+**Forcing local is a promise that the request does not go upstream.** If
+the local model cannot take it, the request is refused with an error
+saying why. It is never quietly sent to Claude instead.
+
+The header is an instruction to Janus and is removed before the request
+goes anywhere. It needs `features.route` on.
 
 ### Shadow: try the local model without trusting it
 

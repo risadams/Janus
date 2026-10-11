@@ -291,3 +291,21 @@ func TestLocalFirstSummary(t *testing.T) {
 		t.Error("a report with no attempts has a local-first section")
 	}
 }
+
+func TestStoodInIsCountedApartFromLocalFirst(t *testing.T) {
+	u := &Usage{Input: 100, Output: 30}
+	stoodIn := rec("a", at(10, 1), "main", u)
+	stoodIn.Backend, stoodIn.Route = "local", "local"
+	stoodIn.Response.Model = "qwen/qwen3.8-27b"
+	stoodIn.Attempt = &Attempt{Backend: "upstream", Verdict: VerdictFailed, Why: "upstream answered HTTP 529"}
+	localFirst := rec("b", at(10, 2), "subagent", u)
+	localFirst.Attempt = &Attempt{Backend: "local", Verdict: VerdictRejected}
+
+	rep := Summarise([]Record{stoodIn, localFirst, rec("c", at(10, 3), "main", u)}, DefaultPrices)
+	if rep.StoodIn != 1 {
+		t.Errorf("StoodIn = %d, want 1", rep.StoodIn)
+	}
+	if len(rep.LocalFirst) != 1 || rep.LocalFirst[0].Class != "subagent" || rep.LocalFirst[0].Tried != 1 {
+		t.Errorf("local-first rows = %+v; a stand-in is not a local-first attempt", rep.LocalFirst)
+	}
+}

@@ -16,8 +16,9 @@ with Claude, with no change to Claude Code: see the
 There are three levels of trust in the local model, each a rule: `shadow`
 runs it alongside Claude and only compares; `local-then-escalate` checks
 each local answer and asks Claude instead if it is broken; `local` uses it
-outright. If LM Studio is down, requests go to Claude. The checks catch
-broken answers, not wrong ones.
+outright. If LM Studio is down, requests go to Claude; and a rule can have
+the local model stand in when Claude is down. The checks catch broken
+answers, not wrong ones.
 
 - [Charter](docs/CHARTER.md): what Janus is, goals, scope, risks
 - [Requirements](docs/REQUIREMENTS.md)

@@ -271,3 +271,13 @@ func TestStatsLocalFirstSection(t *testing.T) {
 		t.Error("a ledger with no attempts shows a local-first section")
 	}
 }
+
+func TestStatsNotesWhenLocalStoodInForClaude(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	ledger.Open(dir).Append(ledger.Record{V: 1, ID: "a", Time: time.Now(), Class: "main", Backend: "local", Outcome: ledger.OutcomeOK,
+		Attempt: &ledger.Attempt{Backend: "upstream", Verdict: ledger.VerdictFailed}})
+	out, _, _ := stats(t, "-dir", dir)
+	if !strings.Contains(out, "NOTE: 1 requests were answered by the local model because Claude could not") || strings.Contains(out, "Local first") {
+		t.Errorf("report:\n%s", out)
+	}
+}

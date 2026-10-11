@@ -302,6 +302,17 @@ func TestAttemptRecords(t *testing.T) {
 		t.Errorf("failed attempt = %+v", a)
 	}
 
+	// Claude was down and the local model stood in.
+	stoodIn := exchange()
+	stoodIn.Backend, stoodIn.Route = "local", "local"
+	stoodIn.Attempt = &proxy.Attempt{Backend: "upstream", Fault: true, Why: "upstream answered HTTP 529"}
+	if a := FromExchange(stoodIn).Attempt; a.Backend != "upstream" || a.Verdict != VerdictFailed {
+		t.Errorf("stand-in attempt = %+v", a)
+	}
+	if FromExchange(accepted).Attempt.Backend != "local" {
+		t.Error("a local-first attempt should name the local backend")
+	}
+
 	if FromExchange(exchange()).Attempt != nil {
 		t.Error("an ordinary exchange has an attempt")
 	}

@@ -1,9 +1,11 @@
 package route
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -54,6 +56,10 @@ type Rule struct {
 	// SkipChecks names validators to leave out when judging a local answer
 	// on the escalate route.
 	SkipChecks []string
+	// IfDown is a local model to answer instead when the rule sends a
+	// request upstream and Claude cannot answer it: unreachable, rate
+	// limited, overloaded, or failing. Nil means the failure stands.
+	IfDown *LocalModel
 	// TrialTimeout is how long the local model gets to produce its whole
 	// answer on the escalate route. It applies as well as the model's own
 	// Timeout; whichever is shorter wins.
@@ -221,6 +227,68 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		return plan
 	}
 	facts := FactsOf(header, req)
+	// The request as it arrived, kept for a fallback that is planned
+	// later, after the request itself may have been repaired for upstream.
+	arrived := bytes.Clone(req.Bytes())
+
+	// A client can choose the route itself with a header, which beats the
+	// rules. Forcing local is a promise that the request will not go
+	// upstream, so if local cannot take it the request is refused.
+	if choice := strings.TrimSpace(header.Get(backend.RouteHeader)); choice != "" {
+		reason := "override " + choice
+		refuse := func(status int, kind, message string) (proxy.Plan, *proxy.Refusal, []string) {
+			trace = append(trace, fmt.Sprintf("%s: refused: %s", reason, message))
+			return proxy.Plan{}, &proxy.Refusal{Status: status, Type: kind, Message: "janus: " + message, Route: RouteLocal, Reason: reason + ": " + message}, trace
+		}
+		where, name, _ := strings.Cut(choice, "=")
+		switch where {
+		case RouteUpstream:
+			trace = append(trace, reason+": upstream")
+			return upstream(reason), nil, trace
+		case RouteLocal:
+			local, problem := r.named(name)
+			if problem != "" {
+				return refuse(http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("%s: %s: %s", backend.RouteHeader, choice, problem))
+			}
+			plan, _, failure := r.local(ctx, req, local, facts.Model, reason)
+			if failure != nil {
+				return refuse(failure.status, failure.kind, failure.message)
+			}
+			trace = append(trace, fmt.Sprintf("%s: local, to %s", reason, local.ID))
+			return plan, nil, trace
+		default:
+			return refuse(http.StatusBadRequest, "invalid_request_error",
+				fmt.Sprintf("%s: %q is not upstream, local, or local=<name of an entry in local.models>", backend.RouteHeader, choice))
+		}
+	}
+
+	// ifDown gives an upstream plan a local fallback, planned only if
+	// Claude turns out not to be able to answer.
+	ifDown := func(plan proxy.Plan, rule Rule, label string) proxy.Plan {
+		if rule.IfDown == nil {
+			return plan
+		}
+		local := *rule.IfDown
+		plan.FallBackOn = upstreamDown
+		plan.Fallback = func(ctx context.Context) (proxy.Plan, bool) {
+			if skip, _, _ := r.health.open(); skip {
+				return proxy.Plan{}, false
+			}
+			copy, err := anthropic.ParseRequest(arrived)
+			if err != nil {
+				return proxy.Plan{}, false
+			}
+			fallback, _, problem := r.local(ctx, copy, local, facts.Model, label)
+			if problem != nil {
+				if problem.status == http.StatusBadGateway {
+					r.health.record(false)
+				}
+				return proxy.Plan{}, false
+			}
+			return fallback, true
+		}
+		return plan
+	}
 
 	// An alias has no upstream model behind it, so there is nowhere to
 	// fall back to: a request that cannot go local is refused, with why.
@@ -290,15 +358,46 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			plan := upstream(label)
 			plan.Shadow = &proxy.Shadow{Model: rule.Local.ID, ContextTokens: rule.Local.ContextTokens, Timeout: rule.Local.Timeout, Reason: label}
 			trace = append(trace, fmt.Sprintf("%s: upstream, and shadowed on %s", label, rule.Local.ID))
-			return plan, nil, trace
+			return ifDown(plan, rule, label), nil, trace
 		default:
-			trace = append(trace, label+": upstream")
-			return upstream(label), nil, trace
+			note := label + ": upstream"
+			if rule.IfDown != nil {
+				note += fmt.Sprintf(", or %s if Claude cannot answer", rule.IfDown.ID)
+			}
+			trace = append(trace, note)
+			return ifDown(upstream(label), rule, label), nil, trace
 		}
 	}
 
 	trace = append(trace, "no rule matched: upstream")
 	return upstream("passthrough"), nil, trace
+}
+
+// upstreamDown reports whether a status from the upstream means Claude
+// could not answer, as opposed to the request being wrong. A rate limit
+// counts: on a subscription it is what running out of usage looks like.
+func upstreamDown(status int) bool {
+	return status == http.StatusTooManyRequests || status >= 500
+}
+
+// named resolves the local model an override asks for: the one called
+// name, or the only one configured if no name is given.
+func (r *Router) named(name string) (LocalModel, string) {
+	if name != "" {
+		if local, ok := r.Aliases[name]; ok {
+			return local, ""
+		}
+		return LocalModel{}, fmt.Sprintf("%q is not an entry of local.models", name)
+	}
+	switch len(r.Aliases) {
+	case 0:
+		return LocalModel{}, "no local model is configured"
+	case 1:
+		for _, local := range r.Aliases {
+			return local, ""
+		}
+	}
+	return LocalModel{}, "several local models are configured; name one, as local=<name>"
 }
 
 // problem is why a request cannot go to the local model.
