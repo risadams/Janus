@@ -21,8 +21,12 @@ recorded with its token usage. It does not use the local model yet.
 
 ```bash
 go build ./cmd/janus
+./janus doctor   # check the setup first
 ./janus
 ```
+
+`janus doctor` checks the config, the port, the upstream, LM Studio, and
+the log directory, and says what to fix. It writes nothing.
 
 Janus prints the address it is listening on and the exact command that
 points Claude Code at it:
@@ -31,7 +35,9 @@ points Claude Code at it:
 ANTHROPIC_BASE_URL=http://127.0.0.1:8787 ENABLE_TOOL_SEARCH=true claude
 ```
 
-Your credentials pass through untouched. Settings live in
+Your credentials pass through untouched, and so does everything else, with
+one exception: on Messages requests Janus asks the upstream to compress
+with gzip rather than brotli or zstd, so that it can read the response. Settings live in
 `janus.config.json`, written on first run; see
 [Configuration](docs/CONFIG.md).
 
