@@ -18,7 +18,7 @@ the defaults below and carries on.
 | Field | Meaning |
 | --- | --- |
 | `listen` | Address Janus accepts connections on. Must be loopback unless `allowRemote` is true. |
-| `allowRemote` | Permit a non-loopback `listen`. Janus forwards whatever credentials clients send, so leave this off unless you mean it. |
+| `allowRemote` | Permit a non-loopback `listen`. Janus forwards whatever credentials clients send, so leave this off unless you mean it. While it is off, Janus also refuses requests from web pages: any whose `Host` is not this machine or whose `Origin` is a page from elsewhere. |
 | `upstream.baseUrl` | The Anthropic API, or a gateway in front of it. |
 | `local.baseUrl` | The LM Studio server. |
 | `local.models` | Optional. Model names that are answered locally; see below. |

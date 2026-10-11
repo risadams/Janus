@@ -39,6 +39,7 @@ task that suited it best), and Claude only uses it when asked; read
 - [Charter](docs/CHARTER.md): what Janus is, goals, scope, risks
 - [Requirements](docs/REQUIREMENTS.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Threat model](docs/THREAT-MODEL.md): what it protects against, and what it does not
 - [Decisions](docs/adr/) and [research notes](docs/research/)
 - [Milestones and issues](https://github.com/risadams/Janus/milestones)
 

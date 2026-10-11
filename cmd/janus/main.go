@@ -152,7 +152,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	srv := &http.Server{Handler: proxy.New(proxy.Options{
+	handler := proxy.New(proxy.Options{
 		Upstream:     upstream,
 		Plan:         plan,
 		Redactor:     redactor,
@@ -169,7 +169,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 				shadows.Submit(ex, rec)
 			}
 		},
-	})}
+	})
+	if !cfg.AllowRemote {
+		// Loopback keeps other machines out; this keeps out web pages in
+		// a browser on this one.
+		handler = proxy.SameMachine(handler, func(r *http.Request, why string) {
+			logger.Printf("%s %s refused: %s", r.Method, r.URL.Path, why)
+		})
+	}
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 30 * time.Second}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
