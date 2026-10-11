@@ -1,6 +1,6 @@
 # Spike: can a conversation mix local and upstream turns?
 
-Issue: #7 · Date: 2026-10-11 · Status: one question answered by experiment; the rest still open
+Issue: #7 · Date: 2026-10-11 · Status: the main question answered by experiment; quality questions still open
 
 ## Question
 
@@ -63,20 +63,27 @@ thinking block with an empty or missing signature
   thinking, and avoids rewriting block indexes in a live stream.
 - Requests going to the local model keep the local thinking.
 
-## Not yet verified
+## Finding 2: with the repair, the mixed conversation is accepted
 
-**Whether the API accepts the repaired request.** The repair was written
-and tested against a fake upstream, but the re-run against the real API
-could not be completed: DNS on the test network failed before it ran.
-Until that run succeeds, treat the fix as untested where it matters.
+The same session was run again with the repair in place. One subagent
+conversation, two turns:
 
-Open questions the repaired run should answer:
+| Turn | Answered by | What happened |
+| --- | --- | --- |
+| 1 | `qwen/qwen3.8-27b` | Thinking, text, and a `Bash` tool call with id `"..."` as a bare number |
+| 2 | Claude, after `drop_unsigned_thinking` | HTTP 200. Claude read the tool result and finished the task correctly. |
 
-1. Is an assistant turn with a tool call and no thinking block accepted
-   mid-conversation when the request has thinking enabled?
-2. Are LM Studio's tool-use ids, which are bare numbers
-   (`"587714761"`), accepted in `tool_use` and `tool_result` blocks?
-3. Does anything else about a local turn trip validation?
+So, for this case:
+
+1. **An assistant turn with a tool call and no thinking block is accepted**
+   mid-conversation, with adaptive thinking enabled on the request.
+2. **LM Studio's numeric tool-use ids are accepted** in `tool_use` and the
+   matching `tool_result`.
+3. Nothing else about the local turn tripped validation.
+
+This is one run of a two-turn conversation on one model. It shows the
+repair removes the failure that was observed; it does not show that no
+other shape of local turn can fail.
 
 ## Still open from the original spike
 
@@ -84,6 +91,10 @@ Open questions the repaired run should answer:
 - What a later Claude turn does, in quality terms, with a history that
   holds a local model's tool calls. Acceptance is not the same as working
   well.
-- Routing granularity. Until the above is known, the safe unit is still a
-  whole conversation: route a subagent local from its first turn and keep
-  it there, which is what a plain `"class": "subagent"` rule does.
+- A local turn that is only thinking, with no text or tool call. The
+  repair replaces it with a placeholder text block; that path is tested
+  against a fake upstream only.
+- Routing granularity. A conversation can now cross from local to
+  upstream without failing, which is what escalation needs. Whether it
+  should, turn by turn, is a quality question that shadow and replay data
+  on real work will have to answer.
