@@ -50,7 +50,7 @@ func TestLoadKeepsDefaultsForMissingFields(t *testing.T) {
 	if cfg.Local.BaseURL != "http://other.local:9000" {
 		t.Errorf("local.baseUrl = %q, want the file's value", cfg.Local.BaseURL)
 	}
-	if cfg.Upstream.BaseURL != Default().Upstream.BaseURL || cfg.Listen != Default().Listen {
+	if cfg.Upstream.BaseURL != Default().Upstream.BaseURL || cfg.Listen != Default().Listen || cfg.Logging != Default().Logging {
 		t.Errorf("unset fields lost their defaults: %+v", cfg)
 	}
 }
@@ -108,6 +108,10 @@ func TestValidate(t *testing.T) {
 		{"local not a url", func(c *Config) { c.Local.BaseURL = "studio.tuesday.local:1234" }, "local.baseUrl"},
 		{"feature switched on", func(c *Config) { c.Features.Route = true }, "features.route is not available"},
 		{"no log dir", func(c *Config) { c.Logging.Dir = "" }, "logging.dir"},
+		{"capture off", func(c *Config) { c.Logging.Capture = false }, ""},
+		{"no capture limits", func(c *Config) { c.Logging.RetainDays, c.Logging.MaxMegabytes = 0, 0 }, ""},
+		{"negative retention", func(c *Config) { c.Logging.RetainDays = -1 }, "logging.retainDays"},
+		{"negative size", func(c *Config) { c.Logging.MaxMegabytes = -5 }, "logging.maxMegabytes"},
 	}
 	for _, tc := range cases {
 		cfg := Default()

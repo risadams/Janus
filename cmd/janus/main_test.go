@@ -2,6 +2,10 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
+	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,7 +13,9 @@ import (
 	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
+	"github.com/risadams/janus/internal/capture"
 	"github.com/risadams/janus/internal/config"
+	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
 )
 
@@ -65,6 +71,8 @@ func TestBannerGivesTheClaudeCodeCommand(t *testing.T) {
 		`$env:ANTHROPIC_BASE_URL="http://127.0.0.1:8787"`,
 		"https://api.anthropic.com",
 		"http://studio.tuesday.local:1234",
+		filepath.Join("logs", "ledger"),
+		filepath.Join("logs", "captures"),
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("banner is missing %q:\n%s", want, out.String())
@@ -121,5 +129,74 @@ func TestFormatExchange(t *testing.T) {
 		if got := formatExchange(c.ex); got != c.want {
 			t.Errorf("%s:\n got %s\nwant %s", name, got, c.want)
 		}
+	}
+}
+
+func messagesExchange() proxy.Exchange {
+	header := http.Header{}
+	header.Set("X-Claude-Code-Session-Id", "sess-1")
+	header.Set("Authorization", "Bearer secret-token")
+	return proxy.Exchange{
+		ID: "20261011T143927.123-ab12cd", Start: time.Date(2026, 10, 11, 14, 39, 27, 0, time.UTC),
+		Method: "POST", Path: "/v1/messages", Header: header, Status: 200, Duration: time.Second,
+		RequestBody:  []byte(`{"model":"claude-opus-5-5","messages":[{"role":"user","content":"hi"}]}`),
+		ResponseBody: []byte(`{"type":"message"}`),
+		Summary:      &anthropic.Summary{Model: "claude-opus-5-5", StopReason: "end_turn", Complete: true},
+	}
+}
+
+func TestRecordLinksLedgerToCapture(t *testing.T) {
+	dir := t.TempDir()
+	var console bytes.Buffer
+	led := ledger.Open(filepath.Join(dir, "ledger"))
+	captures := capture.New(filepath.Join(dir, "captures"), 7, 1024)
+
+	record(messagesExchange(), led, captures, log.New(&console, "", 0))
+
+	line, err := os.ReadFile(filepath.Join(dir, "ledger", "2026-10-11.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec ledger.Record
+	if err := json.Unmarshal(line, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Class != "main" || rec.Capture == "" {
+		t.Fatalf("record = %+v, want class main and a capture name", rec)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "captures", rec.Capture+".md")); err != nil {
+		t.Errorf("the ledger names a capture that is not there: %v", err)
+	}
+	if !strings.HasPrefix(console.String(), "POST /v1/messages -> 200") {
+		t.Errorf("console = %q", console.String())
+	}
+}
+
+func TestRecordWithoutCaptures(t *testing.T) {
+	dir := t.TempDir()
+	record(messagesExchange(), ledger.Open(filepath.Join(dir, "ledger")), nil, log.New(io.Discard, "", 0))
+
+	line, _ := os.ReadFile(filepath.Join(dir, "ledger", "2026-10-11.jsonl"))
+	if !bytes.Contains(line, []byte(`"class":"main"`)) || bytes.Contains(line, []byte(`"capture"`)) {
+		t.Errorf("ledger line = %s, want a record with no capture field", line)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "captures")); err == nil {
+		t.Error("a captures directory was created with capture off")
+	}
+}
+
+// A disk that cannot be written to must cost the log lines and nothing
+// else: record has no way to fail the request, and must not panic.
+func TestRecordSurvivesUnwritableDisk(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "file")
+	os.WriteFile(blocker, nil, 0o600)
+	var console bytes.Buffer
+
+	record(messagesExchange(), ledger.Open(filepath.Join(blocker, "ledger")),
+		capture.New(filepath.Join(blocker, "captures"), 7, 1024), log.New(&console, "", 0))
+
+	out := console.String()
+	if strings.Count(out, "janus: ") != 2 || !strings.Contains(out, "POST /v1/messages -> 200") {
+		t.Errorf("console = %q, want two failures reported and the request line still printed", out)
 	}
 }
