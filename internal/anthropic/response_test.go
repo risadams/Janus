@@ -46,6 +46,9 @@ func TestObserveStream(t *testing.T) {
 		if !s.Complete || s.Error != nil || s.Malformed != 0 {
 			t.Errorf("size %d: complete=%v error=%v malformed=%d", size, s.Complete, s.Error, s.Malformed)
 		}
+		if got := strings.Join(s.Tools, ","); got != "Read" {
+			t.Errorf("size %d: tools = %q, want Read", size, got)
+		}
 		u := s.Usage
 		if u.Input != 2 || u.Output != 249 || val(u.CacheRead) != 8103 || val(u.CacheWrite) != 14299 ||
 			val(u.CacheWrite5m) != 0 || val(u.CacheWrite1h) != 14299 || val(u.Thinking) != 124 {
@@ -218,4 +221,11 @@ func TestRealCapturedResponses(t *testing.T) {
 		}
 	}
 	t.Logf("checked %d real responses", len(files))
+}
+
+func TestObserveToolNamesInJSONBody(t *testing.T) {
+	s := feed("application/json", []byte(`{"type":"message","content":[{"type":"text","text":"x"},{"type":"tool_use","name":"Bash","id":"1","input":{}},{"type":"tool_use","name":"Read","id":"2","input":{}}],"usage":{"input_tokens":1,"output_tokens":1}}`), 512)
+	if got := strings.Join(s.Tools, ","); got != "Bash,Read" {
+		t.Errorf("tools = %q, want Bash,Read", got)
+	}
 }

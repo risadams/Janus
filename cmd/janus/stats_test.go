@@ -208,3 +208,42 @@ func TestStatsWarnsAboutUnreadResponses(t *testing.T) {
 		t.Errorf("a warning was printed with nothing unread:\n%s", clean)
 	}
 }
+
+func TestStatsShadowSection(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	l := ledger.Open(dir)
+	when := time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC)
+	for i, c := range []struct{ stop, tools bool }{{true, true}, {true, true}, {true, false}, {false, false}} {
+		id := string(rune('a' + i))
+		l.Append(ledger.Record{V: 1, ID: id, Time: when, Class: "subagent", Backend: "upstream", Outcome: ledger.OutcomeOK,
+			Response: &ledger.Response{Model: "claude-opus-5-5"}, Usage: &ledger.Usage{Output: 100}})
+		l.Append(ledger.Record{V: 1, ID: id + "-shadow", ShadowOf: id, Time: when, Class: "subagent", Route: "shadow", Backend: "local",
+			Outcome: ledger.OutcomeOK, DurationMs: 12300, Response: &ledger.Response{Blocks: []string{"text"}},
+			Usage: &ledger.Usage{Output: 5000}, Compare: &ledger.Compare{StopMatch: c.stop, ToolsMatch: c.tools, UpstreamMs: 2400}})
+	}
+	l.Append(ledger.Record{V: 1, ID: "e-shadow", ShadowOf: "e", Time: when, Class: "subagent", Route: "shadow", Backend: "local", Outcome: ledger.OutcomeSkipped})
+
+	out, _, code := stats(t, "-dir", dir)
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	squeezed := strings.Join(strings.Fields(out), " ")
+	for _, want := range []string{
+		"4 requests", // the four real ones; shadows are not requests
+		"total 4 0 0 0 400",
+		"Shadow runs (the local model answering alongside the real answer)",
+		"class runs skipped failed compared same stop same tools both local upstream",
+		"subagent 5 1 0 4 75% 50% 50% 12.3s 2.4s",
+		"Shadow runs are in no other figure in this report.",
+	} {
+		if !strings.Contains(squeezed, want) {
+			t.Errorf("report is missing %q", want)
+		}
+	}
+	if strings.Contains(squeezed, "local 5") || strings.Contains(squeezed, "5,000") {
+		t.Errorf("shadow runs leaked into the backend table or the token totals")
+	}
+	if t.Failed() {
+		t.Logf("report was:\n%s", out)
+	}
+}

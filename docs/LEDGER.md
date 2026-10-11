@@ -29,7 +29,7 @@ ignore fields they do not know.
 | `agent` | string | Claude Code's subagent id, from `X-Claude-Code-Agent-Id`. Omitted for the main loop. |
 | `method`, `path` | string | The request line |
 | `class` | string | `main`, `subagent`, `connectivity`, or `unknown` |
-| `route` | string | Where the request was sent: `upstream` or `local` |
+| `route` | string | Where the request was sent: `upstream`, `local`, or `shadow` for a shadow run |
 | `reason` | string | What decided it: `passthrough` (nothing matched), `model alias <name>`, or `rule <name>`. When a rule's local route could not be used, the reason says why and ends `; sent upstream`. For a refused request, why. |
 | `stages` | string[] | Changes made to the request on the way: `set_model`, `lift_tool_additions`, `drop_deferred_tools` |
 | `backend` | string | Which backend answered: `upstream`, `local`, or `none` if Janus refused the request itself |
@@ -39,10 +39,12 @@ ignore fields they do not know.
 | `ttfb_ms` | int | Time until the first byte of the response body |
 | `duration_ms` | int | Time until the response ended |
 | `request` | object | Messages requests only: `model`, `stream`, `bytes`, `messages`, `tools`, `cache_breakpoints` |
-| `response` | object | Messages responses only: `model`, `stop_reason`, `blocks` (content block types in order) |
+| `response` | object | Messages responses only: `model`, `stop_reason`, `blocks` (content block types in order), `tools` (names of the tools called, in order) |
 | `usage` | object | Messages responses only; see below |
 | `unread` | string | Why a Messages response has no `usage`, e.g. `content-encoding br` |
 | `capture` | string | The capture's path under `captures/`, without extension |
+| `shadow_of` | string | Present on a shadow run: the id of the real request it repeated on the local model. Shadow records have `route` `shadow` and an id ending `-shadow`, and are left out of every total. |
+| `compare` | object | On a shadow run that came back whole: `upstream_stop`, `local_stop`, `upstream_tools`, `local_tools`, `stop_match`, `tools_match`, and `upstream_ms` (how long the real answer took) |
 
 ### `outcome`
 
@@ -54,6 +56,7 @@ ignore fields they do not know.
 | `incomplete` | The response ended before the protocol says it should |
 | `cancelled` | The client disconnected first |
 | `no_response` | Nothing came back from the backend |
+| `skipped` | A shadow run that was not attempted; `reason` says why |
 
 ### `usage`
 
@@ -166,6 +169,10 @@ Each request produces three files sharing a name:
 | `.md` | The readable render: headers with credentials redacted, model, system prompt, tools, messages, and the response assembled from its stream. Start here. |
 | `.request.txt` | The request body exactly as the client sent it |
 | `.response.txt` | The response body, decompressed |
+
+A request that was shadowed has three more files beside it:
+`.shadow.md`, `.shadow.request.txt` (what was sent to the local model), and
+`.shadow.response.txt`. They are pruned together with the capture.
 
 Captures hold everything Claude Code sent and received: your prompts, the
 files it read, command output. Treat the directory accordingly. The

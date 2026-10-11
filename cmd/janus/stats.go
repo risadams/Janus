@@ -124,6 +124,8 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 	printTable(w, "model", rep.ByModel, nil)
 	printTable(w, "backend", rep.ByBackend, nil)
 
+	printShadow(w, rep.Shadow)
+
 	outcomes := make([]string, 0, len(rep.Outcomes))
 	for outcome, count := range rep.Outcomes {
 		outcomes = append(outcomes, fmt.Sprintf("%s %s", outcome, commas(count)))
@@ -181,6 +183,39 @@ func printTable(w io.Writer, by string, rows []ledger.Row, total *ledger.Row) {
 		line(*total)
 	}
 	tw.Flush()
+}
+
+// printShadow reports how the local model did when run alongside real
+// answers. The percentages are of the runs that came back whole.
+func printShadow(w io.Writer, rows []ledger.ShadowRow) {
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\nShadow runs (the local model answering alongside the real answer)\n")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintf(tw, "  class\truns\tskipped\tfailed\tcompared\tsame stop\tsame tools\tboth\tlocal\tupstream\t\n")
+	share := func(n, of int) string {
+		if of == 0 {
+			return "-"
+		}
+		return fmt.Sprintf("%.0f%%", 100*float64(n)/float64(of))
+	}
+	seconds := func(ms int64, any bool) string {
+		if !any {
+			return "-"
+		}
+		return fmt.Sprintf("%.1fs", float64(ms)/1000)
+	}
+	for _, r := range rows {
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", r.Class,
+			commas(r.Runs), commas(r.Skipped), commas(r.Failed), commas(r.Compared),
+			share(r.StopMatch, r.Compared), share(r.ToolsMatch, r.Compared), share(r.BothMatch, r.Compared),
+			seconds(r.LocalMedianMs, r.Compared > 0), seconds(r.UpstreamMedianMs, r.Compared > 0))
+	}
+	tw.Flush()
+	fmt.Fprintf(w, "  \"same stop\" and \"same tools\" compare the shape of the two answers, not their\n"+
+		"  content: whether both stopped for the same reason and called the same tools.\n"+
+		"  Times are medians. Shadow runs are in no other figure in this report.\n")
 }
 
 // commas writes an integer with thousands separators.

@@ -111,7 +111,7 @@ Outcome.
 
 | Field | Meaning |
 | --- | --- |
-| `route` | `upstream`, `local`, or `local-then-escalate`. The last is accepted so configs can be written ahead of it, and behaves as `upstream` until it is built. |
+| `route` | `upstream`, `local`, `shadow`, or `local-then-escalate`. `shadow` is described below. `local-then-escalate` is accepted so configs can be written ahead of it, and behaves as `upstream` until it is built. |
 | `local` | Which entry of `local.models` to use. Required unless `route` is `upstream`. |
 | `name` | Shown in the ledger and in `janus route`. Optional. |
 
@@ -125,6 +125,56 @@ The client is told the model it asked for answered. The ledger records
 which model really did.
 
 An alias always wins over the rules.
+
+### Shadow: try the local model without trusting it
+
+A rule with `"route": "shadow"` changes nothing for the client. The request
+goes upstream and Claude's answer comes back as usual. Afterwards, Janus
+runs the same request on the local model and records how its answer
+compares.
+
+```json
+{ "name": "watch-subagents", "class": "subagent", "route": "shadow", "local": "janus-local" }
+```
+
+Use it to judge a class of request on your own traffic before writing the
+rule that sends it local. Run it for a while, then read the "Shadow runs"
+section of `janus stats`:
+
+```
+Shadow runs (the local model answering alongside the real answer)
+       class  runs  skipped  failed  compared  same stop  same tools  both  local  upstream
+    subagent     4        0       0         4        75%         50%   50%  10.4s      2.3s
+```
+
+| Column | Meaning |
+| --- | --- |
+| runs | Shadows asked for |
+| skipped | Never sent: the request was too large for the model, or the queue was full |
+| failed | Sent, and came back as an error, cut off, or empty |
+| compared | Came back whole |
+| same stop | Of those, how many stopped for the same reason as Claude (finished, or asked for a tool) |
+| same tools | How many called the same tools the same number of times, in any order |
+| both | How many did both |
+| local, upstream | Median time for the local answer and for Claude's |
+
+These compare the shape of two answers, not whether the local one was
+right. A local answer that calls one tool where Claude called three in
+parallel "differs" and may still be fine; one that matches may still have
+passed the wrong arguments. Open the captures to look closer: each shadow
+is saved beside the real capture as `.shadow.md`.
+
+Things to know:
+
+- It costs nothing upstream, and it cannot slow or change a response: a
+  shadow starts only after the real exchange has finished.
+- Each turn is shadowed on its own, given the history Claude actually
+  produced. It tests "would the local model have made this move", not
+  "would it have finished the task".
+- The local model answers one request at a time. Shadows queue, sixteen
+  deep; beyond that they are dropped and counted as skipped. If a rule is
+  also sending live requests local, shadows compete with them.
+- Shadow runs are in none of the other figures `janus stats` reports.
 
 ### Seeing what a rule would do
 

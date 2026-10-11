@@ -77,6 +77,27 @@ func (w *Writer) Write(ex proxy.Exchange) (name string, err error) {
 	return name, nil
 }
 
+// WriteShadow saves a shadow run beside the capture it shadows, as
+// <name>.shadow.md, .shadow.request.txt (what was sent to the local model),
+// and .shadow.response.txt. name is what Write returned for the real
+// request.
+func (w *Writer) WriteShadow(name string, ex proxy.Exchange) error {
+	base := filepath.Join(w.dir, name)
+	if err := os.MkdirAll(filepath.Dir(base), 0o700); err != nil {
+		return fmt.Errorf("capture: %w", err)
+	}
+	for ext, content := range map[string][]byte{
+		".shadow.request.txt":  ex.RequestBody,
+		".shadow.response.txt": ex.ResponseBody,
+		".shadow.md":           []byte(Render(ex)),
+	} {
+		if err := os.WriteFile(base+ext, content, 0o600); err != nil {
+			return fmt.Errorf("capture: %w", err)
+		}
+	}
+	return nil
+}
+
 // sanitize turns a request path into something safe in a file name:
 // "/v1/messages" becomes "v1-messages".
 func sanitize(path string) string {
@@ -171,7 +192,7 @@ func (w *Writer) Prune(now time.Time) error {
 // stem is a capture file's path without its extension, which the three
 // files of one capture share.
 func stem(path string) string {
-	for _, ext := range []string{".request.txt", ".response.txt", ".md"} {
+	for _, ext := range []string{".shadow.request.txt", ".shadow.response.txt", ".shadow.md", ".request.txt", ".response.txt", ".md"} {
 		if s, ok := strings.CutSuffix(path, ext); ok {
 			return s
 		}

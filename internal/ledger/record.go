@@ -52,6 +52,30 @@ type Record struct {
 	// Capture is the capture's path under the captures directory, without
 	// extension, when one was written.
 	Capture string `json:"capture,omitempty"`
+	// ShadowOf marks a shadow run: the same request answered a second time
+	// by the local model, for comparison. It holds the id of the real
+	// request. Shadow records are kept out of every total; they did not
+	// serve anyone.
+	ShadowOf string `json:"shadow_of,omitempty"`
+	// Compare sets a shadow's answer beside the real one.
+	Compare *Compare `json:"compare,omitempty"`
+}
+
+// Compare is how a shadow run's answer differed from the real one. It
+// compares shape, not meaning: whether the two stopped for the same reason
+// and reached for the same tools.
+type Compare struct {
+	UpstreamStop  string   `json:"upstream_stop"`
+	LocalStop     string   `json:"local_stop"`
+	UpstreamTools []string `json:"upstream_tools"`
+	LocalTools    []string `json:"local_tools"`
+	// StopMatch and ToolsMatch are the two indicators. Tools match when
+	// both called the same tools the same number of times, in any order.
+	StopMatch  bool `json:"stop_match"`
+	ToolsMatch bool `json:"tools_match"`
+	// UpstreamMs is how long the real answer took, to set beside this
+	// record's own duration.
+	UpstreamMs int64 `json:"upstream_ms"`
 }
 
 // Outcomes of a request.
@@ -62,6 +86,7 @@ const (
 	OutcomeIncomplete = "incomplete"  // the response ended before it should have
 	OutcomeCancelled  = "cancelled"   // the client went away
 	OutcomeNoResponse = "no_response" // nothing came back from the backend
+	OutcomeSkipped    = "skipped"     // a shadow run that was not attempted; Reason says why
 )
 
 // Request is what a Messages request contained, by size and shape only.
@@ -79,6 +104,8 @@ type Response struct {
 	Model      string   `json:"model,omitempty"`
 	StopReason string   `json:"stop_reason,omitempty"`
 	Blocks     []string `json:"blocks"`
+	// Tools is the name of each tool called, in order.
+	Tools []string `json:"tools,omitempty"`
 }
 
 // Usage is token usage split the way it is priced. A field the server did
@@ -139,7 +166,7 @@ func FromExchange(ex proxy.Exchange) Record {
 		if blocks == nil {
 			blocks = []string{}
 		}
-		rec.Response = &Response{Model: s.Model, StopReason: s.StopReason, Blocks: blocks}
+		rec.Response = &Response{Model: s.Model, StopReason: s.StopReason, Blocks: blocks, Tools: s.Tools}
 		u := s.Usage
 		rec.Usage = &Usage{
 			Input: u.Input, Output: u.Output,

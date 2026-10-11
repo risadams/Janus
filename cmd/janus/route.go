@@ -91,6 +91,9 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "          changes on the way: %s\n", strings.Join(plan.Stages, ", "))
 	default:
 		fmt.Fprintf(stdout, "Decision  upstream, untouched\n")
+		if plan.Shadow != nil {
+			fmt.Fprintf(stdout, "          then run again on %s for comparison; that answer is only recorded\n", plan.Shadow.Model)
+		}
 	}
 	return 0
 }

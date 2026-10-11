@@ -16,7 +16,9 @@ type Summary struct {
 	// Blocks lists the type of each content block in order, for example
 	// ["thinking", "text", "tool_use"].
 	Blocks []string
-	Usage  Usage
+	// Tools lists the name of each tool the model called, in order.
+	Tools []string
+	Usage Usage
 	// Error is set when the response was an API error, either as the whole
 	// body or as an error event in the middle of a stream.
 	Error *APIError
@@ -118,6 +120,7 @@ type wireMessage struct {
 	Usage      *wireUsage `json:"usage"`
 	Content    []struct {
 		Type string `json:"type"`
+		Name string `json:"name"`
 	} `json:"content"`
 	Error *APIError `json:"error"`
 }
@@ -190,6 +193,9 @@ func (o *Observer) readJSONBody() {
 	o.summary.Usage.merge(m.Usage)
 	for _, b := range m.Content {
 		o.summary.Blocks = append(o.summary.Blocks, b.Type)
+		if b.Type == "tool_use" {
+			o.summary.Tools = append(o.summary.Tools, b.Name)
+		}
 	}
 }
 
@@ -239,6 +245,7 @@ func (o *Observer) dispatch() {
 		Message *wireMessage `json:"message"`
 		Block   *struct {
 			Type string `json:"type"`
+			Name string `json:"name"`
 		} `json:"content_block"`
 		Delta *struct {
 			StopReason string `json:"stop_reason"`
@@ -266,6 +273,9 @@ func (o *Observer) dispatch() {
 	case "content_block_start":
 		if ev.Block != nil {
 			o.summary.Blocks = append(o.summary.Blocks, ev.Block.Type)
+			if ev.Block.Type == "tool_use" {
+				o.summary.Tools = append(o.summary.Tools, ev.Block.Name)
+			}
 		}
 	case "message_delta":
 		if ev.Delta != nil && ev.Delta.StopReason != "" {

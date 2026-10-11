@@ -118,6 +118,11 @@ func TestValidate(t *testing.T) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
 			c.Routing = []Rule{{Name: "subagents", Class: "subagent", MaxTokens: 40000, Route: "local", Local: "janus-local"}, {Route: "upstream"}}
 		}, ""},
+		{"a shadow rule", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Class: "subagent", Route: "shadow", Local: "janus-local"}}
+		}, ""},
+		{"shadow rule naming no model", func(c *Config) { c.Routing = []Rule{{Route: "shadow"}} }, "routing[0].local is not set"},
 		{"rule with an unknown class", func(c *Config) { c.Routing = []Rule{{Class: "sidekick", Route: "upstream"}} }, `routing[0].class "sidekick"`},
 		{"rule with no route", func(c *Config) { c.Routing = []Rule{{Name: "x", Class: "main"}} }, "routing[0] (x).route is not set"},
 		{"rule with an unknown route", func(c *Config) { c.Routing = []Rule{{Route: "sideways"}} }, `routing[0].route "sideways"`},

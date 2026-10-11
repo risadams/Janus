@@ -133,6 +133,8 @@ type Report struct {
 	ByBackend []Row     `json:"by_backend"`
 	// Outcomes counts requests by outcome.
 	Outcomes map[string]int `json:"outcomes"`
+	// Shadow summarises shadow runs by class. They are in no other figure.
+	Shadow []ShadowRow `json:"shadow,omitempty"`
 	// Unread counts Messages responses janus relayed but could not read.
 	// Their tokens are missing from every figure in the report.
 	Unread int `json:"unread,omitempty"`
@@ -160,9 +162,18 @@ func Summarise(records []Record, prices Prices) Report {
 		return rows[key]
 	}
 
-	for i, rec := range records {
-		if i == 0 {
-			rep.From = rec.Time
+	shadows := map[string]*shadowTally{}
+	first := true
+	for _, rec := range records {
+		if rec.ShadowOf != "" {
+			if shadows[rec.Class] == nil {
+				shadows[rec.Class] = &shadowTally{}
+			}
+			shadows[rec.Class].add(rec)
+			continue
+		}
+		if first {
+			rep.From, first = rec.Time, false
 		}
 		rep.To = rec.Time
 		rep.Outcomes[rec.Outcome]++
@@ -181,6 +192,10 @@ func Summarise(records []Record, prices Prices) Report {
 	}
 
 	rep.ByClass, rep.ByModel, rep.ByBackend = sorted(byClass), sorted(byModel), sorted(byBackend)
+	for class, tally := range shadows {
+		rep.Shadow = append(rep.Shadow, tally.row(class))
+	}
+	sort.Slice(rep.Shadow, func(i, j int) bool { return rep.Shadow[i].Class < rep.Shadow[j].Class })
 	return rep
 }
 
@@ -201,4 +216,73 @@ func sorted(rows map[string]*Row) []Row {
 		return a.Key < b.Key
 	})
 	return out
+}
+
+// ShadowRow is how the local model did on one class of request, judged
+// against the real answers.
+type ShadowRow struct {
+	Class string `json:"class"`
+	// Runs is every shadow asked for. Of those, Skipped were never sent
+	// (too large, queue full), Failed were sent and came back unusable
+	// (an error, cut off, or empty), and Compared came back whole.
+	Runs     int `json:"runs"`
+	Skipped  int `json:"skipped"`
+	Failed   int `json:"failed"`
+	Compared int `json:"compared"`
+	// Of the compared runs: how many stopped for the same reason as the
+	// real answer, how many called the same tools, and how many did both.
+	StopMatch  int `json:"stop_match"`
+	ToolsMatch int `json:"tools_match"`
+	BothMatch  int `json:"both_match"`
+	// Median durations of the compared runs and of the real answers they
+	// were compared with.
+	LocalMedianMs    int64 `json:"local_median_ms"`
+	UpstreamMedianMs int64 `json:"upstream_median_ms"`
+}
+
+type shadowTally struct {
+	counts              ShadowRow
+	localMs, upstreamMs []int64
+}
+
+func (t *shadowTally) add(rec Record) {
+	t.counts.Runs++
+	switch {
+	case rec.Outcome == OutcomeSkipped:
+		t.counts.Skipped++
+		return
+	case rec.Outcome != OutcomeOK || rec.Compare == nil || rec.Response == nil || len(rec.Response.Blocks) == 0:
+		// A well-formed answer with nothing in it is a failure too: it is
+		// the "successful but empty" response small models produce.
+		t.counts.Failed++
+		return
+	}
+	t.counts.Compared++
+	if rec.Compare.StopMatch {
+		t.counts.StopMatch++
+	}
+	if rec.Compare.ToolsMatch {
+		t.counts.ToolsMatch++
+	}
+	if rec.Compare.StopMatch && rec.Compare.ToolsMatch {
+		t.counts.BothMatch++
+	}
+	t.localMs = append(t.localMs, rec.DurationMs)
+	t.upstreamMs = append(t.upstreamMs, rec.Compare.UpstreamMs)
+}
+
+func (t *shadowTally) row(class string) ShadowRow {
+	r := t.counts
+	r.Class = class
+	r.LocalMedianMs, r.UpstreamMedianMs = medianOf(t.localMs), medianOf(t.upstreamMs)
+	return r
+}
+
+func medianOf(values []int64) int64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sorted := append([]int64(nil), values...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	return sorted[len(sorted)/2]
 }

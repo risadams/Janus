@@ -597,3 +597,27 @@ func TestSubagentRuleFallsBackEndToEnd(t *testing.T) {
 		t.Errorf("status %d, exchange backend %q reason %q", res.Status, res.Exchange.Backend, res.Exchange.Reason)
 	}
 }
+
+func TestShadowRuleSendsUpstreamUntouchedAndAsksForAShadow(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	r.Rules = []Rule{{Name: "watch", Class: Subagent, Route: RouteShadow, Local: LocalModel{ID: "qwen/qwen3.8-27b", ContextTokens: 5000, Timeout: time.Minute}}}
+	req := parse(t, opusRequest)
+
+	plan, refusal, trace := r.Explain(context.Background(), subagentHeader(), req)
+	if refusal != nil || plan.Backend.Name() != "upstream" || plan.Body != nil || plan.ResponseModel != "" || req.Modified() {
+		t.Fatalf("plan = %+v; a shadowed request must go upstream exactly as it arrived", plan)
+	}
+	want := proxy.Shadow{Model: "qwen/qwen3.8-27b", ContextTokens: 5000, Timeout: time.Minute, Reason: "rule watch"}
+	if plan.Shadow == nil || *plan.Shadow != want {
+		t.Errorf("shadow = %+v, want %+v", plan.Shadow, want)
+	}
+	if plan.Route != "upstream" || plan.Reason != "rule watch" || trace[0] != "rule watch: upstream, and shadowed on qwen/qwen3.8-27b" {
+		t.Errorf("route %q reason %q trace %q", plan.Route, plan.Reason, trace)
+	}
+
+	// A request the rule does not match asks for no shadow.
+	if plan, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest)); plan.Shadow != nil {
+		t.Error("an unmatched request was given a shadow")
+	}
+}
