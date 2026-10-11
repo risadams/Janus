@@ -60,6 +60,11 @@ type Exchange struct {
 	// case: for example a content encoding janus cannot decode. The
 	// response was still relayed.
 	Unread string
+	// Fault is what went wrong reading the response from the backend, when
+	// it broke off part-way: the connection dropped, or the backend sent a
+	// body that did not match its own framing. Empty for a response that
+	// arrived whole, and for one the client abandoned.
+	Fault string
 
 	// RequestBody is kept for Messages requests always, and for everything
 	// else only when Options.KeepBodies is set. ResponseBody is kept only
@@ -155,6 +160,7 @@ type exchangeState struct {
 	unread         string
 	responseHeader http.Header
 	firstByte      time.Time
+	fault          error
 }
 
 type stateKey struct{}
@@ -311,6 +317,11 @@ func New(opts Options) http.Handler {
 			if !state.firstByte.IsZero() {
 				ex.TTFB = state.firstByte.Sub(start)
 			}
+			// A read that failed because the client left is the client's
+			// doing, already recorded as Cancelled.
+			if state.fault != nil && !ex.Cancelled {
+				ex.Fault = state.fault.Error()
+			}
 			if requestBody != nil {
 				ex.RequestBody, ex.RequestTruncated = requestBody.snapshot()
 			} else {
@@ -377,6 +388,9 @@ func (b *observedBody) Read(p []byte) (int, error) {
 		if b.state.observation != nil {
 			b.state.observation.Write(p[:n])
 		}
+	}
+	if err != nil && err != io.EOF {
+		b.state.fault = err
 	}
 	return n, err
 }

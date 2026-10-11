@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -180,9 +181,17 @@ func fidelityCases(t *testing.T) []fidelityCase {
 // perform sends one case to target and returns the response as received.
 func perform(t *testing.T, target string, c fidelityCase) got {
 	t.Helper()
-	req, err := http.NewRequest(c.method, target+c.path, bytes.NewReader(c.body))
+	g, err := tryPerform(target, c)
 	if err != nil {
 		t.Fatal(err)
+	}
+	return g
+}
+
+func tryPerform(target string, c fidelityCase) (got, error) {
+	req, err := http.NewRequest(c.method, target+c.path, bytes.NewReader(c.body))
+	if err != nil {
+		return got{}, err
 	}
 	for k, vs := range c.header {
 		req.Header[k] = append([]string(nil), vs...)
@@ -192,14 +201,14 @@ func perform(t *testing.T, target string, c fidelityCase) got {
 	}
 	resp, err := plainClient.Do(req)
 	if err != nil {
-		t.Fatal(err)
+		return got{}, fmt.Errorf("sending: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatal(err)
+		return got{}, fmt.Errorf("reading the response after %d bytes: %w", len(body), err)
 	}
-	return got{resp.StatusCode, resp.Header, body, resp.ContentLength, resp.TransferEncoding}
+	return got{resp.StatusCode, resp.Header, body, resp.ContentLength, resp.TransferEncoding}, nil
 }
 
 func headerDiff(a, b http.Header, ignore ...string) string {
@@ -422,3 +431,59 @@ func benchmarkMessages(b *testing.B, throughJanus bool) {
 
 func BenchmarkMessagesDirect(b *testing.B)       { benchmarkMessages(b, false) }
 func BenchmarkMessagesThroughJanus(b *testing.B) { benchmarkMessages(b, true) }
+
+// Megabyte bodies in both directions, many times over. One pass of the
+// fidelity suite has failed on this shape on a Linux runner with the
+// response cut short, and never on macOS; repetition is what makes a rare
+// failure show itself, and each failure says which leg broke and what the
+// proxy saw.
+func TestLargeBodiesRepeatedly(t *testing.T) {
+	if testing.Short() {
+		t.Skip("repetition test")
+	}
+	var large fidelityCase
+	for _, c := range fidelityCases(t) {
+		if c.name == "large binary bodies both ways" {
+			large = c
+		}
+	}
+	if large.respond == nil {
+		t.Fatal("the large-body case is missing from fidelityCases")
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if n, err := io.Copy(io.Discard, r.Body); err != nil {
+			t.Errorf("upstream could not read the request after %d bytes: %v", n, err)
+		}
+		large.respond(w, r)
+	}))
+	defer upstream.Close()
+	u, _ := url.Parse(upstream.URL)
+	var mu sync.Mutex
+	var faults []string
+	janus := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), KeepBodies: true, Done: func(ex Exchange) {
+		if ex.Fault != "" || ex.Status != 200 || ex.Cancelled {
+			mu.Lock()
+			faults = append(faults, fmt.Sprintf("status %d, cancelled %v, fault %q, %d response bytes kept", ex.Status, ex.Cancelled, ex.Fault, len(ex.ResponseBody)))
+			mu.Unlock()
+		}
+	}}))
+
+	want := 1 << 20
+	for i := 0; i < 150; i++ {
+		for leg, target := range map[string]string{"direct": upstream.URL, "through janus": janus.URL} {
+			g, err := tryPerform(target, large)
+			if err != nil || len(g.Body) != want {
+				t.Errorf("run %d, %s: %d of %d bytes, err: %v", i, leg, len(g.Body), want, err)
+			}
+		}
+	}
+	// Closing waits for every handler to return, so every exchange has
+	// been reported by the time the faults are read.
+	janus.Close()
+	mu.Lock()
+	defer mu.Unlock()
+	for _, f := range faults {
+		t.Errorf("janus reported: %s", f)
+	}
+}
