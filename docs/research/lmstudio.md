@@ -17,7 +17,11 @@ clean-up and response normalisation, listed under "What Janus must do".
 
 ## Setup
 
-- LM Studio server on `http://localhost:1234`, Apple M5 Max, 36 GB.
+- LM Studio server on `http://localhost:1234`, Apple M5 Max, 36 GB. Janus
+  itself will address it as `http://studio.tuesday.local:1234` (FR-3.5). At
+  the time of this spike LM Studio was listening on `127.0.0.1` only, so
+  that hostname refused connections; "Serve on Local Network" has to be
+  enabled in LM Studio first.
   LM Studio's version could not be read from the machine and is not
   recorded; re-run these checks when it is upgraded.
 - Models tried: `qwen/qwen3.8-27b` (MLX 4-bit) and
