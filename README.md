@@ -21,7 +21,9 @@ the local model stand in when Claude is down. The checks catch broken
 answers, not wrong ones.
 
 With `features.guard` on, Janus looks for credentials in requests going
-upstream and records what it finds, without changing anything yet: see
+upstream and records what it finds. With `guard.redact` as well, it
+replaces each one with a placeholder before the request leaves and puts it
+back in the answer, so Claude can use a secret without seeing it: see
 [the guard](docs/GUARD.md).
 
 `janus mcp` is a separate piece: an MCP server giving Claude a tool that

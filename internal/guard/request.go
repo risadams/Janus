@@ -49,22 +49,15 @@ func (r Report) Summary() string {
 // It leaves two things alone. Thinking blocks hold a signature, which is
 // random by design and not a secret of the user's. Images are not text.
 func (d *Detector) ScanRequest(req *anthropic.Request) Report {
-	report := Report{Kinds: map[string]int{}}
-	note := func(where, text string) {
-		found := d.Scan(text)
-		if len(found) == 0 {
-			return
-		}
-		report.Findings += len(found)
-		for _, f := range found {
-			report.Kinds[f.Kind]++
-		}
-		report.Where = append(report.Where, where)
-	}
+	return d.secretsIn(req).report
+}
 
+// textOf calls visit with each part of a request that carries text from
+// the user's machine, and where that part is.
+func textOf(req *anthropic.Request, visit func(where, text string)) {
 	for i, b := range req.System() {
 		if b.Type == "text" {
-			note(fmt.Sprintf("system[%d]", i), b.Text())
+			visit(fmt.Sprintf("system[%d]", i), b.Text())
 		}
 	}
 	for i, m := range req.Messages() {
@@ -104,9 +97,8 @@ func (d *Detector) ScanRequest(req *anthropic.Request) Report {
 			names = append(names, k)
 		}
 		sort.Strings(names)
-		note(fmt.Sprintf("messages[%d] %s (%s)", i, m.Role, strings.Join(names, ", ")), text.String())
+		visit(fmt.Sprintf("messages[%d] %s (%s)", i, m.Role, strings.Join(names, ", ")), text.String())
 	}
-	return report
 }
 
 // stringsIn writes every string inside a JSON value to out, one per line,

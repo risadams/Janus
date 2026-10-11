@@ -44,8 +44,8 @@ type Config struct {
 }
 
 // Guard configures the search for secrets in requests going upstream.
-// With features.guard on, janus looks for them and records what it finds.
-// It does not yet change or block anything.
+// With features.guard on, janus looks for them and records what it finds;
+// with Redact as well, it keeps them from leaving.
 type Guard struct {
 	// Patterns are extra regular expressions to treat as secrets. A
 	// pattern with a capture group marks the group as the secret.
@@ -55,6 +55,10 @@ type Guard struct {
 	// Entropy also looks for long random-looking strings that fit no
 	// known format. It finds more and is wrong more often.
 	Entropy bool `json:"entropy,omitempty"`
+	// Redact replaces each secret with a placeholder before the request is
+	// sent, and puts it back in the answer. Without it the guard only
+	// reports what it finds.
+	Redact bool `json:"redact,omitempty"`
 }
 
 // Price is what one model costs, in US dollars per million tokens.

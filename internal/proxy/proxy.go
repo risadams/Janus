@@ -11,12 +11,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/backend"
+	"github.com/risadams/janus/internal/guard"
 )
 
 // Exchange describes one request janus handled, reported when it is over.
@@ -52,6 +54,9 @@ type Exchange struct {
 	// for comparison. The proxy only carries it; whoever receives the
 	// Exchange does the running.
 	Shadow *Shadow
+	// Guard is set when the redactor examined this request: what it
+	// found, and what it did about it.
+	Guard *Guard
 	// Attempt is set when a plan with a fallback was tried: either its
 	// answer was put on trial, or it failed and the fallback answered.
 	Attempt *Attempt
@@ -83,6 +88,21 @@ type Exchange struct {
 	ResponseHeader    http.Header
 	ResponseBody      []byte
 	ResponseTruncated bool
+}
+
+// Guard is what the redactor did with one request.
+type Guard struct {
+	// Report is what was found, without the values.
+	Report guard.Report
+	// Replaced is how many distinct secrets were replaced with
+	// placeholders before the request was sent; Restored is how many
+	// placeholders were turned back into secrets in the response.
+	Replaced int
+	Restored int
+	// Blocked is set when the exchange was stopped: the request could not
+	// be made safe to send, or the response referred to a secret in a form
+	// that could not be restored.
+	Blocked string
 }
 
 // Attempt is what became of a try at a backend that had a fallback.
@@ -123,6 +143,10 @@ type Options struct {
 	Plan Planner
 	// Done is called once per request, after the response has ended.
 	Done func(Exchange)
+	// Redactor, when set, replaces secrets with placeholders in every
+	// Messages and count_tokens request sent to the upstream, and puts them
+	// back in the response. A request it cannot make safe is not sent.
+	Redactor *guard.Redactor
 	// KeepBodies makes every Exchange carry its request and response
 	// bodies, for capture logging. Off, only Messages request bodies are
 	// kept, which the ledger needs.
@@ -213,6 +237,13 @@ type exchangeState struct {
 
 	attempt      *Attempt
 	backendFault bool
+
+	// redaction is what was replaced in the request now being sent, if it
+	// is going upstream and anything was found. guard accumulates what to
+	// report; restorer is the response stream being restored.
+	redaction *guard.Redaction
+	guard     *Guard
+	restorer  *guard.Restorer
 	// served is an answer given to the client from memory, by a trial
 	// that passed, rather than relayed.
 	served *Fetched
@@ -268,6 +299,11 @@ func New(opts Options) http.Handler {
 			state := r.In.Context().Value(stateKey{}).(*exchangeState)
 			r.SetURL(state.plan.Backend.URL())
 			state.plan.Backend.Prepare(r.Out, state.messages)
+			if state.redaction.Active() {
+				// The response has to be read and rewritten to put the
+				// secrets back, so it must not arrive compressed.
+				r.Out.Header.Set("Accept-Encoding", "identity")
+			}
 		},
 		Transport: transport,
 		// Flush after every write, so a streamed completion reaches the
@@ -303,6 +339,29 @@ func New(opts Options) http.Handler {
 				}
 			}
 			resp.Body = &observedBody{ReadCloser: resp.Body, state: state}
+			if rd := state.redaction; rd.Active() && state.messages && resp.StatusCode == http.StatusOK {
+				// Restoring wraps the observed body: the ledger and the
+				// capture see what the upstream really sent, placeholders
+				// and all, and only the client gets the secrets back.
+				if isEventStream(resp.Header) {
+					state.restorer = rd.Restore(resp.Body)
+					resp.Body = state.restorer
+				} else {
+					raw, _ := io.ReadAll(resp.Body)
+					resp.Body.Close()
+					restored, n, err := rd.RestoreJSON(raw)
+					if err != nil {
+						state.guard.Blocked = err.Error()
+						restored = errorBody("api_error", fmt.Sprintf("janus: %v. The answer was withheld so that nothing acts on it; try again.", err))
+						resp.StatusCode, resp.Status = http.StatusBadGateway, "502 Bad Gateway"
+						resp.Header.Set("Content-Type", "application/json")
+					}
+					state.guard.Restored = n
+					resp.Body = io.NopCloser(bytes.NewReader(restored))
+					resp.ContentLength = int64(len(restored))
+					resp.Header.Set("Content-Length", strconv.Itoa(len(restored)))
+				}
+			}
 			// Renaming wraps the observed body, so the ledger sees the
 			// backend's real model name and the client sees the one it
 			// asked for.
@@ -371,6 +430,9 @@ func New(opts Options) http.Handler {
 			original    []byte        // or the whole body, read up front
 			truncated   bool
 			refusal     *Refusal
+			// inspectOnly marks a request that is read whole to be checked
+			// for secrets but is not otherwise planned or summarised.
+			inspectOnly bool
 		)
 		switch {
 		case state.messages && r.Body != nil:
@@ -404,6 +466,11 @@ func New(opts Options) http.Handler {
 				r.Body = io.NopCloser(bytes.NewReader(send))
 				r.ContentLength = int64(len(send))
 			}
+		case opts.Redactor != nil && isCountTokens(r) && r.Body != nil:
+			// Token counting sends the same content upstream as the
+			// request it is counting for, so it is checked the same way.
+			original, truncated = readUpTo(r.Body, maxKept)
+			inspectOnly = true
 		case state.keep && r.Body != nil:
 			requestBody = &cappedBuffer{limit: maxKept}
 			r.Body = &teeBody{ReadCloser: r.Body, copy: requestBody}
@@ -416,13 +483,39 @@ func New(opts Options) http.Handler {
 			}
 			return base, func() {}
 		}
-		// sendBody is what the current plan sends: its own body if it has
-		// one, and otherwise the request exactly as the client sent it.
-		sendBody := func(plan Plan) []byte {
-			if plan.Body != nil {
-				return plan.Body
+		// prepare gives what the plan sends: its own body if it has one,
+		// and otherwise the request as the client sent it; with secrets
+		// replaced if it is going upstream and a redactor is set. An error
+		// means the request could not be made safe and must not be sent.
+		prepare := func(plan Plan) ([]byte, error) {
+			body := plan.Body
+			if body == nil {
+				body = original
 			}
-			return original
+			state.redaction = nil
+			if opts.Redactor == nil || plan.Backend.Name() != "upstream" {
+				return body, nil
+			}
+			if state.guard == nil {
+				state.guard = &Guard{}
+			}
+			if truncated {
+				return nil, errors.New("the request is too large to check for secrets")
+			}
+			rd, err := opts.Redactor.Redact(body)
+			if err != nil {
+				return nil, err
+			}
+			state.redaction = rd
+			state.guard.Report, state.guard.Replaced = rd.Report, rd.Replaced
+			return rd.Body, nil
+		}
+		// blocked answers the client when prepare fails. Nothing has been
+		// sent anywhere.
+		blocked := func(w http.ResponseWriter, err error) {
+			state.guard.Blocked = err.Error()
+			state.plan.Reason = "guard: " + err.Error() + "; not sent"
+			writeError(w, http.StatusInternalServerError, "api_error", fmt.Sprintf("janus: %v. The request was not sent upstream.", err))
 		}
 
 		if state.messages && !truncated && (state.plan.Else != nil || state.plan.Fallback != nil) {
@@ -452,7 +545,11 @@ func New(opts Options) http.Handler {
 				state.plan = *next
 				state.plan.Reason = fmt.Sprintf("%s: %s; sent %s", tried.Reason, why, state.plan.Backend.Name())
 
-				body := sendBody(state.plan)
+				body, err := prepare(state.plan)
+				if err != nil {
+					blocked(w, err)
+					return true
+				}
 				r.Body = io.NopCloser(bytes.NewReader(body))
 				r.ContentLength = int64(len(body))
 				ctx, cancel := withTimeout(state.plan)
@@ -487,6 +584,18 @@ func New(opts Options) http.Handler {
 				BackendFault:   state.backendFault,
 				Unread:         state.unread,
 				ResponseHeader: state.responseHeader,
+			}
+			if g := state.guard; g != nil {
+				if rs := state.restorer; rs != nil {
+					g.Restored = rs.Restored
+					if rs.Err != nil {
+						g.Blocked = rs.Err.Error()
+					}
+				}
+				ex.Guard = g
+				if g.Blocked != "" && sw.status == http.StatusInternalServerError {
+					ex.Backend = "none"
+				}
 			}
 			if got := state.served; got != nil {
 				ex.TTFB, ex.ResponseHeader, ex.Summary = got.Duration, got.Header, &got.Summary
@@ -530,11 +639,24 @@ func New(opts Options) http.Handler {
 			return
 		}
 
+		var sending []byte
+		if (state.messages || inspectOnly) && original != nil {
+			var err error
+			if sending, err = prepare(state.plan); err != nil {
+				blocked(sw, err)
+				return
+			}
+			if !truncated {
+				r.Body = io.NopCloser(bytes.NewReader(sending))
+				r.ContentLength = int64(len(sending))
+			}
+		}
+
 		if state.fallBack != nil && state.plan.Accept != nil && state.plan.Else != nil {
 			// A trial: get the whole answer, judge it, and only then
 			// decide what the client receives.
 			tried := state.plan
-			got := Fetch(ctx, client, tried.Backend, r.Header, sendBody(tried), trialLimit)
+			got := Fetch(ctx, client, tried.Backend, r.Header, sending, trialLimit)
 			if r.Context().Err() != nil {
 				return // the client left while the local model was working
 			}
@@ -591,6 +713,14 @@ func readUpTo(r io.Reader, limit int) (data []byte, truncated bool) {
 		return data, true
 	}
 	return data, false
+}
+
+func isCountTokens(r *http.Request) bool {
+	return r.Method == http.MethodPost && r.URL.Path == "/v1/messages/count_tokens"
+}
+
+func isEventStream(h http.Header) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.Get("Content-Type"))), "text/event-stream")
 }
 
 func isMessages(r *http.Request) bool {
@@ -677,10 +807,16 @@ func (b *cappedBuffer) snapshot() (data []byte, truncated bool) {
 func writeError(w http.ResponseWriter, status int, kind, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]any{
+	w.Write(errorBody(kind, message))
+}
+
+// errorBody is an error in the Anthropic API's shape.
+func errorBody(kind, message string) []byte {
+	body, _ := json.Marshal(map[string]any{
 		"type":  "error",
 		"error": map[string]string{"type": kind, "message": message},
 	})
+	return append(body, '\n')
 }
 
 // statusWriter remembers the status code for the request log. Unwrap lets

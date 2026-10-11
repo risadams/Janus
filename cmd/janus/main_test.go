@@ -374,3 +374,39 @@ func TestNewDetectorUsesTheConfig(t *testing.T) {
 		t.Errorf("findings = %+v, entropy = %v; want the custom pattern only, the key being allowed", found, d.Entropy)
 	}
 }
+
+func TestRecordUsesTheRedactorsOwnAccount(t *testing.T) {
+	dir := t.TempDir()
+	var console bytes.Buffer
+	ex := exchangeCarrying(fakeAWSKey)
+	ex.Guard = &proxy.Guard{Report: guard.Report{Findings: 1, Kinds: map[string]int{"aws_access_key": 1}, Where: []string{"messages[1] user (tool_result)"}}, Replaced: 1, Restored: 2}
+
+	// A detector is passed too, to show the redactor's account takes
+	// precedence over scanning the request again.
+	rec := record(ex, ledger.Open(filepath.Join(dir, "ledger")), nil, &guard.Detector{}, log.New(&console, "", 0))
+	g := rec.Guard
+	if g == nil || g.Findings != 1 || g.Redacted == nil || *g.Redacted != 1 || g.Restored != 2 || g.Blocked != "" {
+		t.Fatalf("guard = %+v", g)
+	}
+	if !strings.Contains(console.String(), "[guard: 1 kept from going upstream (aws_access_key), 2 put back in the answer]") {
+		t.Errorf("console = %q", console.String())
+	}
+	if strings.Contains(console.String(), fakeAWSKey) {
+		t.Error("the console contains the secret")
+	}
+
+	blocked := exchangeCarrying("x")
+	blocked.Guard = &proxy.Guard{Blocked: "the request could not be read to check it for secrets"}
+	console.Reset()
+	rec = record(blocked, ledger.Open(filepath.Join(dir, "ledger")), nil, nil, log.New(&console, "", 0))
+	if rec.Guard == nil || rec.Guard.Blocked == "" || !strings.Contains(console.String(), "[guard: stopped: the request could not be read") {
+		t.Errorf("guard = %+v, console = %q", rec.Guard, console.String())
+	}
+
+	// A redactor that found nothing leaves no guard field.
+	clean := exchangeCarrying("x")
+	clean.Guard = &proxy.Guard{}
+	if rec := record(clean, ledger.Open(filepath.Join(dir, "ledger")), nil, nil, log.New(io.Discard, "", 0)); rec.Guard != nil {
+		t.Errorf("a clean request got a guard field: %+v", rec.Guard)
+	}
+}

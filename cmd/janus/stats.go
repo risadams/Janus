@@ -150,17 +150,25 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		fmt.Fprintf(w, "\n%s requests could not be priced and are in no cost above:\n%s\n",
 			commas(rep.Total.Unpriced), strings.Join(reasons, "\n"))
 	}
-	if g := rep.Guard; g.Requests > 0 {
+	if g := rep.Guard; g.Requests > 0 || g.Blocked > 0 {
 		kinds := make([]string, 0, len(g.Kinds))
 		for kind, n := range g.Kinds {
 			kinds = append(kinds, fmt.Sprintf("%s %s", kind, commas(n)))
 		}
 		sort.Strings(kinds)
-		fmt.Fprintf(w, "\nGUARD: %s requests that went upstream carried something that looks like a\n"+
-			"secret (%s). Nothing was removed or blocked: the guard only\n"+
-			"detects so far. A secret in a conversation is resent with every turn and\n"+
-			"counted each time. The ledger's \"guard\" field says where in each request.\n",
-			commas(g.Requests), strings.Join(kinds, ", "))
+		fmt.Fprintf(w, "\nGUARD: %s requests bound for upstream carried something that looks like a\nsecret (%s).\n", commas(g.Requests), strings.Join(kinds, ", "))
+		if exposed := g.Requests - g.Redacted; exposed > 0 {
+			fmt.Fprintf(w, "  %s of them were sent with the secrets in them: the guard was only detecting.\n"+
+				"  Set guard.redact to replace secrets before they leave.\n", commas(exposed))
+		}
+		if g.Redacted > 0 {
+			fmt.Fprintf(w, "  %s had their secrets replaced with placeholders before being sent, and %s\n"+
+				"  placeholders were turned back into secrets in the answers.\n", commas(g.Redacted), commas(g.Restored))
+		}
+		if g.Blocked > 0 {
+			fmt.Fprintf(w, "  %s exchanges were stopped because they could not be made safe. Search the\n  ledger for \"blocked\" to see why.\n", commas(g.Blocked))
+		}
+		fmt.Fprintf(w, "  A secret in a conversation is resent with every turn and counted each time.\n")
 	}
 	if rep.StoodIn > 0 {
 		fmt.Fprintf(w, "\nNOTE: %s requests were answered by the local model because Claude could not\n"+
