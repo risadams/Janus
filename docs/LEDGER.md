@@ -67,6 +67,7 @@ Token counts, split the way they are priced.
 | `cache_write` | Input tokens written to the prompt cache, in total |
 | `cache_write_5m`, `cache_write_1h` | The same, split by cache lifetime |
 | `thinking` | The part of `output` spent on thinking |
+| `speed` | `fast` for a fast-mode request; left out otherwise |
 
 Only `input` and `output` are always present. A field the server did not
 report is left out, and that is not the same as zero: LM Studio, for
@@ -80,17 +81,76 @@ Total input for a request is `input + cache_read + cache_write`.
 {"v":1,"id":"20261011T150013.033-02e426","time":"2026-10-11T15:00:13.033Z","session":"…","agent":"…","method":"POST","path":"/v1/messages","class":"subagent","route":"upstream","reason":"passthrough","stages":[],"backend":"upstream","status":200,"outcome":"ok","ttfb_ms":654,"duration_ms":2101,"request":{"model":"claude-opus-5-5","stream":true,"bytes":47340,"messages":2,"tools":10,"cache_breakpoints":3},"response":{"model":"claude-opus-5-5","stop_reason":"tool_use","blocks":["tool_use"]},"usage":{"input":2,"output":203,"cache_read":0,"cache_write":17189,"cache_write_5m":17189,"cache_write_1h":0,"thinking":0},"capture":"2026-10-11/20261011T150013.033-02e426_v1-messages"}
 ```
 
-### Reading it
+## `janus stats`
 
-It is plain JSON Lines, so `jq` works until `janus stats` exists:
+Reads the ledger and reports where the tokens and the money went.
 
 ```bash
-# tokens by class
-jq -s 'group_by(.class)[] | {class: .[0].class, requests: length,
-  output: (map(.usage.output // 0) | add),
-  cache_read: (map(.usage.cache_read // 0) | add),
-  cache_write: (map(.usage.cache_write // 0) | add)}' logs/ledger/*.jsonl
+janus stats                      # everything
+janus stats -since 24h           # an age: 90m, 24h, 7d
+janus stats -since 2026-10-01    # a local date, or an RFC 3339 time
+janus stats -since 7d -until 1d
+janus stats -json                # the same report, for scripts
 ```
+
+```
+By class
+           class  requests  input  cache write  cache read  output  cache hit  est. cost
+        subagent         4      8       19,693      54,938   1,118      73.6%    $0.1318
+            main         2      4       11,309      33,772     455      74.9%    $0.1063
+    connectivity         1      0            0           0       0          -    $0.0000
+           total         7     12       31,002      88,710   1,573      74.1%    $0.2382
+```
+
+The same breakdown follows by model and by backend, then a count of
+outcomes.
+
+- **input**, **cache write**, and **cache read** together are everything the
+  model was sent. **cache hit** is the share of that read from cache.
+- **est. cost** is at Anthropic's first-party list prices. A subscription is
+  not billed per token, so on one it is a measure of usage, not a bill.
+- Rows are ordered by cost, most expensive first.
+- A cost marked `*` leaves out requests that could not be priced, and the
+  report lists how many and why. An unpriced request is never counted as
+  free.
+
+It reads the ledger directory from the config file, without creating one;
+`-dir` points it elsewhere.
+
+### How cost is worked out
+
+Cost is computed when you run `janus stats`, not stored, so a corrected
+price applies to old records too. Per response:
+
+```
+cost = input          x input price
+     + output         x output price
+     + cache_read     x cache read price
+     + cache_write_5m x 1.25 x input price
+     + cache_write_1h x 2    x input price
+```
+
+The cache read price is listed per model because its discount varies: a
+tenth of the input price on most models, a twentieth on Claude Opus 5.5, a
+fortieth on Claude Fable 5.1. On Claude Code traffic nearly all input is
+cached, so this one number moves the total more than any other.
+
+The table was checked against a real session: Janus's figure matched the
+cost Claude Code itself reported to the last digit ($0.238187).
+
+Not priced, and reported as such:
+
+- models with no entry in the table, which includes local models answering
+  through the upstream route
+- fast mode requests (`usage.speed` is `fast`)
+- Claude Haiku 5.5 requests with a prompt over 100,000 tokens, which are on
+  a different schedule
+
+Requests answered by the local backend count as zero upstream cost.
+
+Prices change. The shipped table carries the date it was last checked,
+printed in every report, and any entry can be corrected or added under
+`pricing` in the [config file](CONFIG.md).
 
 ## Captures
 

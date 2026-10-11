@@ -90,6 +90,8 @@ type Usage struct {
 	CacheWrite5m *int `json:"cache_write_5m,omitempty"`
 	CacheWrite1h *int `json:"cache_write_1h,omitempty"`
 	Thinking     *int `json:"thinking,omitempty"`
+	// Speed is "fast" for a fast-mode request; left out otherwise.
+	Speed string `json:"speed,omitempty"`
 }
 
 // FromExchange builds the record for one proxied request.
@@ -139,6 +141,9 @@ func FromExchange(ex proxy.Exchange) Record {
 			CacheRead: u.CacheRead, CacheWrite: u.CacheWrite,
 			CacheWrite5m: u.CacheWrite5m, CacheWrite1h: u.CacheWrite1h,
 			Thinking: u.Thinking,
+		}
+		if u.Speed != "" && u.Speed != "standard" {
+			rec.Usage.Speed = u.Speed
 		}
 	}
 

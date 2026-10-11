@@ -40,6 +40,13 @@ ledger is one line per request with token usage and no content. Captures
 are the full requests and responses, including your prompts and code; they
 are kept for a week by default and can be switched off.
 
+```bash
+./janus stats -since 24h
+```
+
+shows tokens, cache hit rate, and estimated cost by request class, model,
+and backend.
+
 ## Testing
 
 ```bash

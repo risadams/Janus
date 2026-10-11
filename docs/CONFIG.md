@@ -27,6 +27,8 @@ the defaults below and carries on.
 | `logging.retainDays` | Delete captures older than this. `0` keeps them forever. |
 | `logging.maxMegabytes` | Delete the oldest captures once they exceed this. `0` means no limit. |
 
+| `pricing` | Optional. Prices to add or correct, by model id. See below. |
+
 A field left out of the file keeps its default. A field Janus does not
 recognise is an error, so typos are caught.
 
@@ -42,3 +44,23 @@ Precedence, highest first: flag, environment variable, config file, default.
 
 Overrides apply to the running process only; they are not written back to
 the file.
+
+## Pricing
+
+`janus stats` ships with Anthropic's list prices. To correct one, or to
+price a model it does not know, add it under `pricing`, in US dollars per
+million tokens:
+
+```json
+{
+  "pricing": {
+    "claude-opus-5-5": {
+      "input": 4, "output": 20, "cacheRead": 0.20,
+      "cacheWrite5m": 5, "cacheWrite1h": 8
+    }
+  }
+}
+```
+
+An entry replaces the shipped one for that model outright, so give all five
+rates. See [how cost is worked out](LEDGER.md#how-cost-is-worked-out).
