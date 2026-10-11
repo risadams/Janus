@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -187,12 +188,12 @@ func TestWriteSavesThreePrivateFiles(t *testing.T) {
 	}
 
 	for _, path := range []string{base + ".md", base + ".request.txt", base + ".response.txt"} {
-		if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		if info, _ := os.Stat(path); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 			t.Errorf("%s mode = %o, want 600", filepath.Base(path), info.Mode().Perm())
 		}
 	}
 	for _, path := range []string{dir, filepath.Dir(base)} {
-		if info, _ := os.Stat(path); info.Mode().Perm() != 0o700 {
+		if info, _ := os.Stat(path); runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
 			t.Errorf("%s mode = %o, want 700", path, info.Mode().Perm())
 		}
 	}
@@ -238,7 +239,7 @@ func remaining(t *testing.T, dir string) string {
 	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err == nil && path != dir {
 			rel, _ := filepath.Rel(dir, path)
-			names = append(names, rel)
+			names = append(names, filepath.ToSlash(rel))
 		}
 		return nil
 	})
@@ -341,7 +342,7 @@ func TestWriteShadowSitsBesideTheRealCaptureAndIsPrunedWithIt(t *testing.T) {
 		if err != nil || string(got) != want {
 			t.Errorf("%s: err %v, matches %v", ext, err, string(got) == want)
 		}
-		if info, _ := os.Stat(base + ext); info != nil && info.Mode().Perm() != 0o600 {
+		if info, _ := os.Stat(base + ext); info != nil && runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 			t.Errorf("%s mode = %o, want 600", ext, info.Mode().Perm())
 		}
 	}
@@ -371,7 +372,7 @@ func TestWriteAttemptSavesTheRejectedAnswerBesideTheCapture(t *testing.T) {
 	if err != nil || string(data) != `{"type":"message","content":[]}` {
 		t.Errorf("attempt file: %q, %v", data, err)
 	}
-	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+	if info, _ := os.Stat(path); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Errorf("mode = %o, want 600", info.Mode().Perm())
 	}
 	if stem(path) != filepath.Join(dir, name) {
@@ -400,7 +401,7 @@ func TestWriteSavesWhatWasSentWhenItDiffers(t *testing.T) {
 	if err != nil || string(data) != string(changed.SentBody) {
 		t.Errorf(".sent.txt: %q, %v", data, err)
 	}
-	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+	if info, _ := os.Stat(path); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Errorf("mode = %o, want 600", info.Mode().Perm())
 	}
 	if stem(path) != filepath.Join(dir, name) {

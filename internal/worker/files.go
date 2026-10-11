@@ -308,10 +308,12 @@ func number(files []string, root string, chunkBytes int) (chunks []string, read 
 }
 
 func rel(root, path string) string {
+	// With forward slashes whatever the platform: these names are shown to
+	// a model, and to Claude.
 	if r, err := filepath.Rel(root, path); err == nil {
-		return r
+		return filepath.ToSlash(r)
 	}
-	return path
+	return filepath.ToSlash(path)
 }
 
 func size(n int) string {

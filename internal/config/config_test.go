@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -30,7 +31,7 @@ func TestLoadCreatesStarterFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm != 0o600 {
 		t.Errorf("starter file mode = %o, want 600", perm)
 	}
 

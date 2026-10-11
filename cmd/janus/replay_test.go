@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -112,7 +113,7 @@ func TestReplayComparesEachCaptureWithClaudesAnswer(t *testing.T) {
 		for _, ext := range []string{".replay.md", ".replay.response.txt"} {
 			path := filepath.Join(day, id+"_v1-messages"+ext)
 			info, err := os.Stat(path)
-			if err != nil || info.Size() == 0 || info.Mode().Perm() != 0o600 {
+			if err != nil || info.Size() == 0 || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 				t.Errorf("%s: %v", filepath.Base(path), err)
 			}
 		}

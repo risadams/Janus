@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -195,7 +196,8 @@ func TestAppendWritesOneFilePerUTCDay(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if info.Mode().Perm() != want {
+		// Windows has no such modes; the files take the directory's access list.
+		if runtime.GOOS != "windows" && info.Mode().Perm() != want {
 			t.Errorf("%s mode = %o, want %o", filepath.Base(path), info.Mode().Perm(), want)
 		}
 	}

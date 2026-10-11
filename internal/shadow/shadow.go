@@ -107,13 +107,15 @@ type result struct {
 }
 
 func (r *Runner) write(res result, j job) {
-	if err := r.ledger.Append(res.rec); err != nil {
-		r.logf("janus: %v", err)
-	}
+	// The capture first, so that a record in the ledger never points at
+	// files that are not there yet.
 	if res.ex != nil && r.captures != nil && j.rec.Capture != "" {
 		if err := r.captures.WriteShadow(j.rec.Capture, *res.ex); err != nil {
 			r.logf("janus: %v", err)
 		}
+	}
+	if err := r.ledger.Append(res.rec); err != nil {
+		r.logf("janus: %v", err)
 	}
 	line := fmt.Sprintf("shadow of %s on %s: %s", j.ex.ID, j.ex.Shadow.Model, res.rec.Outcome)
 	switch {
