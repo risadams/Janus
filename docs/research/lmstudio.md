@@ -119,6 +119,17 @@ when `output_tokens` is above zero" should be one of the first validators.
    and for empty content.
 5. Keep `usage` parsing tolerant of missing fields.
 
+## Later observations (2026-10-11, through Janus)
+
+- **`input_tokens` includes cached tokens.** A turn reported
+  `input_tokens: 3468` with `cache_read_input_tokens: 2048`. The Anthropic
+  API reports the two apart. The ledger subtracts.
+- **The prompt cache helps later turns.** In a subagent conversation the
+  first turn took 24 s and the following ones 7 to 14 s, with most of the
+  prompt read from cache.
+- **Real Claude Code subagents ran to completion on `qwen/qwen3.8-27b`**:
+  four to six tool-using turns, correct final answer, on a trivial task.
+
 ## Not tested
 
 - Images and documents in content blocks.

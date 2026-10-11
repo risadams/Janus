@@ -28,8 +28,9 @@ type Record struct {
 	Path   string `json:"path"`
 	Class  string `json:"class"`
 
-	// The decision. Until routing exists every request goes upstream
-	// unchanged, and these say so.
+	// The decision: where the request was sent ("upstream" or "local"), the
+	// rule that sent it there, the changes made to it on the way, and which
+	// backend answered ("none" if janus refused it itself).
 	Route   string   `json:"route"`
 	Reason  string   `json:"reason"`
 	Stages  []string `json:"stages"`
@@ -105,14 +106,18 @@ func FromExchange(ex proxy.Exchange) Record {
 		Method:     ex.Method,
 		Path:       ex.Path,
 		Class:      string(route.Classify(ex.Method, ex.Path, ex.Header)),
-		Route:      "upstream",
-		Reason:     "passthrough",
-		Stages:     []string{},
-		Backend:    "upstream",
+		Route:      ex.Route,
+		Reason:     ex.Reason,
+		Stages:     ex.Stages,
+		Backend:    ex.Backend,
 		Status:     ex.Status,
 		TTFBMs:     ex.TTFB.Milliseconds(),
 		DurationMs: ex.Duration.Milliseconds(),
 		Unread:     ex.Unread,
+	}
+
+	if rec.Stages == nil {
+		rec.Stages = []string{}
 	}
 
 	if ex.IsMessages() && len(ex.RequestBody) > 0 && !ex.RequestTruncated {
@@ -144,6 +149,13 @@ func FromExchange(ex proxy.Exchange) Record {
 		}
 		if u.Speed != "" && u.Speed != "standard" {
 			rec.Usage.Speed = u.Speed
+		}
+		// LM Studio counts tokens read from its prompt cache inside
+		// input_tokens, where the Anthropic API counts them apart
+		// (docs/research/lmstudio.md). Take them out, so that input means
+		// uncached input whichever backend answered.
+		if ex.Backend == "local" && u.CacheRead != nil && *u.CacheRead <= u.Input {
+			rec.Usage.Input = u.Input - *u.CacheRead
 		}
 	}
 

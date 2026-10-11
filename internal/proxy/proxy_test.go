@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/risadams/janus/internal/backend"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +28,7 @@ func start(t *testing.T, upstream http.Handler, basePath string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	front := httptest.NewServer(New(Options{Upstream: u, Done: quiet}))
+	front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: quiet}))
 	t.Cleanup(front.Close)
 	return front.URL
 }
@@ -201,7 +202,7 @@ func TestUpstreamUnreachable(t *testing.T) {
 	dead := httptest.NewServer(http.NotFoundHandler())
 	u, _ := url.Parse(dead.URL)
 	dead.Close()
-	front := httptest.NewServer(New(Options{Upstream: u, Done: quiet}))
+	front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: quiet}))
 	defer front.Close()
 
 	resp, err := plainClient.Get(front.URL + "/v1/messages")
@@ -241,7 +242,7 @@ func serveWith(t *testing.T, upstream http.HandlerFunc, method, path string, kee
 	// The exchange is reported after the response has gone out, so wait
 	// for it rather than reading shared state when the client returns.
 	reported := make(chan Exchange, 2)
-	front := httptest.NewServer(New(Options{Upstream: u, Done: func(ex Exchange) { reported <- ex }, KeepBodies: keepBodies}))
+	front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: func(ex Exchange) { reported <- ex }, KeepBodies: keepBodies}))
 	defer front.Close()
 
 	req, _ := http.NewRequest(method, front.URL+path, strings.NewReader(`{"model":"m"}`))
@@ -527,7 +528,7 @@ func TestReportsClientDisconnectAsCancelled(t *testing.T) {
 	defer up.Close()
 	u, _ := url.Parse(up.URL)
 	reported := make(chan Exchange, 1)
-	front := httptest.NewServer(New(Options{Upstream: u, Done: func(ex Exchange) { reported <- ex }}))
+	front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: func(ex Exchange) { reported <- ex }}))
 	defer front.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())

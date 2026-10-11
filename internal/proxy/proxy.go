@@ -7,16 +7,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
+	"github.com/risadams/janus/internal/backend"
 )
 
 // Exchange describes one request janus handled, reported when it is over.
@@ -39,6 +38,15 @@ type Exchange struct {
 	Duration time.Duration
 	// Cancelled means the client went away before the response finished.
 	Cancelled bool
+
+	// The decision: which backend the request went to, by what route, and
+	// why; the changes made to it on the way; and the backend's own name
+	// for the model, when that differs from the one the client asked for.
+	Backend      string
+	Route        string
+	Reason       string
+	Stages       []string
+	BackendModel string
 
 	// Summary is what janus read from a Messages API response as it went
 	// past: model, stop reason, token usage. It is nil for every other kind
@@ -69,13 +77,51 @@ func (ex Exchange) IsMessages() bool {
 
 // Options configures the proxy handler.
 type Options struct {
-	Upstream *url.URL
+	// Upstream is where everything goes unless Plan says otherwise.
+	Upstream backend.Backend
+	// Plan decides what to do with a Messages request. Nil means every
+	// request goes upstream untouched.
+	Plan Planner
 	// Done is called once per request, after the response has ended.
 	Done func(Exchange)
 	// KeepBodies makes every Exchange carry its request and response
 	// bodies, for capture logging. Off, only Messages request bodies are
 	// kept, which the ledger needs.
 	KeepBodies bool
+}
+
+// Planner decides where one Messages request goes. It may change req; the
+// plan it returns says what to send. A Refusal means janus answers the
+// client itself, with an error.
+type Planner func(ctx context.Context, header http.Header, req *anthropic.Request) (Plan, *Refusal)
+
+// Plan is what to do with one request.
+type Plan struct {
+	Backend backend.Backend
+	// Route and Reason are recorded in the ledger: where the request went
+	// and the rule that sent it there.
+	Route  string
+	Reason string
+	// Stages names the changes made to the request, in order.
+	Stages []string
+	// Body replaces the request body. Nil sends the body as received.
+	Body []byte
+	// BackendModel is the model the backend was asked for, and
+	// ResponseModel the name to report to the client in its place, when
+	// the two differ.
+	BackendModel  string
+	ResponseModel string
+	// Timeout bounds the whole exchange. Zero means no limit.
+	Timeout time.Duration
+}
+
+// Refusal is an error janus returns instead of forwarding a request.
+type Refusal struct {
+	Status  int
+	Type    string // an Anthropic API error type, e.g. invalid_request_error
+	Message string
+	Route   string
+	Reason  string
 }
 
 // maxKept bounds how much of one body janus holds in memory. Past it the
@@ -87,6 +133,7 @@ const maxKept = 32 << 20
 type exchangeState struct {
 	messages       bool
 	keep           bool
+	plan           Plan
 	observation    *observation
 	unread         string
 	responseHeader http.Header
@@ -98,9 +145,9 @@ type stateKey struct{}
 // New returns a handler that forwards every request to the upstream and
 // relays the response as it arrives. Nothing in either direction is altered
 // beyond what HTTP requires of a proxy (hop-by-hop headers are dropped and
-// Host is set to the upstream's), with one exception: Accept-Encoding on
-// Messages requests, see narrowEncoding. Credentials pass through as the
-// client sent them.
+// Host is set to the upstream's), apart from what the chosen backend's
+// Prepare does. For the upstream that is one header on Messages requests;
+// credentials pass through as the client sent them.
 //
 // Traffic is also read on its way past, without being delayed or changed,
 // so that Done can be told what happened.
@@ -113,10 +160,9 @@ func New(opts Options) http.Handler {
 
 	rp := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
-			r.SetURL(opts.Upstream)
-			if isMessages(r.In) {
-				narrowEncoding(r.Out.Header)
-			}
+			state := r.In.Context().Value(stateKey{}).(*exchangeState)
+			r.SetURL(state.plan.Backend.URL())
+			state.plan.Backend.Prepare(r.Out, state.messages)
 		},
 		Transport: transport,
 		// Flush after every write, so a streamed completion reaches the
@@ -137,14 +183,28 @@ func New(opts Options) http.Handler {
 				}
 			}
 			resp.Body = &observedBody{ReadCloser: resp.Body, state: state}
+			// Renaming wraps the observed body, so the ledger sees the
+			// backend's real model name and the client sees the one it
+			// asked for.
+			if state.messages && state.plan.ResponseModel != "" {
+				resp.Body = backend.RenameModel(resp.Body, resp.Header.Get("Content-Type"), state.plan.ResponseModel)
+				resp.Header.Del("Content-Length")
+				resp.ContentLength = -1
+			}
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			if errors.Is(err, context.Canceled) {
+			state := r.Context().Value(stateKey{}).(*exchangeState)
+			name := state.plan.Backend.Name()
+			switch {
+			case errors.Is(err, context.DeadlineExceeded):
+				writeError(w, http.StatusGatewayTimeout, "api_error",
+					fmt.Sprintf("janus: %s did not answer within %s", name, state.plan.Timeout))
+			case errors.Is(err, context.Canceled):
 				// The client went away; there is nobody to answer.
-				return
+			default:
+				writeError(w, http.StatusBadGateway, "api_error", "janus: could not reach "+name+": "+err.Error())
 			}
-			writeError(w, http.StatusBadGateway, "janus: could not reach upstream: "+err.Error())
 		},
 	}
 
@@ -153,13 +213,58 @@ func New(opts Options) http.Handler {
 		state := &exchangeState{
 			messages: isMessages(r),
 			keep:     opts.KeepBodies,
+			plan:     Plan{Backend: opts.Upstream, Route: "upstream", Reason: "passthrough"},
 		}
 		sw := &statusWriter{ResponseWriter: w}
 
-		var requestBody *cappedBuffer
-		if (state.messages || state.keep) && r.Body != nil {
+		var (
+			requestBody *cappedBuffer // a copy made as the body streams past
+			original    []byte        // or the whole body, read up front
+			truncated   bool
+			refusal     *Refusal
+		)
+		switch {
+		case state.messages && r.Body != nil:
+			// A Messages body is read whole before anything is sent, so
+			// that it can be inspected and, if the plan says so, replaced.
+			original, truncated = readUpTo(r.Body, maxKept)
+			send := original
+			switch {
+			case truncated:
+				// Too large to inspect: send what was read followed by
+				// the rest, untouched.
+				r.Body = struct {
+					io.Reader
+					io.Closer
+				}{io.MultiReader(bytes.NewReader(original), r.Body), r.Body}
+				state.plan.Reason = "passthrough: request too large to inspect"
+				send = nil
+			case opts.Plan != nil:
+				if req, err := anthropic.ParseRequest(original); err != nil {
+					state.plan.Reason = "passthrough: request not understood"
+				} else if plan, refused := opts.Plan(r.Context(), r.Header, req); refused != nil {
+					refusal = refused
+				} else {
+					state.plan = plan
+					if plan.Body != nil {
+						send = plan.Body
+					}
+				}
+			}
+			if send != nil {
+				r.Body = io.NopCloser(bytes.NewReader(send))
+				r.ContentLength = int64(len(send))
+			}
+		case state.keep && r.Body != nil:
 			requestBody = &cappedBuffer{limit: maxKept}
 			r.Body = &teeBody{ReadCloser: r.Body, copy: requestBody}
+		}
+
+		ctx := context.WithValue(r.Context(), stateKey{}, state)
+		if state.plan.Timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, state.plan.Timeout)
+			defer cancel()
 		}
 
 		// Deferred because the reverse proxy aborts a response that fails
@@ -174,14 +279,24 @@ func New(opts Options) http.Handler {
 				Status:         sw.status,
 				Duration:       time.Since(start),
 				Cancelled:      r.Context().Err() != nil,
+				Backend:        state.plan.Backend.Name(),
+				Route:          state.plan.Route,
+				Reason:         state.plan.Reason,
+				Stages:         state.plan.Stages,
+				BackendModel:   state.plan.BackendModel,
 				Unread:         state.unread,
 				ResponseHeader: state.responseHeader,
+			}
+			if refusal != nil {
+				ex.Backend, ex.Route, ex.Reason = "none", refusal.Route, refusal.Reason
 			}
 			if !state.firstByte.IsZero() {
 				ex.TTFB = state.firstByte.Sub(start)
 			}
 			if requestBody != nil {
 				ex.RequestBody, ex.RequestTruncated = requestBody.snapshot()
+			} else {
+				ex.RequestBody, ex.RequestTruncated = original, truncated
 			}
 			if o := state.observation; o != nil {
 				summary, unread := o.finish()
@@ -197,53 +312,27 @@ func New(opts Options) http.Handler {
 			}
 			opts.Done(ex)
 		}()
-		rp.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), stateKey{}, state)))
+
+		if refusal != nil {
+			writeError(sw, refusal.Status, refusal.Type, refusal.Message)
+			return
+		}
+		rp.ServeHTTP(sw, r.WithContext(ctx))
 	})
+}
+
+// readUpTo reads at most limit bytes of r. truncated reports that there
+// was more, which is left unread in r.
+func readUpTo(r io.Reader, limit int) (data []byte, truncated bool) {
+	data, _ = io.ReadAll(io.LimitReader(r, int64(limit)+1))
+	if len(data) > limit {
+		return data, true
+	}
+	return data, false
 }
 
 func isMessages(r *http.Request) bool {
 	return r.Method == http.MethodPost && r.URL.Path == "/v1/messages"
-}
-
-// narrowEncoding limits what a Messages request asks the upstream to
-// compress its response with to what janus can read: gzip, or nothing.
-//
-// This is the one request header janus changes. The ledger depends on
-// reading every response, the standard library cannot decode brotli or
-// zstd, and Claude Code offers both. The client still only ever receives
-// an encoding it asked for: gzip if it offered gzip, otherwise none.
-func narrowEncoding(h http.Header) {
-	offered := h.Values("Accept-Encoding")
-	if len(offered) == 0 {
-		return // no compression was asked for, and none will be used
-	}
-	if acceptsGzip(offered) {
-		h.Set("Accept-Encoding", "gzip")
-	} else {
-		h.Set("Accept-Encoding", "identity")
-	}
-}
-
-// acceptsGzip reports whether an Accept-Encoding header allows gzip, either
-// by name or through the wildcard, and not with a quality of zero.
-func acceptsGzip(values []string) bool {
-	for _, value := range values {
-		for _, part := range strings.Split(value, ",") {
-			coding, params, _ := strings.Cut(strings.TrimSpace(part), ";")
-			coding = strings.ToLower(strings.TrimSpace(coding))
-			if coding != "gzip" && coding != "x-gzip" && coding != "*" {
-				continue
-			}
-			q := strings.TrimSpace(params)
-			if weight, ok := strings.CutPrefix(q, "q="); ok {
-				if f, err := strconv.ParseFloat(strings.TrimSpace(weight), 64); err == nil && f == 0 {
-					continue
-				}
-			}
-			return true
-		}
-	}
-	return false
 }
 
 // newID is a timestamp to the millisecond plus a random suffix: unique
@@ -320,12 +409,12 @@ func (b *cappedBuffer) snapshot() (data []byte, truncated bool) {
 // writeError answers in the Anthropic API's error shape, so a client built
 // for that API reports janus's own failures the way it reports upstream
 // ones.
-func writeError(w http.ResponseWriter, status int, message string) {
+func writeError(w http.ResponseWriter, status int, kind, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]any{
 		"type":  "error",
-		"error": map[string]string{"type": "api_error", "message": message},
+		"error": map[string]string{"type": kind, "message": message},
 	})
 }
 

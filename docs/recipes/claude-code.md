@@ -1,0 +1,96 @@
+# Recipe: run Claude Code's subagents on the local model
+
+Claude stays the brain: the main conversation goes to Anthropic as usual.
+Subagents, which do the reading and the legwork, run on the model in LM
+Studio and cost nothing upstream.
+
+Checked on 2026-10-11 with Claude Code 2.1.296 and `qwen/qwen3.8-27b`.
+
+## 1. Tell Janus about the local model
+
+In `janus.config.json`, name an alias, point it at a model LM Studio has,
+and switch routing on:
+
+```json
+{
+  "local": {
+    "baseUrl": "http://studio.tuesday.local:1234",
+    "models": {
+      "janus-local": { "model": "qwen/qwen3.8-27b" }
+    }
+  },
+  "features": { "route": true }
+}
+```
+
+The alias can be any name. A request for it is answered by the local model;
+every other request goes upstream untouched.
+
+Run `janus doctor`. It checks that LM Studio has the model and says whether
+it is loaded. Then start `janus`.
+
+## 2. Tell Claude Code to use the alias
+
+Either of these works. Both were tested.
+
+**All subagents**, with an environment variable:
+
+```bash
+ANTHROPIC_BASE_URL=http://127.0.0.1:8787 ENABLE_TOOL_SEARCH=true \
+  CLAUDE_CODE_SUBAGENT_MODEL=janus-local claude
+```
+
+**One subagent**, in its definition (`.claude/agents/<name>.md`):
+
+```markdown
+---
+name: line-counter
+description: Counts the lines in files.
+model: janus-local
+tools: Read, Bash
+---
+You count lines in the files you are given and report one count per file.
+```
+
+## What to expect
+
+- **It is slower.** In the test runs a local turn took 7 to 24 seconds,
+  against 1 to 3 seconds for Claude. The first turn of a subagent is the
+  slowest; later turns reuse LM Studio's prompt cache.
+- **The first request after LM Studio starts waits for the model to load.**
+  Load it beforehand to avoid that.
+- **Claude Code logs `unrecognized_model` for the alias.** It is a warning
+  and the session carries on.
+- **Claude Code's own cost figure is no longer right.** It does not know
+  what `janus-local` costs. Use `janus stats`, which counts local answers
+  as zero upstream cost.
+- **A request too large for the local model is refused, not rerouted.** An
+  alias has no upstream model behind it, so Janus returns an error saying
+  how large the request was and what the model's context is. Load the
+  model with a larger context in LM Studio, or set `contextTokens`.
+- **Quality is the local model's.** A subagent that reads files and
+  reports back is within reach of a good local model; one that must make
+  hard judgements may not be. Janus does not yet check local answers or
+  fall back to Claude. That is the next milestone.
+
+In the test, the same small task cost $0.24 at list price with everything
+upstream and $0.05 to $0.11 with the subagent local. That is two runs of a
+toy task, enough to show the mechanism works and nothing more.
+
+## Not verified
+
+- Pinning Claude Code's small, fast model to the alias
+  (`ANTHROPIC_DEFAULT_HAIKU_MODEL`). Headless sessions make no such calls,
+  so there was nothing to observe.
+- Long subagent conversations, or ones that outgrow the loaded context.
+- Any local model other than `qwen/qwen3.8-27b`.
+
+## Checking that it worked
+
+The console line for a locally answered request is marked `[local]`:
+
+```
+POST /v1/messages -> 200 (12.106s) [local] qwen/qwen3.8-27b tool_use in=3468 cache_read=2048 out=250
+```
+
+and `janus stats` shows the split under "By backend".

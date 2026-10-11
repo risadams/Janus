@@ -14,6 +14,7 @@ import (
 	"compress/gzip"
 	"crypto/rand"
 	"fmt"
+	"github.com/risadams/janus/internal/backend"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -239,7 +240,7 @@ func TestFidelity(t *testing.T) {
 				}))
 				defer upstream.Close()
 				u, _ := url.Parse(upstream.URL)
-				janus := httptest.NewServer(New(Options{Upstream: u, Done: quiet, KeepBodies: keepBodies}))
+				janus := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: quiet, KeepBodies: keepBodies}))
 				defer janus.Close()
 
 				directResp := perform(t, upstream.URL, c)
@@ -338,7 +339,7 @@ func TestOverheadIsWithinBudget(t *testing.T) {
 	defer upstream.Close()
 	u, _ := url.Parse(upstream.URL)
 	// Capture on: the most work janus does per request.
-	janus := httptest.NewServer(New(Options{Upstream: u, Done: quiet, KeepBodies: true}))
+	janus := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: quiet, KeepBodies: true}))
 	defer janus.Close()
 
 	// whole times a request from sending it to reading the last byte.
@@ -403,7 +404,7 @@ func benchmarkMessages(b *testing.B, throughJanus bool) {
 	target := upstream.URL
 	if throughJanus {
 		u, _ := url.Parse(upstream.URL)
-		janus := httptest.NewServer(New(Options{Upstream: u, Done: quiet, KeepBodies: true}))
+		janus := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: quiet, KeepBodies: true}))
 		defer janus.Close()
 		target = janus.URL
 	}

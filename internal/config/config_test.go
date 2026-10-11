@@ -107,7 +107,17 @@ func TestValidate(t *testing.T) {
 		{"listen without port", func(c *Config) { c.Listen = "127.0.0.1" }, "host:port"},
 		{"upstream missing", func(c *Config) { c.Upstream.BaseURL = "" }, "upstream.baseUrl is not set"},
 		{"local not a url", func(c *Config) { c.Local.BaseURL = "studio.tuesday.local:1234" }, "local.baseUrl"},
-		{"feature switched on", func(c *Config) { c.Features.Route = true }, "features.route is not available"},
+		{"unbuilt feature switched on", func(c *Config) { c.Features.Escalate = true }, "features.escalate is not available"},
+		{"route with nothing to route to", func(c *Config) { c.Features.Route = true }, "local.models is empty"},
+		{"route with a local model", func(c *Config) {
+			c.Features.Route = true
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "qwen/qwen3.8-27b"}}
+		}, ""},
+		{"local models without route", func(c *Config) { c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}} }, ""},
+		{"local model with no id", func(c *Config) { c.Local.Models = map[string]LocalModel{"janus-local": {}} }, "local.models.janus-local.model is not set"},
+		{"local model with a negative limit", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"x": {Model: "q", ContextTokens: -1}}
+		}, "local.models.x has a negative"},
 		{"no log dir", func(c *Config) { c.Logging.Dir = "" }, "logging.dir"},
 		{"capture off", func(c *Config) { c.Logging.Capture = false }, ""},
 		{"no capture limits", func(c *Config) { c.Logging.RetainDays, c.Logging.MaxMegabytes = 0, 0 }, ""},

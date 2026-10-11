@@ -1,0 +1,347 @@
+package backend
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
+	"testing"
+	"testing/iotest"
+
+	"github.com/risadams/janus/internal/anthropic"
+)
+
+func mustURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+func TestUpstreamPrepare(t *testing.T) {
+	up := NewUpstream(mustURL(t, "https://api.anthropic.com"), nil)
+	if up.Name() != "upstream" || up.URL().Host != "api.anthropic.com" {
+		t.Errorf("name=%q url=%v", up.Name(), up.URL())
+	}
+
+	cases := []struct {
+		name     string
+		offered  []string
+		messages bool
+		want     string
+	}{
+		{"claude code's list", []string{"gzip, deflate, br, zstd"}, true, "gzip"},
+		{"weighted", []string{"br;q=1.0, gzip;q=0.8"}, true, "gzip"},
+		{"wildcard", []string{"*"}, true, "gzip"},
+		{"gzip refused", []string{"br, gzip;q=0"}, true, "identity"},
+		{"only unreadable codings", []string{"br, zstd"}, true, "identity"},
+		{"nothing offered", nil, true, ""},
+		{"not a messages call", []string{"gzip, deflate, br, zstd"}, false, "gzip, deflate, br, zstd"},
+	}
+	for _, c := range cases {
+		req, _ := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", nil)
+		for _, v := range c.offered {
+			req.Header.Add("Accept-Encoding", v)
+		}
+		req.Header.Set("Authorization", "Bearer secret-token")
+		up.Prepare(req, c.messages)
+
+		if got := strings.Join(req.Header.Values("Accept-Encoding"), ", "); got != c.want {
+			t.Errorf("%s: Accept-Encoding = %q, want %q", c.name, got, c.want)
+		}
+		if req.Header.Get("Authorization") != "Bearer secret-token" {
+			t.Errorf("%s: the upstream request lost its credentials", c.name)
+		}
+	}
+}
+
+func TestLocalPrepareStripsCredentials(t *testing.T) {
+	local := NewLocal(mustURL(t, "http://studio.tuesday.local:1234"), nil)
+	req, _ := http.NewRequest("POST", "http://studio.tuesday.local:1234/v1/messages", nil)
+	for k, v := range map[string]string{
+		"Authorization": "Bearer secret-token", "X-Api-Key": "sk-secret", "Cookie": "c=1", "Proxy-Authorization": "Basic x",
+		"Anthropic-Version": "2023-06-01", "Accept-Encoding": "gzip, br", "X-Claude-Code-Session-Id": "s1",
+	} {
+		req.Header.Set(k, v)
+	}
+	local.Prepare(req, true)
+
+	for _, h := range []string{"Authorization", "X-Api-Key", "Cookie", "Proxy-Authorization"} {
+		if req.Header.Get(h) != "" {
+			t.Errorf("%s was sent to the local server", h)
+		}
+	}
+	if req.Header.Get("Accept-Encoding") != "identity" {
+		t.Errorf("Accept-Encoding = %q, want identity", req.Header.Get("Accept-Encoding"))
+	}
+	if req.Header.Get("Anthropic-Version") == "" || req.Header.Get("X-Claude-Code-Session-Id") == "" {
+		t.Error("headers that are not credentials were removed")
+	}
+}
+
+func lmStudio(t *testing.T, status int, body string, hits *int) *Local {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits != nil {
+			*hits++
+		}
+		if r.URL.Path != "/api/v0/models" {
+			t.Errorf("asked for %s, want /api/v0/models", r.URL.Path)
+		}
+		w.WriteHeader(status)
+		io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return NewLocal(mustURL(t, srv.URL+"/"), nil)
+}
+
+const modelList = `{"data":[
+	{"id":"qwen/qwen3.8-27b","state":"loaded","loaded_context_length":61696,"max_context_length":262144},
+	{"id":"gemma-4-e4b","state":"not-loaded","max_context_length":131072}]}`
+
+func TestLocalModels(t *testing.T) {
+	hits := 0
+	local := lmStudio(t, 200, modelList, &hits)
+
+	models, err := local.Models(context.Background())
+	if err != nil || len(models) != 2 {
+		t.Fatalf("Models() = %+v, %v", models, err)
+	}
+	if want := (Model{ID: "qwen/qwen3.8-27b", Loaded: true, LoadedContext: 61696, MaxContext: 262144}); models[0] != want {
+		t.Errorf("models[0] = %+v, want %+v", models[0], want)
+	}
+	if models[1].Loaded || models[1].LoadedContext != 0 {
+		t.Errorf("models[1] = %+v, want not loaded", models[1])
+	}
+
+	m, found, err := local.Model(context.Background(), "gemma-4-e4b")
+	if err != nil || !found || m.MaxContext != 131072 {
+		t.Errorf("Model(gemma) = %+v, %v, %v", m, found, err)
+	}
+	if _, found, _ := local.Model(context.Background(), "missing"); found {
+		t.Error("Model reports a model LM Studio does not have")
+	}
+	if hits != 1 {
+		t.Errorf("LM Studio was asked %d times for three lookups in a row, want 1", hits)
+	}
+	if err := local.Health(context.Background()); err != nil {
+		t.Errorf("Health() = %v", err)
+	}
+}
+
+func TestLocalModelsFailures(t *testing.T) {
+	// What LM Studio says for a path it does not know: HTTP 200 and an error.
+	notLMS := lmStudio(t, 200, `{"error":"Unexpected endpoint or method. (GET /api/v0/models)"}`, nil)
+	if _, err := notLMS.Models(context.Background()); !errors.Is(err, ErrNotLMStudio) {
+		t.Errorf("err = %v, want ErrNotLMStudio", err)
+	}
+
+	dead := httptest.NewServer(http.NotFoundHandler())
+	u := mustURL(t, dead.URL)
+	dead.Close()
+	local := NewLocal(u, nil)
+	if err := local.Health(context.Background()); err == nil || errors.Is(err, ErrNotLMStudio) {
+		t.Errorf("Health of a dead server = %v, want a connection error", err)
+	}
+	// A failure is not cached: the next call tries again.
+	if _, err := local.Models(context.Background()); err == nil {
+		t.Error("a second call after a failure succeeded without a server")
+	}
+}
+
+func loadRequest(t *testing.T) *anthropic.Request {
+	t.Helper()
+	raw, err := os.ReadFile("../anthropic/testdata/request.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := anthropic.ParseRequest(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return req
+}
+
+// The synthetic request has what a real Claude Code request has: two
+// tool_addition blocks in a system message, and a deferred placeholder tool.
+func TestNormalize(t *testing.T) {
+	req := loadRequest(t)
+	before := req.Messages()
+
+	stages, err := Normalize(req, "qwen/qwen3.8-27b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(stages, ","); got != "set_model,lift_tool_additions,drop_deferred_tools" {
+		t.Errorf("stages = %s", got)
+	}
+
+	out, err := anthropic.ParseRequest(req.Bytes())
+	if err != nil {
+		t.Fatalf("normalised request does not parse: %v", err)
+	}
+	if out.Model() != "qwen/qwen3.8-27b" {
+		t.Errorf("model = %q", out.Model())
+	}
+	var names []string
+	for _, tool := range out.Tools() {
+		names = append(names, tool.Name)
+		if _, deferred := tool.Field("defer_loading"); deferred {
+			t.Errorf("tool %s still carries defer_loading", tool.Name)
+		}
+	}
+	if got := strings.Join(names, ","); got != "Read,Bash,mcp__docs__search,mcp__docs__read" {
+		t.Errorf("tools = %s", got)
+	}
+	if strings.Contains(string(req.Bytes()), "tool_addition") {
+		t.Error("tool_addition blocks remain")
+	}
+
+	// The message that held them keeps its other content and its role;
+	// every other message is byte for byte what it was.
+	after := out.Messages()
+	if len(after) != len(before) || after[1].Role != "system" || len(after[1].Blocks()) != 1 || after[1].Blocks()[0].Text() != "Deferred tools are now available." {
+		t.Errorf("messages[1] = role %q, %d blocks", after[1].Role, len(after[1].Blocks()))
+	}
+	for i := range before {
+		if i != 1 && string(after[i].Raw()) != string(before[i].Raw()) {
+			t.Errorf("messages[%d] changed though it held no tool_addition", i)
+		}
+	}
+	// Fields LM Studio tolerates are left in.
+	for _, field := range []string{"context_management", "output_config", "thinking", "metadata", "future_top_level_field"} {
+		if _, ok := out.Field(field); !ok {
+			t.Errorf("%s was removed", field)
+		}
+	}
+}
+
+func TestNormalizePlainRequestOnlySetsTheModel(t *testing.T) {
+	raw := `{"model":"janus-local","max_tokens":64,"tools":[{"name":"Read"}],"messages":[{"role":"user","content":"hi"}]}`
+	req, _ := anthropic.ParseRequest([]byte(raw))
+
+	stages, err := Normalize(req, "qwen/qwen3.8-27b")
+	if err != nil || strings.Join(stages, ",") != "set_model" {
+		t.Errorf("stages = %v, err = %v", stages, err)
+	}
+	want := strings.Replace(raw, `"janus-local"`, `"qwen/qwen3.8-27b"`, 1)
+	if string(req.Bytes()) != want {
+		t.Errorf("body = %s\nwant   %s", req.Bytes(), want)
+	}
+}
+
+func TestNormalizeEdgeCases(t *testing.T) {
+	addition := `{"type":"tool_addition","tool":{"type":"custom","definition":{"name":"Read","description":"again"}}}`
+
+	// A message holding nothing but tool additions must not become empty,
+	// and a definition for a tool already present is not added twice.
+	req, _ := anthropic.ParseRequest([]byte(`{"model":"m","tools":[{"name":"Read"}],"messages":[{"role":"user","content":"hi"},{"role":"system","content":[` + addition + `]}]}`))
+	if _, err := Normalize(req, "local"); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := anthropic.ParseRequest(req.Bytes())
+	if len(out.Tools()) != 1 {
+		t.Errorf("%d tools, want the duplicate definition ignored", len(out.Tools()))
+	}
+	if blocks := out.Messages()[1].Blocks(); len(blocks) != 1 || blocks[0].Type != "text" {
+		t.Errorf("emptied message = %+v, want one placeholder text block", blocks)
+	}
+
+	// A tool_addition janus cannot read is an error, not a silent drop:
+	// dropping it would send the model a request missing a tool.
+	bad, _ := anthropic.ParseRequest([]byte(`{"model":"m","messages":[{"role":"system","content":[{"type":"tool_addition"}]}]}`))
+	if _, err := Normalize(bad, "local"); err == nil {
+		t.Error("a tool_addition with no definition was accepted")
+	}
+}
+
+func rename(t *testing.T, contentType, body string, chunk int) string {
+	t.Helper()
+	var src io.Reader = strings.NewReader(body)
+	if chunk > 0 {
+		src = iotest.OneByteReader(src)
+	}
+	out, err := io.ReadAll(RenameModel(io.NopCloser(src), contentType, "janus-local"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+const localStream = "event: message_start\n" +
+	`data: {"type":"message_start","message":{"id":"msg_1","type":"message","content":[],"model":"qwen/qwen3.8-27b","usage":{"input_tokens":363}}}` + "\n\n" +
+	"event: content_block_delta\n" +
+	`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I am qwen/qwen3.8-27b, a \"model\""}}` + "\n\n" +
+	"event: message_stop\n" +
+	`data: {"type":"message_stop"}` + "\n\n"
+
+func TestRenameModelInStream(t *testing.T) {
+	want := strings.Replace(localStream, `"model":"qwen/qwen3.8-27b"`, `"model":"janus-local"`, 1)
+	for _, chunk := range []int{0, 1} {
+		got := rename(t, "text/event-stream; charset=utf-8", localStream, chunk)
+		if got != want {
+			t.Errorf("chunk %d:\n got %q\nwant %q", chunk, got, want)
+		}
+	}
+	// The model's own words about itself are content, and stay.
+	if !strings.Contains(want, "I am qwen/qwen3.8-27b") {
+		t.Fatal("test is wrong: the text mention should survive")
+	}
+}
+
+func TestRenameModelInStreamVariants(t *testing.T) {
+	crlf := strings.ReplaceAll(localStream, "\n", "\r\n")
+	if got, want := rename(t, "text/event-stream", crlf, 1), strings.Replace(crlf, `"model":"qwen/qwen3.8-27b"`, `"model":"janus-local"`, 1); got != want {
+		t.Errorf("CRLF stream:\n got %q\nwant %q", got, want)
+	}
+
+	// No message_start, or a stream cut off mid-line: everything passes
+	// through exactly, including the unfinished tail.
+	for name, body := range map[string]string{
+		"error only": "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"x\"}}\n\n",
+		"cut off":    localStream[:60],
+		"empty":      "",
+	} {
+		if got := rename(t, "text/event-stream", body, 1); got != body {
+			t.Errorf("%s: got %q, want it unchanged", name, got)
+		}
+	}
+}
+
+func TestRenameModelInJSON(t *testing.T) {
+	body := `{"id":"msg_1","type":"message","content":[{"type":"text","text":"hi"}],"model":"qwen/qwen3.8-27b","stop_reason":"end_turn"}`
+	want := strings.Replace(body, "qwen/qwen3.8-27b", "janus-local", 1)
+	for _, chunk := range []int{0, 1} {
+		if got := rename(t, "application/json", body, chunk); got != want {
+			t.Errorf("chunk %d: got %s", chunk, got)
+		}
+	}
+
+	for name, other := range map[string]string{
+		"an API error":                  `{"type":"error","error":{"type":"invalid_request_error","message":"request.max_tokens: Required"}}`,
+		"LM Studio's other error shape": `{"error":{"message":"Invalid body","type":"invalid_request","code":"invalid_json"}}`,
+		"not json":                      "<html>502</html>",
+		"empty":                         "",
+	} {
+		if got := rename(t, "application/json", other, 0); got != other {
+			t.Errorf("%s: got %q, want it unchanged", name, got)
+		}
+	}
+}
+
+func TestRenameModelPassesOnAReadFailure(t *testing.T) {
+	boom := errors.New("connection reset")
+	for _, contentType := range []string{"text/event-stream", "application/json"} {
+		src := io.MultiReader(strings.NewReader(`{"type":"message","model":"x"`), iotest.ErrReader(boom))
+		got, err := io.ReadAll(RenameModel(io.NopCloser(src), contentType, "janus-local"))
+		if !errors.Is(err, boom) || string(got) != `{"type":"message","model":"x"` {
+			t.Errorf("%s: got %q, err %v; want what arrived and then the failure", contentType, got, err)
+		}
+	}
+}

@@ -19,13 +19,16 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 
+	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/capture"
 	"github.com/risadams/janus/internal/config"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
+	"github.com/risadams/janus/internal/route"
 )
 
 // version is overridden at build time with
@@ -78,8 +81,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "Wrote a starter config to %s. Edit it to change these settings.\n\n", *configPath)
 	}
 
-	// Validate has already established that this parses.
-	upstream, _ := url.Parse(cfg.Upstream.BaseURL)
+	// Validate has already established that these parse.
+	upstreamURL, _ := url.Parse(cfg.Upstream.BaseURL)
+	localURL, _ := url.Parse(cfg.Local.BaseURL)
+	upstream := backend.NewUpstream(upstreamURL, nil)
+
+	var plan proxy.Planner
+	if cfg.Features.Route {
+		plan = newRouter(cfg, upstream, backend.NewLocal(localURL, nil)).Plan
+	}
 
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
@@ -97,6 +107,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	srv := &http.Server{Handler: proxy.New(proxy.Options{
 		Upstream:   upstream,
+		Plan:       plan,
 		KeepBodies: captures != nil,
 		Done:       func(ex proxy.Exchange) { record(ex, led, captures, logger) },
 	})}
@@ -118,6 +129,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// newRouter builds the router from the config's local models.
+func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local) *route.Router {
+	aliases := make(map[string]route.LocalModel, len(cfg.Local.Models))
+	for name, m := range cfg.Local.Models {
+		seconds := m.TimeoutSeconds
+		if seconds == 0 {
+			seconds = config.DefaultLocalTimeoutSeconds
+		}
+		aliases[name] = route.LocalModel{ID: m.Model, ContextTokens: m.ContextTokens, Timeout: time.Duration(seconds) * time.Second}
+	}
+	return &route.Router{Upstream: upstream, Local: local, Aliases: aliases}
 }
 
 // record writes down one finished request: its capture, its ledger line,
@@ -143,6 +167,13 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, log
 // response it adds what the model did and what it cost in tokens.
 func formatExchange(ex proxy.Exchange) string {
 	line := fmt.Sprintf("%s %s -> %d (%s)", ex.Method, ex.Path, ex.Status, ex.Duration.Round(time.Millisecond))
+	switch ex.Backend {
+	case "", "upstream":
+	case "none":
+		line += " refused: " + ex.Reason
+	default:
+		line += " [" + ex.Backend + "]"
+	}
 	if ex.Unread != "" {
 		return line + " response not read: " + ex.Unread
 	}
@@ -197,7 +228,24 @@ func printBanner(w io.Writer, cfg config.Config, addr string) {
 	fmt.Fprintf(w, "%s\n\n", versionLine())
 	fmt.Fprintf(w, "  Listening   %s\n", base)
 	fmt.Fprintf(w, "  Upstream    %s\n", cfg.Upstream.BaseURL)
-	fmt.Fprintf(w, "  Local       %s (not used yet)\n", cfg.Local.BaseURL)
+	fmt.Fprintf(w, "  Local       %s\n", cfg.Local.BaseURL)
+	switch {
+	case !cfg.Features.Route:
+		fmt.Fprintf(w, "  Routing     off; every request goes upstream\n")
+	default:
+		names := make([]string, 0, len(cfg.Local.Models))
+		for name := range cfg.Local.Models {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for i, name := range names {
+			label := "  Routing     "
+			if i > 0 {
+				label = "              "
+			}
+			fmt.Fprintf(w, "%srequests for model %q go to local %s\n", label, name, cfg.Local.Models[name].Model)
+		}
+	}
 	fmt.Fprintf(w, "  Ledger      %s\n", filepath.Join(cfg.Logging.Dir, "ledger"))
 	if cfg.Logging.Capture {
 		fmt.Fprintf(w, "  Captures    %s (full prompts and responses)\n\n", filepath.Join(cfg.Logging.Dir, "captures"))

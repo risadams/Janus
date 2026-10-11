@@ -142,7 +142,7 @@ func TestDoctorLocalProblemsAreWarnings(t *testing.T) {
 	}{
 		"not running":     {"http://" + freeAddr(t), []string{"warn local", "did not answer", "serve on the local network"}},
 		"no model loaded": {noneLoaded.URL, []string{"warn local", "has 2 models and none loaded"}},
-		"something else":  {notLMStudio.URL, []string{"warn local", "answered (HTTP 200) but not like LM Studio"}},
+		"something else":  {notLMStudio.URL, []string{"warn local", "the server answered but not like LM Studio (HTTP 200)"}},
 	}
 	for name, c := range cases {
 		out, code, _ := doctor(t, up.URL, c.local, nil)
@@ -180,7 +180,7 @@ func TestDoctorInvalidConfigStopsThere(t *testing.T) {
 	if code != 1 {
 		t.Errorf("exit code = %d, want 1", code)
 	}
-	wantLines(t, out, "fail config", "upstream.baseUrl", "features.route is not available")
+	wantLines(t, out, "fail config", "upstream.baseUrl", "features.route is on but local.models is empty")
 	for _, later := range []string{"listen", "upstream ", "local ", "logs "} {
 		if strings.Contains(out, "ok    "+later) || strings.Contains(out, "warn  "+later) {
 			t.Errorf("checks ran against a config that did not validate:\n%s", out)
@@ -228,5 +228,48 @@ func TestDoctorBadArguments(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"doctor", "extra"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "unexpected argument") {
 		t.Errorf("exit %d, stderr %q", code, stderr.String())
+	}
+}
+
+func TestDoctorChecksRoutedModels(t *testing.T) {
+	up := serverSaying(200, "ok")
+	defer up.Close()
+	lms := serverSaying(200, lmStudioModels) // qwen loaded with 61,696; gemma-4-e4b not loaded
+	defer lms.Close()
+
+	routed := func(models map[string]any) map[string]any {
+		return map[string]any{"features": map[string]any{"route": true}, "local": map[string]any{"baseUrl": lms.URL, "models": models}}
+	}
+	cases := map[string]struct {
+		models   map[string]any
+		wantCode int
+		wants    []string
+	}{
+		"loaded": {map[string]any{"janus-local": map[string]any{"model": "qwen/qwen3.8-27b"}}, 0,
+			[]string{`ok route "janus-local" goes to qwen/qwen3.8-27b, loaded with a context of 61,696 tokens`}},
+		"not loaded": {map[string]any{"janus-small": map[string]any{"model": "gemma-4-e4b"}}, 0,
+			[]string{`warn route "janus-small" goes to gemma-4-e4b, which is not loaded`}},
+		"not in LM Studio": {map[string]any{"janus-local": map[string]any{"model": "no-such-model"}}, 1,
+			[]string{`fail route "janus-local" goes to no-such-model, which LM Studio does not have`, "qwen/qwen3.8-27b, gemma-4-e4b"}},
+		"limit above what is loaded": {map[string]any{"janus-local": map[string]any{"model": "qwen/qwen3.8-27b", "contextTokens": 200000}}, 0,
+			[]string{`warn route`, "contextTokens is 200,000 but the model is loaded with 61,696"}},
+	}
+	for name, c := range cases {
+		out, code, _ := doctor(t, up.URL, lms.URL, routed(c.models))
+		if code != c.wantCode {
+			t.Errorf("%s: exit code = %d, want %d\n%s", name, code, c.wantCode, out)
+		}
+		squeezed := strings.Join(strings.Fields(out), " ")
+		for _, want := range c.wants {
+			if !strings.Contains(squeezed, want) {
+				t.Errorf("%s: output is missing %q\n%s", name, want, out)
+			}
+		}
+	}
+
+	// With routing off, configured models are not checked: they are not used.
+	out, _, _ := doctor(t, up.URL, lms.URL, map[string]any{"local": map[string]any{"baseUrl": lms.URL, "models": map[string]any{"x": map[string]any{"model": "no-such-model"}}}})
+	if strings.Contains(out, "route") && strings.Contains(out, "no-such-model") {
+		t.Errorf("a model was checked with routing off:\n%s", out)
 	}
 }
