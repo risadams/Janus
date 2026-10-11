@@ -27,6 +27,19 @@ type Config struct {
 	Local    Backend  `json:"local"`
 	Features Features `json:"features"`
 	Logging  Logging  `json:"logging"`
+	// Pricing adds to, or corrects, the prices janus ships with, keyed by
+	// model id. Left out of the starter file because the defaults are
+	// usually right; see docs/CONFIG.md.
+	Pricing map[string]Price `json:"pricing,omitempty"`
+}
+
+// Price is what one model costs, in US dollars per million tokens.
+type Price struct {
+	Input        float64 `json:"input"`
+	Output       float64 `json:"output"`
+	CacheRead    float64 `json:"cacheRead"`
+	CacheWrite5m float64 `json:"cacheWrite5m"`
+	CacheWrite1h float64 `json:"cacheWrite1h"`
 }
 
 // Backend is one model server janus can send requests to.
@@ -75,8 +88,7 @@ func Default() Config {
 // the file keep their defaults; fields janus does not know are an error, so
 // a typo is reported rather than silently ignored.
 func Load(path string) (cfg Config, created bool, err error) {
-	data, readErr := os.ReadFile(path)
-	if os.IsNotExist(readErr) {
+	if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
 		cfg = Default()
 		out, err := json.MarshalIndent(cfg, "", "  ")
 		if err != nil {
@@ -87,17 +99,27 @@ func Load(path string) (cfg Config, created bool, err error) {
 		}
 		return cfg, true, nil
 	}
-	if readErr != nil {
-		return Config{}, false, readErr
-	}
+	cfg, err = Read(path)
+	return cfg, false, err
+}
 
-	cfg = Default()
+// Read is Load for commands that only look: if path does not exist it
+// returns the defaults and writes nothing.
+func Read(path string) (Config, error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return Default(), nil
+	}
+	if err != nil {
+		return Config{}, err
+	}
+	cfg := Default()
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&cfg); err != nil {
-		return Config{}, false, fmt.Errorf("%s: %w", path, err)
+		return Config{}, fmt.Errorf("%s: %w", path, err)
 	}
-	return cfg, false, nil
+	return cfg, nil
 }
 
 // Overrides are the settings that can be changed without editing the file.
@@ -163,6 +185,11 @@ func (c Config) Validate() error {
 
 	if c.Logging.Dir == "" {
 		errs = append(errs, errors.New(`logging.dir is empty; set a directory, for example "logs"`))
+	}
+	for model, p := range c.Pricing {
+		if p.Input < 0 || p.Output < 0 || p.CacheRead < 0 || p.CacheWrite5m < 0 || p.CacheWrite1h < 0 {
+			errs = append(errs, fmt.Errorf("pricing.%s has a negative price; prices are dollars per million tokens", model))
+		}
 	}
 	if c.Logging.RetainDays < 0 {
 		errs = append(errs, fmt.Errorf("logging.retainDays is %d; use 0 to keep captures forever, or a number of days", c.Logging.RetainDays))

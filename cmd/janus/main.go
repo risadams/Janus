@@ -42,6 +42,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		case "version", "-version", "--version":
 			fmt.Fprintln(stdout, versionLine())
 			return 0
+		case "stats":
+			return runStats(args[1:], stdout, stderr)
 		}
 	}
 

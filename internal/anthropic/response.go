@@ -45,6 +45,9 @@ type Usage struct {
 	CacheWrite1h *int
 	// Thinking is the part of Output spent on thinking.
 	Thinking *int
+	// Speed is "fast" when the request ran in fast mode, which is priced
+	// differently; otherwise "standard" or empty.
+	Speed string
 }
 
 // APIError is the error object the Messages API returns.
@@ -67,6 +70,7 @@ type wireUsage struct {
 	OutputTokensDetails *struct {
 		ThinkingTokens *int `json:"thinking_tokens"`
 	} `json:"output_tokens_details"`
+	Speed string `json:"speed"`
 }
 
 // merge applies w on top of u. Streams report usage twice, at the start and
@@ -98,6 +102,9 @@ func (u *Usage) merge(w *wireUsage) {
 	}
 	if d := w.OutputTokensDetails; d != nil && d.ThinkingTokens != nil {
 		u.Thinking = d.ThinkingTokens
+	}
+	if w.Speed != "" {
+		u.Speed = w.Speed
 	}
 }
 
