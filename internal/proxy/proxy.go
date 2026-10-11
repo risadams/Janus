@@ -240,6 +240,16 @@ func New(opts Options) http.Handler {
 		}
 		sw := &statusWriter{ResponseWriter: w}
 
+		// By default an HTTP/1 server closes the request body the moment a
+		// handler starts writing the response. A proxy starts writing as
+		// soon as the backend answers, while its transport may still be
+		// finishing the request body; the transport then sees a read error,
+		// takes the request to have failed, and drops the backend
+		// connection with the response half relayed. Full duplex tells the
+		// server to leave the body alone. The error is ignored: it means
+		// the connection is HTTP/2, which has no such restriction.
+		http.NewResponseController(w).EnableFullDuplex()
+
 		var (
 			requestBody *cappedBuffer // a copy made as the body streams past
 			original    []byte        // or the whole body, read up front

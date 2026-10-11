@@ -432,11 +432,15 @@ func benchmarkMessages(b *testing.B, throughJanus bool) {
 func BenchmarkMessagesDirect(b *testing.B)       { benchmarkMessages(b, false) }
 func BenchmarkMessagesThroughJanus(b *testing.B) { benchmarkMessages(b, true) }
 
-// Megabyte bodies in both directions, many times over. One pass of the
-// fidelity suite has failed on this shape on a Linux runner with the
-// response cut short, and never on macOS; repetition is what makes a rare
-// failure show itself, and each failure says which leg broke and what the
-// proxy saw.
+// Megabyte bodies in both directions, many times over.
+//
+// This guards a real failure. A proxy starts relaying the response while
+// its transport may still be finishing the request body, and an HTTP/1
+// server closes that body as soon as the response starts unless full duplex
+// is enabled. The transport then drops the backend connection and the
+// client gets a truncated response. It happened about once in several
+// hundred large requests on Linux and never on macOS, which is why this
+// repeats: one pass of the fidelity suite is not enough to see it.
 func TestLargeBodiesRepeatedly(t *testing.T) {
 	if testing.Short() {
 		t.Skip("repetition test")
@@ -470,7 +474,7 @@ func TestLargeBodiesRepeatedly(t *testing.T) {
 	}}))
 
 	want := 1 << 20
-	for i := 0; i < 150; i++ {
+	for i := 0; i < 400; i++ {
 		for leg, target := range map[string]string{"direct": upstream.URL, "through janus": janus.URL} {
 			g, err := tryPerform(target, large)
 			if err != nil || len(g.Body) != want {
