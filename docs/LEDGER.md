@@ -30,7 +30,7 @@ ignore fields they do not know.
 | `method`, `path` | string | The request line |
 | `class` | string | `main`, `subagent`, `connectivity`, or `unknown` |
 | `route` | string | Where the request was sent: `upstream` or `local` |
-| `reason` | string | The rule that sent it there: `passthrough`, or `model alias <name>`. For a refused request, why. |
+| `reason` | string | What decided it: `passthrough` (nothing matched), `model alias <name>`, or `rule <name>`. When a rule's local route could not be used, the reason says why and ends `; sent upstream`. For a refused request, why. |
 | `stages` | string[] | Changes made to the request on the way: `set_model`, `lift_tool_additions`, `drop_deferred_tools` |
 | `backend` | string | Which backend answered: `upstream`, `local`, or `none` if Janus refused the request itself |
 | `status` | int | HTTP status, or `0` if no response was started |

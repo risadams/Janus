@@ -7,12 +7,12 @@ API and a local model in LM Studio. Claude is the brain, the local model is
 the workhorse, and Janus decides which one each piece of work needs,
 local-first, to keep upstream token spend down.
 
-**Status:** early M2. Janus is a transparent proxy that keeps the books,
-and can now send requests for a chosen model name to the local model. In
-practice that means Claude Code's subagents can run on LM Studio while the
-main conversation stays with Claude: see the
+**Status:** M2 in progress. Janus is a transparent proxy that keeps the
+books, and can send chosen requests to the local model by rule. In practice
+that means Claude Code's subagents can run on LM Studio while the main
+conversation stays with Claude, with no change to Claude Code: see the
 [recipe](docs/recipes/claude-code.md). It does not yet check local answers
-or fall back to Claude.
+or escalate a poor one to Claude.
 
 - [Charter](docs/CHARTER.md): what Janus is, goals, scope, risks
 - [Requirements](docs/REQUIREMENTS.md)

@@ -200,3 +200,35 @@ func TestRecordSurvivesUnwritableDisk(t *testing.T) {
 		t.Errorf("console = %q, want two failures reported and the request line still printed", out)
 	}
 }
+
+func testConfigWithRules() config.Config {
+	yes := true
+	cfg := config.Default()
+	cfg.Features.Route = true
+	cfg.Local.Models = map[string]config.LocalModel{"janus-local": {Model: "qwen/qwen3.8-27b"}}
+	cfg.Routing = []config.Rule{
+		{Name: "small-subagents", Class: "subagent", MaxTokens: 40000, Tools: &yes, Route: "local", Local: "janus-local"},
+		{Model: "claude-haiku-5-5", Route: "local-then-escalate", Local: "janus-local"},
+		{Name: "rest", Route: "upstream"},
+	}
+	return cfg
+}
+
+func TestNewRouterResolvesRulesAndTimeouts(t *testing.T) {
+	cfg := testConfigWithRules()
+	cfg.Local.Models["quick"] = config.LocalModel{Model: "gemma", TimeoutSeconds: 30, ContextTokens: 8000}
+	r := newRouter(cfg, nil, nil)
+
+	if got := r.Aliases["janus-local"]; got.ID != "qwen/qwen3.8-27b" || got.Timeout != time.Duration(config.DefaultLocalTimeoutSeconds)*time.Second {
+		t.Errorf("janus-local = %+v, want the default timeout", got)
+	}
+	if got := r.Aliases["quick"]; got.Timeout != 30*time.Second || got.ContextTokens != 8000 {
+		t.Errorf("quick = %+v", got)
+	}
+	if len(r.Rules) != 3 || r.Rules[0].Local.ID != "qwen/qwen3.8-27b" || r.Rules[0].Class != "subagent" || r.Rules[0].MaxTokens != 40000 || *r.Rules[0].Tools != true {
+		t.Errorf("rules[0] = %+v", r.Rules[0])
+	}
+	if r.Rules[2].Route != "upstream" || r.Rules[2].Local.ID != "" {
+		t.Errorf("rules[2] = %+v", r.Rules[2])
+	}
+}
