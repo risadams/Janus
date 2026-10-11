@@ -133,6 +133,9 @@ type Report struct {
 	ByBackend []Row     `json:"by_backend"`
 	// Outcomes counts requests by outcome.
 	Outcomes map[string]int `json:"outcomes"`
+	// Guard totals what the search for secrets found in requests that
+	// went upstream.
+	Guard GuardTotals `json:"guard,omitzero"`
 	// Delegated summarises, by tool, work Claude handed to the local model.
 	// It is in no other figure.
 	Delegated []DelegatedRow `json:"delegated,omitempty"`
@@ -207,6 +210,16 @@ func Summarise(records []Record, prices Prices) Report {
 				attempts[rec.Class] = &attemptTally{}
 			}
 			attempts[rec.Class].add(*rec.Attempt)
+		}
+		if g := rec.Guard; g != nil && g.Findings > 0 {
+			rep.Guard.Requests++
+			rep.Guard.Findings += g.Findings
+			if rep.Guard.Kinds == nil {
+				rep.Guard.Kinds = map[string]int{}
+			}
+			for kind, n := range g.Kinds {
+				rep.Guard.Kinds[kind] += n
+			}
 		}
 		rep.Outcomes[rec.Outcome]++
 		if rec.Unread != "" {
@@ -393,4 +406,14 @@ func (t *delegatedTally) add(rec Record) {
 	t.row.ReadBytes += rec.Worker.ReadBytes
 	t.row.AvoidedTokens += rec.Worker.AvoidedTokens
 	t.ms = append(t.ms, rec.DurationMs)
+}
+
+// GuardTotals is how often secrets were seen going upstream. A secret that
+// sits in a conversation is sent again with every turn, and is counted
+// each time: Findings is occurrences across requests, not distinct
+// secrets.
+type GuardTotals struct {
+	Requests int            `json:"requests"`
+	Findings int            `json:"findings"`
+	Kinds    map[string]int `json:"kinds,omitempty"`
 }

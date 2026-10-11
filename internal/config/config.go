@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/risadams/janus/internal/validate"
@@ -34,10 +35,26 @@ type Config struct {
 	Routing  []Rule   `json:"routing,omitempty"`
 	Features Features `json:"features"`
 	Logging  Logging  `json:"logging"`
+	// Guard sets how secrets are looked for, when features.guard is on.
+	Guard Guard `json:"guard,omitzero"`
 	// Pricing adds to, or corrects, the prices janus ships with, keyed by
 	// model id. Left out of the starter file because the defaults are
 	// usually right; see docs/CONFIG.md.
 	Pricing map[string]Price `json:"pricing,omitempty"`
+}
+
+// Guard configures the search for secrets in requests going upstream.
+// With features.guard on, janus looks for them and records what it finds.
+// It does not yet change or block anything.
+type Guard struct {
+	// Patterns are extra regular expressions to treat as secrets. A
+	// pattern with a capture group marks the group as the secret.
+	Patterns []string `json:"patterns,omitempty"`
+	// Allow lists exact values that are never secrets.
+	Allow []string `json:"allow,omitempty"`
+	// Entropy also looks for long random-looking strings that fit no
+	// known format. It finds more and is wrong more often.
+	Entropy bool `json:"entropy,omitempty"`
 }
 
 // Price is what one model costs, in US dollars per million tokens.
@@ -128,9 +145,9 @@ const DefaultTrialSeconds = 120
 // prompt and slower still if they must be loaded first.
 const DefaultLocalTimeoutSeconds = 900
 
-// Features switches each mechanism on. All are off by default. Only route
-// is implemented; Validate rejects the others, so a config can never claim
-// a behaviour the binary does not have.
+// Features switches each mechanism on. All are off by default. Route and
+// guard are implemented; Validate rejects the others, so a config can
+// never claim a behaviour the binary does not have.
 type Features struct {
 	Route    bool `json:"route"`
 	Escalate bool `json:"escalate"`
@@ -256,10 +273,14 @@ func (c Config) Validate() error {
 	}{
 		{"escalate", c.Features.Escalate},
 		{"compress", c.Features.Compress},
-		{"guard", c.Features.Guard},
 	} {
 		if f.on {
 			errs = append(errs, fmt.Errorf("features.%s is not available in this version; set it to false", f.name))
+		}
+	}
+	for i, pattern := range c.Guard.Patterns {
+		if _, err := regexp.Compile(pattern); err != nil {
+			errs = append(errs, fmt.Errorf("guard.patterns[%d] is not a valid regular expression: %v", i, err))
 		}
 	}
 	if c.Features.Route && len(c.Local.Models) == 0 {

@@ -15,6 +15,7 @@ import (
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/capture"
 	"github.com/risadams/janus/internal/config"
+	"github.com/risadams/janus/internal/guard"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
 )
@@ -167,7 +168,7 @@ func TestRecordLinksLedgerToCapture(t *testing.T) {
 	led := ledger.Open(filepath.Join(dir, "ledger"))
 	captures := capture.New(filepath.Join(dir, "captures"), 7, 1024)
 
-	record(messagesExchange(), led, captures, log.New(&console, "", 0))
+	record(messagesExchange(), led, captures, nil, log.New(&console, "", 0))
 
 	line, err := os.ReadFile(filepath.Join(dir, "ledger", "2026-10-11.jsonl"))
 	if err != nil {
@@ -190,7 +191,7 @@ func TestRecordLinksLedgerToCapture(t *testing.T) {
 
 func TestRecordWithoutCaptures(t *testing.T) {
 	dir := t.TempDir()
-	record(messagesExchange(), ledger.Open(filepath.Join(dir, "ledger")), nil, log.New(io.Discard, "", 0))
+	record(messagesExchange(), ledger.Open(filepath.Join(dir, "ledger")), nil, nil, log.New(io.Discard, "", 0))
 
 	line, _ := os.ReadFile(filepath.Join(dir, "ledger", "2026-10-11.jsonl"))
 	if !bytes.Contains(line, []byte(`"class":"main"`)) || bytes.Contains(line, []byte(`"capture"`)) {
@@ -209,7 +210,7 @@ func TestRecordSurvivesUnwritableDisk(t *testing.T) {
 	var console bytes.Buffer
 
 	record(messagesExchange(), ledger.Open(filepath.Join(blocker, "ledger")),
-		capture.New(filepath.Join(blocker, "captures"), 7, 1024), log.New(&console, "", 0))
+		capture.New(filepath.Join(blocker, "captures"), 7, 1024), nil, log.New(&console, "", 0))
 
 	out := console.String()
 	if strings.Count(out, "janus: ") != 2 || !strings.Contains(out, "POST /v1/messages -> 200") {
@@ -266,12 +267,110 @@ func TestRecordSavesARejectedLocalAnswer(t *testing.T) {
 	ex.Backend, ex.Route = "upstream", "upstream"
 	ex.Attempt = &proxy.Attempt{Backend: "local", Model: "qwen/qwen3.8-27b", Why: "empty", ResponseBody: []byte(`{"content":[]}`)}
 
-	rec := record(ex, ledger.Open(filepath.Join(dir, "ledger")), captures, log.New(io.Discard, "", 0))
+	rec := record(ex, ledger.Open(filepath.Join(dir, "ledger")), captures, nil, log.New(io.Discard, "", 0))
 	if rec.Attempt == nil || rec.Attempt.Verdict != ledger.VerdictRejected {
 		t.Errorf("record attempt = %+v", rec.Attempt)
 	}
 	saved, err := os.ReadFile(filepath.Join(dir, "captures", rec.Capture+".attempt.response.txt"))
 	if err != nil || string(saved) != `{"content":[]}` {
 		t.Errorf("the rejected answer was not saved: %q, %v", saved, err)
+	}
+}
+
+// A key assembled at run time, so that nothing credential-shaped sits in
+// the repository.
+var fakeAWSKey = strings.Join([]string{"AKIA", "Q7RZ2LP9XVB4NKD8"}, "")
+
+func exchangeCarrying(secret string) proxy.Exchange {
+	ex := messagesExchange()
+	ex.Backend, ex.Route = "upstream", "upstream"
+	body, _ := json.Marshal(map[string]any{
+		"model": "claude-opus-5-5",
+		"messages": []map[string]any{
+			{"role": "user", "content": "deploy it"},
+			{"role": "user", "content": []map[string]any{{"type": "tool_result", "tool_use_id": "t1", "content": "aws_access_key_id = " + secret}}},
+		},
+	})
+	ex.RequestBody = body
+	return ex
+}
+
+func TestRecordNotesSecretsGoingUpstreamWithoutRepeatingThem(t *testing.T) {
+	dir := t.TempDir()
+	var console bytes.Buffer
+	rec := record(exchangeCarrying(fakeAWSKey), ledger.Open(filepath.Join(dir, "ledger")), nil, &guard.Detector{}, log.New(&console, "", 0))
+
+	g := rec.Guard
+	if g == nil || g.Findings != 1 || g.Kinds["aws_access_key"] != 1 || len(g.Where) != 1 || !strings.Contains(g.Where[0], "messages[1] user (tool_result)") {
+		t.Fatalf("guard = %+v", g)
+	}
+	if !strings.Contains(console.String(), "[guard: 1 found going upstream: aws_access_key]") {
+		t.Errorf("console = %q", console.String())
+	}
+	line, _ := os.ReadFile(filepath.Join(dir, "ledger", "2026-10-11.jsonl"))
+	if !bytes.Contains(line, []byte(`"guard":{"findings":1`)) {
+		t.Errorf("ledger line has no guard field: %s", line)
+	}
+	for name, text := range map[string]string{"console": console.String(), "ledger": string(line)} {
+		if strings.Contains(text, fakeAWSKey) || strings.Contains(text, fakeAWSKey[:10]) {
+			t.Errorf("the %s contains the secret", name)
+		}
+	}
+}
+
+func TestGuardScansOnlyWhatWentUpstream(t *testing.T) {
+	d := &guard.Detector{}
+	upstream := exchangeCarrying(fakeAWSKey)
+
+	local := upstream
+	local.Backend = "local"
+	stoodIn := local
+	stoodIn.Attempt = &proxy.Attempt{Backend: "upstream", Fault: true}
+	escalated := upstream
+	escalated.Attempt = &proxy.Attempt{Backend: "local", Why: "empty"}
+	notMessages := upstream
+	notMessages.Path = "/v1/messages/count_tokens"
+	truncated := upstream
+	truncated.RequestTruncated = true
+	clean := exchangeCarrying("nothing-secret-here")
+
+	cases := map[string]struct {
+		ex          proxy.Exchange
+		detector    *guard.Detector
+		wantScanned bool
+		wantFound   int
+	}{
+		"sent upstream":                         {upstream, d, true, 1},
+		"answered locally, never sent upstream": {local, d, false, 0},
+		"sent upstream, then local stood in":    {stoodIn, d, true, 1},
+		"tried locally, then sent upstream":     {escalated, d, true, 1},
+		"not a Messages call":                   {notMessages, d, false, 0},
+		"too large to have been kept whole":     {truncated, d, false, 0},
+		"nothing in it":                         {clean, d, true, 0},
+		"guard off":                             {upstream, nil, false, 0},
+	}
+	for name, c := range cases {
+		report, scanned := scanForSecrets(c.detector, c.ex)
+		if scanned != c.wantScanned || report.Findings != c.wantFound {
+			t.Errorf("%s: scanned=%v findings=%d, want %v and %d", name, scanned, report.Findings, c.wantScanned, c.wantFound)
+		}
+	}
+
+	// A clean request leaves no guard field at all.
+	rec := record(clean, ledger.Open(filepath.Join(t.TempDir(), "ledger")), nil, d, log.New(io.Discard, "", 0))
+	if rec.Guard != nil {
+		t.Errorf("a clean request got a guard field: %+v", rec.Guard)
+	}
+}
+
+func TestNewDetectorUsesTheConfig(t *testing.T) {
+	cfg := config.Default()
+	cfg.Guard = config.Guard{Patterns: []string{`ACME-[0-9]{6}`}, Allow: []string{fakeAWSKey}, Entropy: true}
+	d := newDetector(cfg)
+
+	text := "order ACME-204857 with key " + fakeAWSKey
+	found := d.Scan(text)
+	if len(found) != 1 || found[0].Kind != "custom" || !d.Entropy {
+		t.Errorf("findings = %+v, entropy = %v; want the custom pattern only, the key being allowed", found, d.Entropy)
 	}
 }

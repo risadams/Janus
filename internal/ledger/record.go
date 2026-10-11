@@ -59,6 +59,9 @@ type Record struct {
 	// answered: the local model first with Claude as the fallback, or
 	// Claude first with the local model standing in when Claude was down.
 	Attempt *Attempt `json:"attempt,omitempty"`
+	// Guard is present when secrets were found in a request that went
+	// upstream. It says how many and of what kinds, never what they were.
+	Guard *Guard `json:"guard,omitempty"`
 	// Worker is present on a record of delegated work: a tool Claude called
 	// that the local model carried out. Such a record is not a proxied
 	// request, and is kept out of the request totals.
@@ -70,6 +73,14 @@ type Record struct {
 	ShadowOf string `json:"shadow_of,omitempty"`
 	// Compare sets a shadow's answer beside the real one.
 	Compare *Compare `json:"compare,omitempty"`
+}
+
+// Guard is what the search for secrets found in one request.
+type Guard struct {
+	Findings int            `json:"findings"`
+	Kinds    map[string]int `json:"kinds"`
+	// Where lists the parts of the request that held at least one.
+	Where []string `json:"where"`
 }
 
 // Worker describes one piece of delegated work.

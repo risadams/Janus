@@ -150,6 +150,18 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		fmt.Fprintf(w, "\n%s requests could not be priced and are in no cost above:\n%s\n",
 			commas(rep.Total.Unpriced), strings.Join(reasons, "\n"))
 	}
+	if g := rep.Guard; g.Requests > 0 {
+		kinds := make([]string, 0, len(g.Kinds))
+		for kind, n := range g.Kinds {
+			kinds = append(kinds, fmt.Sprintf("%s %s", kind, commas(n)))
+		}
+		sort.Strings(kinds)
+		fmt.Fprintf(w, "\nGUARD: %s requests that went upstream carried something that looks like a\n"+
+			"secret (%s). Nothing was removed or blocked: the guard only\n"+
+			"detects so far. A secret in a conversation is resent with every turn and\n"+
+			"counted each time. The ledger's \"guard\" field says where in each request.\n",
+			commas(g.Requests), strings.Join(kinds, ", "))
+	}
 	if rep.StoodIn > 0 {
 		fmt.Fprintf(w, "\nNOTE: %s requests were answered by the local model because Claude could not\n"+
 			"answer them (unreachable, rate limited, overloaded, or failing). Search the\n"+
