@@ -19,14 +19,17 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/capture"
 	"github.com/risadams/janus/internal/config"
+	"github.com/risadams/janus/internal/guard"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
 	"github.com/risadams/janus/internal/route"
@@ -125,12 +128,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 		defer shadows.Close()
 	}
 
+	var detector *guard.Detector
+	if cfg.Features.Guard {
+		detector = newDetector(cfg)
+	}
+
 	srv := &http.Server{Handler: proxy.New(proxy.Options{
 		Upstream:   upstream,
 		Plan:       plan,
 		KeepBodies: captures != nil,
 		Done: func(ex proxy.Exchange) {
-			rec := record(ex, led, captures, logger)
+			rec := record(ex, led, captures, detector, logger)
 			if router != nil {
 				router.Report(ex) // so it notices the local backend failing
 			}
@@ -199,8 +207,13 @@ func trialTimeout(r config.Rule) time.Duration {
 // and a line on the console. It runs after the response has gone out, and
 // a failure here is logged and nothing more: logging must never be the
 // reason a request fails. It returns the ledger record it wrote.
-func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, logger *log.Logger) ledger.Record {
+func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, detector *guard.Detector, logger *log.Logger) ledger.Record {
 	rec := ledger.FromExchange(ex)
+	found := ""
+	if report, scanned := scanForSecrets(detector, ex); scanned && report.Findings > 0 {
+		rec.Guard = &ledger.Guard{Findings: report.Findings, Kinds: report.Kinds, Where: report.Where}
+		found = fmt.Sprintf(" [guard: %d found going upstream: %s]", report.Findings, report.Summary())
+	}
 	if captures != nil {
 		name, err := captures.Write(ex)
 		if err != nil {
@@ -216,8 +229,34 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, log
 	if err := led.Append(rec); err != nil {
 		logger.Printf("janus: %v", err)
 	}
-	logger.Print(formatExchange(ex))
+	logger.Print(formatExchange(ex) + found)
 	return rec
+}
+
+// scanForSecrets looks for secrets in a Messages request that was sent to
+// the upstream, whether or not the upstream ended up answering it.
+// Requests that only ever went to the local model are not scanned: they
+// did not leave the machine's own network.
+func scanForSecrets(detector *guard.Detector, ex proxy.Exchange) (guard.Report, bool) {
+	wentUpstream := ex.Backend == "upstream" || (ex.Attempt != nil && ex.Attempt.Backend == "upstream")
+	if detector == nil || !ex.IsMessages() || !wentUpstream || len(ex.RequestBody) == 0 || ex.RequestTruncated {
+		return guard.Report{}, false
+	}
+	req, err := anthropic.ParseRequest(ex.RequestBody)
+	if err != nil {
+		return guard.Report{}, false
+	}
+	return detector.ScanRequest(req), true
+}
+
+// newDetector builds the detector from the config. Validate has already
+// established that the patterns compile.
+func newDetector(cfg config.Config) *guard.Detector {
+	d := &guard.Detector{Allow: cfg.Guard.Allow, Entropy: cfg.Guard.Entropy}
+	for _, pattern := range cfg.Guard.Patterns {
+		d.Patterns = append(d.Patterns, regexp.MustCompile(pattern))
+	}
+	return d
 }
 
 // formatExchange is the one line janus logs per request. For a Messages
@@ -356,6 +395,9 @@ func printBanner(w io.Writer, cfg config.Config, addr string) {
 			}
 			fmt.Fprintf(w, "%s%s\n", label, line)
 		}
+	}
+	if cfg.Features.Guard {
+		fmt.Fprintf(w, "  Guard       looking for secrets in requests going upstream; detect only, nothing is changed\n")
 	}
 	fmt.Fprintf(w, "  Ledger      %s\n", filepath.Join(cfg.Logging.Dir, "ledger"))
 	if cfg.Logging.Capture {

@@ -302,3 +302,28 @@ func TestStatsDelegatedSection(t *testing.T) {
 		}
 	}
 }
+
+func TestStatsGuardNote(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	l := ledger.Open(dir)
+	for i := 0; i < 3; i++ {
+		l.Append(ledger.Record{V: 1, ID: string(rune('a' + i)), Time: time.Now(), Class: "main", Backend: "upstream", Outcome: ledger.OutcomeOK,
+			Guard: &ledger.Guard{Findings: 2, Kinds: map[string]int{"aws_access_key": 1, "url_password": 1}, Where: []string{"messages[1] user (tool_result)"}}})
+	}
+	l.Append(ledger.Record{V: 1, ID: "z", Time: time.Now(), Class: "main", Backend: "upstream", Outcome: ledger.OutcomeOK})
+
+	out, _, _ := stats(t, "-dir", dir)
+	squeezed := strings.Join(strings.Fields(out), " ")
+	for _, want := range []string{
+		"GUARD: 3 requests that went upstream carried something that looks like a secret (aws_access_key 3, url_password 3).",
+		"Nothing was removed or blocked",
+		"counted each time",
+	} {
+		if !strings.Contains(squeezed, want) {
+			t.Errorf("report is missing %q\n%s", want, out)
+		}
+	}
+	if clean, _, _ := stats(t, "-dir", seedLedger(t)); strings.Contains(clean, "GUARD") {
+		t.Error("a ledger with no findings shows a guard note")
+	}
+}

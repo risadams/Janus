@@ -107,7 +107,13 @@ func TestValidate(t *testing.T) {
 		{"listen without port", func(c *Config) { c.Listen = "127.0.0.1" }, "host:port"},
 		{"upstream missing", func(c *Config) { c.Upstream.BaseURL = "" }, "upstream.baseUrl is not set"},
 		{"local not a url", func(c *Config) { c.Local.BaseURL = "studio.local:1234" }, "local.baseUrl"},
-		{"unbuilt feature switched on", func(c *Config) { c.Features.Escalate = true }, "features.escalate is not available"},
+		{"unbuilt feature switched on", func(c *Config) { c.Features.Compress = true }, "features.compress is not available"},
+		{"guard on", func(c *Config) { c.Features.Guard = true }, ""},
+		{"guard with patterns", func(c *Config) {
+			c.Features.Guard = true
+			c.Guard = Guard{Patterns: []string{`ACME-[0-9]{6}`}, Allow: []string{"AKIAEXAMPLE"}, Entropy: true}
+		}, ""},
+		{"a guard pattern that does not compile", func(c *Config) { c.Guard.Patterns = []string{"ok", "(unclosed"} }, "guard.patterns[1] is not a valid regular expression"},
 		{"route with nothing to route to", func(c *Config) { c.Features.Route = true }, "local.models is empty"},
 		{"route with a local model", func(c *Config) {
 			c.Features.Route = true
@@ -190,13 +196,13 @@ func TestValidateReportsEveryProblem(t *testing.T) {
 	cfg := Default()
 	cfg.Listen = "nope"
 	cfg.Upstream.BaseURL = ""
-	cfg.Features.Guard = true
+	cfg.Features.Compress = true
 
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("Validate() = nil, want three problems")
 	}
-	for _, want := range []string{"listen", "upstream.baseUrl", "features.guard"} {
+	for _, want := range []string{"listen", "upstream.baseUrl", "features.compress"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Validate() = %v, missing %q", err, want)
 		}
@@ -226,5 +232,14 @@ func TestStarterFileLeavesPricingOut(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	if strings.Contains(string(data), "pricing") {
 		t.Errorf("starter file mentions pricing:\n%s", data)
+	}
+}
+
+func TestStarterFileLeavesGuardOut(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "janus.config.json")
+	Load(path)
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), `"guard": {`) || strings.Contains(string(data), "patterns") {
+		t.Errorf("starter file has an empty guard section:\n%s", data)
 	}
 }

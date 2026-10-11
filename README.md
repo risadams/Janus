@@ -20,6 +20,10 @@ outright. If LM Studio is down, requests go to Claude; and a rule can have
 the local model stand in when Claude is down. The checks catch broken
 answers, not wrong ones.
 
+With `features.guard` on, Janus looks for credentials in requests going
+upstream and records what it finds, without changing anything yet: see
+[the guard](docs/GUARD.md).
+
 `janus mcp` is a separate piece: an MCP server giving Claude a tool that
 has the local model read files and report back. It trades time for
 upstream usage at a steep rate (41% less cost and 12 times slower, on the

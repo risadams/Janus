@@ -45,6 +45,7 @@ ignore fields they do not know.
 | `fault` | string | What went wrong reading the response from the backend when it broke off part-way, e.g. a dropped connection. Absent for a response that arrived whole, and for one the client abandoned. |
 | `capture` | string | The capture's path under `captures/`, without extension |
 | `attempt` | object | Present when one backend was tried and another may have answered: `backend`, `model`, `verdict`, `why`, `duration_ms`, and for a rejected attempt its `usage`. See below. |
+| `guard` | object | Present when secrets were found in a request sent upstream: `findings` (a count), `kinds` (count by kind), `where` (which parts of the request). It never holds a secret. See [the guard](GUARD.md). |
 | `worker` | object | Present on a record of delegated work, where Claude called a tool that the local model carried out: `tool`, `files`, `read_bytes`, `model_calls`, `answer_bytes`, `avoided_tokens`. Such a record has `class` `worker` and `method` `TOOL`, is not a proxied request, and is left out of the request totals. |
 | `shadow_of` | string | Present on a shadow run: the id of the real request it repeated on the local model. Shadow records have `route` `shadow` and an id ending `-shadow`, and are left out of every total. |
 | `compare` | object | On a shadow run that came back whole: `upstream_stop`, `local_stop`, `upstream_tools`, `local_tools`, `stop_match`, `tools_match`, and `upstream_ms` (how long the real answer took) |
