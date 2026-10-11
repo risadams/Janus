@@ -62,8 +62,8 @@ func TestUpstreamPrepare(t *testing.T) {
 }
 
 func TestLocalPrepareStripsCredentials(t *testing.T) {
-	local := NewLocal(mustURL(t, "http://studio.tuesday.local:1234"), nil)
-	req, _ := http.NewRequest("POST", "http://studio.tuesday.local:1234/v1/messages", nil)
+	local := NewLocal(mustURL(t, "http://studio.local:1234"), nil)
+	req, _ := http.NewRequest("POST", "http://studio.local:1234/v1/messages", nil)
 	for k, v := range map[string]string{
 		"Authorization": "Bearer secret-token", "X-Api-Key": "sk-secret", "Cookie": "c=1", "Proxy-Authorization": "Basic x",
 		"Anthropic-Version": "2023-06-01", "Accept-Encoding": "gzip, br", "X-Claude-Code-Session-Id": "s1",

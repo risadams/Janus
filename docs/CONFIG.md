@@ -9,7 +9,7 @@ the defaults below and carries on.
   "listen": "127.0.0.1:8787",
   "allowRemote": false,
   "upstream": { "baseUrl": "https://api.anthropic.com" },
-  "local": { "baseUrl": "http://studio.tuesday.local:1234" },
+  "local": { "baseUrl": "http://studio.local:1234" },
   "features": { "route": false, "escalate": false, "compress": false, "guard": false },
   "logging": { "dir": "logs", "capture": true, "retainDays": 7, "maxMegabytes": 1024 }
 }
@@ -56,7 +56,7 @@ With `features.route` on, a request for that name is answered locally.
 ```json
 {
   "local": {
-    "baseUrl": "http://studio.tuesday.local:1234",
+    "baseUrl": "http://studio.local:1234",
     "models": {
       "janus-local": { "model": "qwen/qwen3.8-27b", "contextTokens": 0, "timeoutSeconds": 900 }
     }
