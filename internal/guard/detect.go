@@ -8,10 +8,14 @@
 package guard
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"io"
 	"math"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Finding is one secret found in a piece of text.
@@ -141,7 +145,21 @@ type Detector struct {
 	// no known format. It finds more and is wrong more often; see
 	// docs/GUARD.md for how often.
 	Entropy bool
+
+	// seen remembers what Scan found in each text it has been over. A
+	// conversation is sent again in full with every turn, so nearly all
+	// the text in a request has been scanned before.
+	mu   sync.Mutex
+	seen map[[sha256.Size]byte][]Finding
 }
+
+// Texts shorter than this are scanned each time: that costs less than
+// remembering them.
+const minRemembered = 256
+
+// maxRemembered bounds the memory of past scans. Each entry is a hash and,
+// rarely, a few positions; no text and no secret is kept.
+const maxRemembered = 50000
 
 // candidate is a run of characters that could be an encoded secret.
 // Padding is only allowed at the end, so that the name in NAME=value is
@@ -153,8 +171,41 @@ var hexOnly = regexp.MustCompile(`^[0-9a-fA-F]+$`)
 
 const entropyThreshold = 4.5
 
-// Scan returns the secrets in text, in order, without overlaps.
+// Scan returns the secrets in text, in order, without overlaps. The result
+// is shared with later calls for the same text and must not be changed.
 func (d *Detector) Scan(text string) []Finding {
+	if len(text) < minRemembered {
+		return d.scan(text)
+	}
+	// The settings are part of the key, so that a detector whose settings
+	// are changed does not answer from before the change.
+	h := sha256.New()
+	fmt.Fprintf(h, "%t\x00%q\x00", d.Entropy, d.Allow)
+	for _, re := range d.Patterns {
+		fmt.Fprintf(h, "%q\x00", re.String())
+	}
+	io.WriteString(h, text)
+	var key [sha256.Size]byte
+	h.Sum(key[:0])
+
+	d.mu.Lock()
+	found, ok := d.seen[key]
+	d.mu.Unlock()
+	if ok {
+		return found
+	}
+	found = d.scan(text)
+	d.mu.Lock()
+	if d.seen == nil || len(d.seen) >= maxRemembered {
+		d.seen = map[[sha256.Size]byte][]Finding{}
+	}
+	d.seen[key] = found
+	d.mu.Unlock()
+	return found
+}
+
+// scan does the work of Scan.
+func (d *Detector) scan(text string) []Finding {
 	allowed := func(start, end int) bool {
 		for _, value := range d.Allow {
 			if value != "" && text[start:end] == value {
