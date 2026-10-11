@@ -94,10 +94,18 @@ func checkConfig(path string, flags config.Overrides) (findings []finding, cfg c
 	return []finding{{"ok", "config", path}}, cfg, true
 }
 
+// addrInUse reports whether a listen failed because the port is taken.
+// Windows reports that with a socket error of its own.
+func addrInUse(err error) bool {
+	const wsaeaddrinuse = syscall.Errno(10048)
+	var errno syscall.Errno
+	return errors.Is(err, syscall.EADDRINUSE) || (errors.As(err, &errno) && errno == wsaeaddrinuse)
+}
+
 func checkListen(addr string) finding {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		if errors.Is(err, syscall.EADDRINUSE) {
+		if addrInUse(err) {
 			return finding{"warn", "listen", addr + " is in use. That is expected if janus is already running;\notherwise another program has the port, and listen needs changing."}
 		}
 		return finding{"fail", "listen", fmt.Sprintf("cannot listen on %s: %v", addr, err)}

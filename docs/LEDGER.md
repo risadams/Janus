@@ -12,7 +12,9 @@ Janus writes two kinds of record under `logging.dir` (default `logs/`).
 | Pruned | Never | By age and total size |
 
 Days are UTC. Every file is created readable by its owner only (0600, in
-0700 directories).
+0700 directories). Windows does not have those modes: there the files
+get whatever access the directory they are in allows, so keep `logging.dir`
+somewhere only you can read, such as under your user profile.
 
 ## Ledger record, schema version 1
 
