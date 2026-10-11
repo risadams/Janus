@@ -621,3 +621,82 @@ func TestShadowRuleSendsUpstreamUntouchedAndAsksForAShadow(t *testing.T) {
 		t.Error("an unmatched request was given a shadow")
 	}
 }
+
+const mixedHistory = `{"model":"claude-opus-5-5","messages":[` +
+	`{"role":"user","content":"count the lines"},` +
+	`{"role":"assistant","content":[{"type":"thinking","thinking":"local scratch work","signature":""},{"type":"tool_use","id":"587714761","name":"Bash","input":{}}]},` +
+	`{"role":"user","content":[{"type":"tool_result","tool_use_id":"587714761","content":"2"}]}]}`
+
+// Every way a request can end up upstream repairs a history a local model
+// had a turn in.
+func TestUpstreamPlansRepairMixedHistory(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL, _ := url.Parse(dead.URL)
+	dead.Close()
+
+	cases := map[string]*Router{
+		"no rule matches":              router(local, nil),
+		"an upstream rule":             {Upstream: router(local, nil).Upstream, Local: local, Rules: []Rule{{Route: RouteUpstream}}},
+		"a shadow rule":                {Upstream: router(local, nil).Upstream, Local: local, Rules: []Rule{{Route: RouteShadow, Local: qwen["janus-local"]}}},
+		"an escalate rule":             {Upstream: router(local, nil).Upstream, Local: local, Rules: []Rule{{Route: RouteEscalate, Local: qwen["janus-local"]}}},
+		"a local rule that falls back": {Upstream: router(local, nil).Upstream, Local: backend.NewLocal(deadURL, nil), Rules: []Rule{{Route: RouteLocal, Local: qwen["janus-local"]}}},
+	}
+	for name, r := range cases {
+		plan, refusal, trace := r.Explain(context.Background(), subagentHeader(), parse(t, mixedHistory))
+		if refusal != nil || plan.Backend.Name() != "upstream" {
+			t.Errorf("%s: plan = %+v, refusal = %+v", name, plan, refusal)
+			continue
+		}
+		if plan.Body == nil || strings.Contains(string(plan.Body), "local scratch work") || !strings.Contains(string(plan.Body), `"id":"587714761"`) {
+			t.Errorf("%s: the body to send still has the unsigned thinking, or lost the tool call:\n%s", name, plan.Body)
+		}
+		if strings.Join(plan.Stages, ",") != "drop_unsigned_thinking" {
+			t.Errorf("%s: stages = %v", name, plan.Stages)
+		}
+		if !strings.Contains(strings.Join(trace, "\n"), "removed the unsigned thinking") {
+			t.Errorf("%s: the trace does not mention the repair: %q", name, trace)
+		}
+	}
+}
+
+// The repair is for the upstream only. A request going to the local model
+// keeps its history as it is: the local model wrote that thinking and has
+// no signatures to check.
+func TestLocalPlansKeepLocalThinking(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	r.Rules = []Rule{{Route: RouteLocal, Local: qwen["janus-local"]}}
+
+	plan, _, _ := r.Explain(context.Background(), subagentHeader(), parse(t, mixedHistory))
+	if plan.Backend.Name() != "local" || !strings.Contains(string(plan.Body), "local scratch work") {
+		t.Errorf("plan = %+v\n%s", plan, plan.Body)
+	}
+	for _, stage := range plan.Stages {
+		if stage == "drop_unsigned_thinking" {
+			t.Error("a local request was repaired for the upstream")
+		}
+	}
+}
+
+func TestMixedConversationReachesTheUpstreamRepaired(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	var upstreamBody string
+	res := throughRules(t, local, nil, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		upstreamBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"type":"message","model":"claude-opus-5-5","content":[],"usage":{"input_tokens":1,"output_tokens":1}}`)
+	}, mixedHistory)
+
+	if strings.Contains(upstreamBody, `"type":"thinking"`) || !strings.Contains(upstreamBody, `"tool_use_id":"587714761"`) {
+		t.Errorf("the upstream received:\n%s", upstreamBody)
+	}
+	if got := strings.Join(res.Exchange.Stages, ","); got != "drop_unsigned_thinking" {
+		t.Errorf("exchange stages = %q", got)
+	}
+	// The kept request is still what the client sent.
+	if !strings.Contains(string(res.Exchange.RequestBody), "local scratch work") {
+		t.Error("the kept request should be the client's original")
+	}
+}

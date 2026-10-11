@@ -147,6 +147,9 @@ const (
 	StageModel        = "set_model"
 	StageLiftTools    = "lift_tool_additions"
 	StageDropDeferred = "drop_deferred_tools"
+	// StageDropThinking is applied on the way upstream, not to the local
+	// model; see RepairForUpstream.
+	StageDropThinking = "drop_unsigned_thinking"
 )
 
 // Normalize rewrites a Claude Code request into one LM Studio accepts, and
@@ -225,4 +228,51 @@ func Normalize(req *anthropic.Request, localModel string) (stages []string, err 
 		req.SetTools(tools)
 	}
 	return stages, nil
+}
+
+// RepairForUpstream removes from a request's history the thinking blocks a
+// local model produced, and reports whether it removed any.
+//
+// The Anthropic API signs the thinking blocks it returns and rejects a
+// request that sends one back with a missing or invalid signature
+// ("Invalid `signature` in `thinking` block"). A local model's thinking
+// blocks have no signature, so a conversation that was answered locally
+// for a turn and then goes upstream would fail on them. Thinking is the
+// model's scratch work, not part of what it said or did, and dropping an
+// earlier turn's is something the API allows.
+//
+// Blocks the API signed itself are never touched: their signature is not
+// empty, including when the thinking text is.
+func RepairForUpstream(req *anthropic.Request) (repaired bool) {
+	messages := req.Messages()
+	for i, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		var kept []anthropic.Block
+		dropped := false
+		for _, b := range m.Blocks() {
+			if b.Type == "thinking" {
+				var t anthropic.ThinkingBlock
+				if b.Decode(&t) == nil && t.Signature == "" {
+					dropped = true
+					continue
+				}
+			}
+			kept = append(kept, b)
+		}
+		if !dropped {
+			continue
+		}
+		if len(kept) == 0 {
+			// A message cannot be empty.
+			kept = []anthropic.Block{anthropic.NewTextBlock("(no reply)")}
+		}
+		messages[i] = m.WithBlocks(kept)
+		repaired = true
+	}
+	if repaired {
+		req.SetMessages(messages)
+	}
+	return repaired
 }
