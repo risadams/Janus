@@ -259,6 +259,9 @@ What it depends on:
 - **The detector.** "Contain nothing that looks like a secret" means
   nothing a detector recognises. It is evidence, not proof.
 
+For the wider picture, including the listening port, files on disk, and
+the connection to LM Studio, see the [threat model](THREAT-MODEL.md).
+
 ## The leak tests
 
 "Nothing protected goes upstream" is a test that runs on every change, in
