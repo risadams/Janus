@@ -59,6 +59,10 @@ type Record struct {
 	// answered: the local model first with Claude as the fallback, or
 	// Claude first with the local model standing in when Claude was down.
 	Attempt *Attempt `json:"attempt,omitempty"`
+	// Worker is present on a record of delegated work: a tool Claude called
+	// that the local model carried out. Such a record is not a proxied
+	// request, and is kept out of the request totals.
+	Worker *Worker `json:"worker,omitempty"`
 	// ShadowOf marks a shadow run: the same request answered a second time
 	// by the local model, for comparison. It holds the id of the real
 	// request. Shadow records are kept out of every total; they did not
@@ -67,6 +71,40 @@ type Record struct {
 	// Compare sets a shadow's answer beside the real one.
 	Compare *Compare `json:"compare,omitempty"`
 }
+
+// Worker describes one piece of delegated work.
+type Worker struct {
+	Tool string `json:"tool"`
+	// Files and ReadBytes are what the local model read on Claude's
+	// behalf; ModelCalls is how many passes it took.
+	Files      int `json:"files"`
+	ReadBytes  int `json:"read_bytes"`
+	ModelCalls int `json:"model_calls"`
+	// AnswerBytes is what went back to Claude.
+	AnswerBytes int `json:"answer_bytes"`
+	// AvoidedTokens is the input Claude would have spent reading every
+	// file in full, less what the answer cost it. It is a ceiling on the
+	// saving, not a measurement: Claude often would not have read the
+	// files in full. See docs/LEDGER.md.
+	AvoidedTokens int `json:"avoided_tokens"`
+}
+
+// AvoidedTokens is what reading the files in full would have cost Claude in
+// input tokens, less what the answer cost it. The arithmetic errs low on
+// both sides: files are counted at four bytes a token and the answer at
+// three.
+//
+// The assumption does not err low. It supposes Claude would otherwise have
+// read every byte, and Claude frequently searches instead. In one measured
+// case the figure was 63,000 tokens and the real saving was about 4,000.
+// Treat it as the most that could have been saved.
+func AvoidedTokens(readBytes, answerBytes int) int {
+	return max(0, readBytes/4-(answerBytes+2)/3)
+}
+
+// OutcomeToolError is the outcome of delegated work that did not produce
+// an answer.
+const OutcomeToolError = "tool_error"
 
 // Attempt is what became of trying the local model first.
 type Attempt struct {

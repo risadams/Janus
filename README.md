@@ -20,6 +20,11 @@ outright. If LM Studio is down, requests go to Claude; and a rule can have
 the local model stand in when Claude is down. The checks catch broken
 answers, not wrong ones.
 
+`janus mcp` is a separate piece: an MCP server giving Claude a tool that
+has the local model read files and report back. It is slow and suits a
+narrower job than it sounds; read [the recipe](docs/recipes/workers.md)
+before using it.
+
 - [Charter](docs/CHARTER.md): what Janus is, goals, scope, risks
 - [Requirements](docs/REQUIREMENTS.md)
 - [Roadmap](docs/ROADMAP.md)

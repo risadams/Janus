@@ -309,3 +309,43 @@ func TestStoodInIsCountedApartFromLocalFirst(t *testing.T) {
 		t.Errorf("local-first rows = %+v; a stand-in is not a local-first attempt", rep.LocalFirst)
 	}
 }
+
+func TestAvoidedTokensErrsLow(t *testing.T) {
+	for _, c := range []struct{ read, answer, want int }{
+		{84000, 900, 20700},
+		{400, 300, 0},  // 100 - 100
+		{100, 3000, 0}, // an answer longer than the file saved nothing
+		{0, 0, 0},
+	} {
+		if got := AvoidedTokens(c.read, c.answer); got != c.want {
+			t.Errorf("AvoidedTokens(%d, %d) = %d, want %d", c.read, c.answer, got, c.want)
+		}
+	}
+}
+
+func TestDelegatedWorkIsSummarisedApart(t *testing.T) {
+	work := func(id string, outcome string, files, read, avoided int, ms int64) Record {
+		return Record{V: 1, ID: id, Time: at(10, 1), Class: "worker", Backend: "local", Outcome: outcome, DurationMs: ms,
+			Usage:  &Usage{Input: 20000, Output: 200},
+			Worker: &Worker{Tool: "ask_files", Files: files, ReadBytes: read, AvoidedTokens: avoided}}
+	}
+	real := rec("m", at(10, 2), "main", &Usage{Input: 2, Output: 100})
+	rep := Summarise([]Record{
+		real,
+		work("a", OutcomeOK, 3, 84000, 20700, 12000),
+		work("b", OutcomeOK, 1, 4000, 900, 6000),
+		work("c", OutcomeToolError, 5, 99000, 0, 400),
+	}, DefaultPrices)
+
+	if len(rep.Delegated) != 1 {
+		t.Fatalf("delegated rows = %+v", rep.Delegated)
+	}
+	want := DelegatedRow{Tool: "ask_files", Calls: 3, Failed: 1, Files: 4, ReadBytes: 88000, AvoidedTokens: 21600, MedianMs: 12000}
+	if rep.Delegated[0] != want {
+		t.Errorf("row = %+v, want %+v", rep.Delegated[0], want)
+	}
+	// Delegated work is not a request: the totals are the one real request.
+	if only := Summarise([]Record{real}, DefaultPrices); rep.Total != only.Total || len(rep.ByClass) != 1 {
+		t.Errorf("delegated work leaked into the totals: %+v", rep.Total)
+	}
+}

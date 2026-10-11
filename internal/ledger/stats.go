@@ -133,6 +133,9 @@ type Report struct {
 	ByBackend []Row     `json:"by_backend"`
 	// Outcomes counts requests by outcome.
 	Outcomes map[string]int `json:"outcomes"`
+	// Delegated summarises, by tool, work Claude handed to the local model.
+	// It is in no other figure.
+	Delegated []DelegatedRow `json:"delegated,omitempty"`
 	// StoodIn counts requests the local model answered because Claude
 	// could not: unreachable, rate limited, overloaded, or failing.
 	StoodIn int `json:"stood_in,omitempty"`
@@ -170,8 +173,22 @@ func Summarise(records []Record, prices Prices) Report {
 
 	shadows := map[string]*shadowTally{}
 	attempts := map[string]*attemptTally{}
+	delegated := map[string]*delegatedTally{}
 	first := true
 	for _, rec := range records {
+		if rec.Worker != nil {
+			// Delegated work is real activity, so it counts toward the
+			// period the report covers, though not toward the requests.
+			if first {
+				rep.From, first = rec.Time, false
+			}
+			rep.To = rec.Time
+			if delegated[rec.Worker.Tool] == nil {
+				delegated[rec.Worker.Tool] = &delegatedTally{}
+			}
+			delegated[rec.Worker.Tool].add(rec)
+			continue
+		}
 		if rec.ShadowOf != "" {
 			if shadows[rec.Class] == nil {
 				shadows[rec.Class] = &shadowTally{}
@@ -217,6 +234,12 @@ func Summarise(records []Record, prices Prices) Report {
 		rep.LocalFirst = append(rep.LocalFirst, row)
 	}
 	sort.Slice(rep.LocalFirst, func(i, j int) bool { return rep.LocalFirst[i].Class < rep.LocalFirst[j].Class })
+	for tool, tally := range delegated {
+		row := tally.row
+		row.Tool, row.MedianMs = tool, medianOf(tally.ms)
+		rep.Delegated = append(rep.Delegated, row)
+	}
+	sort.Slice(rep.Delegated, func(i, j int) bool { return rep.Delegated[i].Tool < rep.Delegated[j].Tool })
 	return rep
 }
 
@@ -340,4 +363,34 @@ func (t *attemptTally) add(a Attempt) {
 		t.row.Failed++
 	}
 	t.ms = append(t.ms, a.DurationMs)
+}
+
+// DelegatedRow is the delegated work done through one tool.
+type DelegatedRow struct {
+	Tool   string `json:"tool"`
+	Calls  int    `json:"calls"`
+	Failed int    `json:"failed"`
+	// Files and ReadBytes are what the local model read in the calls that
+	// succeeded, and AvoidedTokens the estimate of what that spared Claude.
+	Files         int   `json:"files"`
+	ReadBytes     int   `json:"read_bytes"`
+	AvoidedTokens int   `json:"avoided_tokens"`
+	MedianMs      int64 `json:"median_ms"`
+}
+
+type delegatedTally struct {
+	row DelegatedRow
+	ms  []int64
+}
+
+func (t *delegatedTally) add(rec Record) {
+	t.row.Calls++
+	if rec.Outcome != OutcomeOK {
+		t.row.Failed++
+		return
+	}
+	t.row.Files += rec.Worker.Files
+	t.row.ReadBytes += rec.Worker.ReadBytes
+	t.row.AvoidedTokens += rec.Worker.AvoidedTokens
+	t.ms = append(t.ms, rec.DurationMs)
 }
