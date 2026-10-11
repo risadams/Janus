@@ -82,7 +82,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	printBanner(stdout, cfg, ln.Addr().String())
 
 	logger := log.New(stderr, "", log.LstdFlags)
-	srv := &http.Server{Handler: proxy.New(upstream, logger.Printf)}
+	srv := &http.Server{Handler: proxy.New(upstream, func(ex proxy.Exchange) {
+		logger.Print(formatExchange(ex))
+	})}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -101,6 +103,40 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// formatExchange is the one line janus logs per request. For a Messages
+// response it adds what the model did and what it cost in tokens.
+func formatExchange(ex proxy.Exchange) string {
+	line := fmt.Sprintf("%s %s -> %d (%s)", ex.Method, ex.Path, ex.Status, ex.Duration.Round(time.Millisecond))
+	if ex.Unread != "" {
+		return line + " response not read: " + ex.Unread
+	}
+	s := ex.Summary
+	if s == nil {
+		return line
+	}
+	if s.Error != nil {
+		return line + " error=" + s.Error.Type
+	}
+	if s.Model != "" {
+		line += " " + s.Model
+	}
+	if s.StopReason != "" {
+		line += " " + s.StopReason
+	}
+	line += fmt.Sprintf(" in=%d", s.Usage.Input)
+	if s.Usage.CacheWrite != nil {
+		line += fmt.Sprintf(" cache_write=%d", *s.Usage.CacheWrite)
+	}
+	if s.Usage.CacheRead != nil {
+		line += fmt.Sprintf(" cache_read=%d", *s.Usage.CacheRead)
+	}
+	line += fmt.Sprintf(" out=%d", s.Usage.Output)
+	if !s.Complete {
+		line += " (incomplete)"
+	}
+	return line
 }
 
 func versionLine() string {
