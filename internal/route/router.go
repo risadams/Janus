@@ -380,6 +380,27 @@ func upstreamDown(status int) bool {
 	return status == http.StatusTooManyRequests || status >= 500
 }
 
+// LocalOnly returns a planner for requests that must not leave the
+// machine: they go to the local model called name (or the only one
+// configured), and nowhere else. Unlike a rule it does not give way when
+// the local backend is down or the request does not fit; it refuses.
+func (r *Router) LocalOnly(name string) proxy.Planner {
+	return func(ctx context.Context, header http.Header, req *anthropic.Request) (proxy.Plan, *proxy.Refusal) {
+		refuse := func(status int, kind, message string) (proxy.Plan, *proxy.Refusal) {
+			return proxy.Plan{}, &proxy.Refusal{Status: status, Type: kind, Message: "janus: " + message, Route: RouteLocal, Reason: message}
+		}
+		local, problem := r.named(name)
+		if problem != "" {
+			return refuse(http.StatusForbidden, "permission_error", problem)
+		}
+		plan, _, why := r.local(ctx, req, local, req.Model(), "local-only policy")
+		if why != nil {
+			return refuse(why.status, why.kind, why.message)
+		}
+		return plan, nil
+	}
+}
+
 // named resolves the local model an override asks for: the one called
 // name, or the only one configured if no name is given.
 func (r *Router) named(name string) (LocalModel, string) {

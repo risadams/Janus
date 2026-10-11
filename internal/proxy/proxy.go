@@ -104,6 +104,14 @@ type Guard struct {
 	// placeholders were turned back into secrets in the response.
 	Replaced int
 	Restored int
+	// Scanned is set when the redactor went over what was sent, which is
+	// when Report and Replaced mean anything.
+	Scanned bool
+	// LocalOnly says why the request held local-only content, if it did,
+	// and Withheld how many pieces of it were replaced with a notice in
+	// what went upstream.
+	LocalOnly []string
+	Withheld  int
 	// Blocked is set when the exchange was stopped: the request could not
 	// be made safe to send, or the response referred to a secret in a form
 	// that could not be restored.
@@ -152,6 +160,19 @@ type Options struct {
 	// Messages and count_tokens request sent to the upstream, and puts them
 	// back in the response. A request it cannot make safe is not sent.
 	Redactor *guard.Redactor
+	// Policy, when set, marks some content local-only: it is never sent to
+	// the upstream. What happens to a request holding such content is
+	// PolicyAction. A request that cannot be checked against the policy is
+	// not sent.
+	Policy *guard.Policy
+	// PolicyAction is "withhold" (the default): the content is replaced
+	// with a notice in whatever goes upstream, and the request otherwise
+	// proceeds as planned; or "local": the whole request is answered by
+	// the local model, through LocalOnly, or refused if that cannot be done.
+	PolicyAction string
+	// LocalOnly plans a request that must stay local. Required for the
+	// "local" action.
+	LocalOnly Planner
 	// KeepBodies makes every Exchange carry its request and response
 	// bodies, for capture logging. Off, only Messages request bodies are
 	// kept, which the ledger needs.
@@ -252,6 +273,9 @@ type exchangeState struct {
 	// sent is the body last handed to a backend, if it was not the
 	// client's own.
 	sent []byte
+	// withhold is set when local-only content must be kept out of anything
+	// this request sends upstream.
+	withhold bool
 	// served is an answer given to the client from memory, by a trial
 	// that passed, rather than relayed.
 	served *Fetched
@@ -448,8 +472,7 @@ func New(opts Options) http.Handler {
 			// that it can be inspected and, if the plan says so, replaced.
 			original, truncated = readUpTo(r.Body, maxKept)
 			send := original
-			switch {
-			case truncated:
+			if truncated {
 				// Too large to inspect: send what was read followed by
 				// the rest, untouched.
 				r.Body = struct {
@@ -458,7 +481,48 @@ func New(opts Options) http.Handler {
 				}{io.MultiReader(bytes.NewReader(original), r.Body), r.Body}
 				state.plan.Reason = "passthrough: request too large to inspect"
 				send = nil
-			case opts.Plan != nil:
+			}
+
+			// The local-only policy is consulted first, because it outranks
+			// everything else: an override header, the routing rules, and
+			// any fallback they would set up.
+			keptLocal := false
+			if opts.Policy != nil {
+				reasons, quoted, err := localOnly(opts.Policy, original, truncated)
+				switch {
+				case err != nil:
+					// A request that cannot be checked is not sent.
+					state.guard = &Guard{Blocked: err.Error()}
+					refusal = &Refusal{Status: http.StatusInternalServerError, Type: "api_error",
+						Message: fmt.Sprintf("janus: %v. The request was not sent.", err), Route: "none", Reason: "local-only policy: " + err.Error()}
+				case len(reasons) > 0 && opts.PolicyAction == "local":
+					state.guard = &Guard{LocalOnly: reasons}
+					keptLocal = true
+					req, _ := anthropic.ParseRequest(original) // localOnly has shown that this parses
+					why := "local-only policy: " + strings.Join(reasons, "; ")
+					if opts.LocalOnly == nil {
+						refusal = &Refusal{Status: http.StatusForbidden, Type: "permission_error", Route: "local", Reason: why + ": refused: no local model to answer it",
+							Message: "janus: this request holds content that must stay on this machine (" + strings.Join(reasons, "; ") + "), and there is no local model to answer it. It was not sent."}
+					} else if plan, refused := opts.LocalOnly(r.Context(), r.Header, req); refused != nil {
+						refused.Message = "janus: this request holds content that must stay on this machine (" + strings.Join(reasons, "; ") + "), and the local model cannot answer it: " +
+							strings.TrimPrefix(refused.Message, "janus: ") + ". It was not sent."
+						refused.Reason = why + ": refused: " + refused.Reason
+						refusal = refused
+					} else {
+						plan.Reason = why
+						state.plan = plan
+						state.plan.Else, state.plan.Fallback, state.plan.Accept = nil, nil, nil // nothing may send it upstream
+						if plan.Body != nil {
+							send = plan.Body
+						}
+					}
+				case len(reasons)+len(quoted) > 0:
+					state.guard = &Guard{LocalOnly: append(reasons, quoted...)}
+					state.withhold = true
+				}
+			}
+
+			if opts.Plan != nil && !truncated && !keptLocal && refusal == nil {
 				if req, err := anthropic.ParseRequest(original); err != nil {
 					state.plan.Reason = "passthrough: request not understood"
 				} else if plan, refused := opts.Plan(r.Context(), r.Header, req); refused != nil {
@@ -474,11 +538,25 @@ func New(opts Options) http.Handler {
 				r.Body = io.NopCloser(bytes.NewReader(send))
 				r.ContentLength = int64(len(send))
 			}
-		case opts.Redactor != nil && isCountTokens(r) && r.Body != nil:
+		case (opts.Redactor != nil || opts.Policy != nil) && isCountTokens(r) && r.Body != nil:
 			// Token counting sends the same content upstream as the
 			// request it is counting for, so it is checked the same way.
+			// It can only be answered upstream, so local-only content in
+			// it is always withheld, whatever the policy's action.
 			original, truncated = readUpTo(r.Body, maxKept)
 			inspectOnly = true
+			if opts.Policy != nil {
+				reasons, quoted, err := localOnly(opts.Policy, original, truncated)
+				switch {
+				case err != nil:
+					state.guard = &Guard{Blocked: err.Error()}
+					refusal = &Refusal{Status: http.StatusInternalServerError, Type: "api_error",
+						Message: fmt.Sprintf("janus: %v. The request was not sent.", err), Route: "none", Reason: "local-only policy: " + err.Error()}
+				case len(reasons)+len(quoted) > 0:
+					state.guard = &Guard{LocalOnly: append(reasons, quoted...)}
+					state.withhold = true
+				}
+			}
 		case state.keep && r.Body != nil:
 			requestBody = &cappedBuffer{limit: maxKept}
 			r.Body = &teeBody{ReadCloser: r.Body, copy: requestBody}
@@ -501,7 +579,26 @@ func New(opts Options) http.Handler {
 				body = original
 			}
 			state.redaction, state.sent = nil, plan.Body
-			if opts.Redactor == nil || plan.Backend.Name() != "upstream" {
+			if plan.Backend.Name() != "upstream" {
+				return body, nil
+			}
+			if state.withhold {
+				// The body is checked again as it stands now, since
+				// planning may have rewritten it since the first check.
+				req, err := anthropic.ParseRequest(body)
+				if err != nil {
+					return nil, fmt.Errorf("the request could not be read to withhold its local-only content: %w", err)
+				}
+				state.guard.Withheld = opts.Policy.Withhold(req, opts.Policy.Check(req))
+				if opts.Policy.Remaining(req) != 0 {
+					return nil, errors.New("local-only content could not be removed from the request")
+				}
+				if state.guard.Withheld > 0 {
+					body = req.Bytes()
+					state.sent = body
+				}
+			}
+			if opts.Redactor == nil {
 				return body, nil
 			}
 			if state.guard == nil {
@@ -515,7 +612,7 @@ func New(opts Options) http.Handler {
 				return nil, err
 			}
 			state.redaction = rd
-			state.guard.Report, state.guard.Replaced = rd.Report, rd.Replaced
+			state.guard.Scanned, state.guard.Report, state.guard.Replaced = true, rd.Report, rd.Replaced
 			if rd.Active() {
 				state.sent = rd.Body
 			}
@@ -524,6 +621,9 @@ func New(opts Options) http.Handler {
 		// blocked answers the client when prepare fails. Nothing has been
 		// sent anywhere.
 		blocked := func(w http.ResponseWriter, err error) {
+			if state.guard == nil {
+				state.guard = &Guard{}
+			}
 			state.guard.Blocked = err.Error()
 			state.plan.Reason = "guard: " + err.Error() + "; not sent"
 			writeError(w, http.StatusInternalServerError, "api_error", fmt.Sprintf("janus: %v. The request was not sent upstream.", err))
@@ -727,6 +827,25 @@ func readUpTo(r io.Reader, limit int) (data []byte, truncated bool) {
 		return data, true
 	}
 	return data, false
+}
+
+// localOnly checks a request body against the policy and returns why it
+// holds local-only content, if it does. An error means the body could not
+// be checked, which the caller must treat as "do not send".
+//
+// reasons is why the request as a whole is local-only; quoted names
+// protected files that tool results merely quote lines of, which are kept
+// from the upstream without making the request local-only.
+func localOnly(policy *guard.Policy, body []byte, truncated bool) (reasons, quoted []string, err error) {
+	if truncated {
+		return nil, nil, errors.New("the request is too large to check against the local-only policy")
+	}
+	req, err := anthropic.ParseRequest(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("the request could not be read to check it against the local-only policy: %w", err)
+	}
+	m := policy.Check(req)
+	return m.Reasons, m.Quoted, nil
 }
 
 func isCountTokens(r *http.Request) bool {

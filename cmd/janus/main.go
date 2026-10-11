@@ -132,18 +132,33 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	var detector *guard.Detector
 	var redactor *guard.Redactor
+	var policy *guard.Policy
+	var keepLocal proxy.Planner
 	if cfg.Features.Guard {
 		detector = newDetector(cfg)
 		if cfg.Guard.Redact {
 			redactor = guard.NewRedactor(detector)
 		}
+		policy = newPolicy(cfg)
+		if policy != nil && cfg.Guard.LocalOnly.Action == "local" {
+			// The policy needs a way to the local model whether or not
+			// routing is on.
+			planner := router
+			if planner == nil {
+				planner = newRouter(cfg, upstream, local)
+			}
+			keepLocal = planner.LocalOnly(cfg.Guard.LocalOnly.Local)
+		}
 	}
 
 	srv := &http.Server{Handler: proxy.New(proxy.Options{
-		Upstream:   upstream,
-		Plan:       plan,
-		Redactor:   redactor,
-		KeepBodies: captures != nil,
+		Upstream:     upstream,
+		Plan:         plan,
+		Redactor:     redactor,
+		Policy:       policy,
+		PolicyAction: cfg.Guard.LocalOnly.Action,
+		LocalOnly:    keepLocal,
+		KeepBodies:   captures != nil,
 		Done: func(ex proxy.Exchange) {
 			rec := record(ex, led, captures, detector, logger)
 			if router != nil {
@@ -217,26 +232,41 @@ func trialTimeout(r config.Rule) time.Duration {
 func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, detector *guard.Detector, logger *log.Logger) ledger.Record {
 	rec := ledger.FromExchange(ex)
 	found := ""
-	switch g := ex.Guard; {
-	case g != nil:
+	g := ex.Guard
+	if g == nil {
+		g = &proxy.Guard{}
+	}
+	if g.Scanned || g.Blocked != "" || len(g.LocalOnly) > 0 {
+		rec.Guard = &ledger.Guard{Blocked: g.Blocked, LocalOnly: g.LocalOnly, Withheld: g.Withheld}
+	}
+	if g.Scanned {
 		// The redactor dealt with this request on its way out.
-		if g.Report.Findings > 0 || g.Blocked != "" {
-			replaced := g.Replaced
-			rec.Guard = &ledger.Guard{Findings: g.Report.Findings, Kinds: g.Report.Kinds, Where: g.Report.Where,
-				Redacted: &replaced, Restored: g.Restored, Blocked: g.Blocked}
+		replaced := g.Replaced
+		rec.Guard.Findings, rec.Guard.Kinds, rec.Guard.Where = g.Report.Findings, g.Report.Kinds, g.Report.Where
+		rec.Guard.Redacted, rec.Guard.Restored = &replaced, g.Restored
+		if g.Report.Findings == 0 && g.Blocked == "" && len(g.LocalOnly) == 0 {
+			rec.Guard = nil // nothing to say
 		}
-		switch {
-		case g.Blocked != "":
-			found = " [guard: stopped: " + g.Blocked + "]"
-		case g.Replaced > 0:
-			found = fmt.Sprintf(" [guard: %d kept from going upstream (%s), %d put back in the answer]", g.Replaced, g.Report.Summary(), g.Restored)
-		}
-	default:
+	} else if report, scanned := scanForSecrets(detector, ex); scanned && report.Findings > 0 {
 		// Detect only: look at what was sent, after the fact.
-		if report, scanned := scanForSecrets(detector, ex); scanned && report.Findings > 0 {
-			rec.Guard = &ledger.Guard{Findings: report.Findings, Kinds: report.Kinds, Where: report.Where}
-			found = fmt.Sprintf(" [guard: %d found going upstream: %s]", report.Findings, report.Summary())
+		if rec.Guard == nil {
+			rec.Guard = &ledger.Guard{}
 		}
+		rec.Guard.Findings, rec.Guard.Kinds, rec.Guard.Where = report.Findings, report.Kinds, report.Where
+		found = fmt.Sprintf(" [guard: %d found going upstream: %s]", report.Findings, report.Summary())
+	}
+	switch {
+	case g.Blocked != "":
+		found = " [guard: stopped: " + g.Blocked + "]"
+	case g.Replaced > 0:
+		found = fmt.Sprintf(" [guard: %d kept from going upstream (%s), %d put back in the answer]", g.Replaced, g.Report.Summary(), g.Restored)
+	}
+	switch {
+	case len(g.LocalOnly) == 0 || g.Blocked != "":
+	case g.Withheld > 0:
+		found += fmt.Sprintf(" [local-only: %d withheld from upstream (%s)]", g.Withheld, strings.Join(g.LocalOnly, "; "))
+	case ex.Backend == "local":
+		found += fmt.Sprintf(" [local-only: kept on this machine (%s)]", strings.Join(g.LocalOnly, "; "))
 	}
 	if captures != nil {
 		name, err := captures.Write(ex)
@@ -271,6 +301,17 @@ func scanForSecrets(detector *guard.Detector, ex proxy.Exchange) (guard.Report, 
 		return guard.Report{}, false
 	}
 	return detector.ScanRequest(req), true
+}
+
+// newPolicy builds the local-only policy from the config, or nil if it
+// protects nothing. Validate has already established that it compiles.
+func newPolicy(cfg config.Config) *guard.Policy {
+	lo := cfg.Guard.LocalOnly
+	if !lo.On() {
+		return nil
+	}
+	policy, _ := guard.NewPolicy(lo.Paths, lo.Markers)
+	return policy
 }
 
 // newDetector builds the detector from the config. Validate has already
@@ -425,6 +466,14 @@ func printBanner(w io.Writer, cfg config.Config, addr string) {
 			fmt.Fprintf(w, "  Guard       replacing secrets with placeholders in requests going upstream, and putting them back in answers\n")
 		} else {
 			fmt.Fprintf(w, "  Guard       looking for secrets in requests going upstream; detect only, nothing is changed\n")
+		}
+	}
+	if lo := cfg.Guard.LocalOnly; cfg.Features.Guard && lo.On() {
+		what := strings.Join(append(append([]string{}, lo.Paths...), lo.Markers...), ", ")
+		if lo.Action == "local" {
+			fmt.Fprintf(w, "  Local-only  %s: requests holding these are answered by the local model, or refused\n", what)
+		} else {
+			fmt.Fprintf(w, "  Local-only  %s: withheld from anything sent upstream\n", what)
 		}
 	}
 	fmt.Fprintf(w, "  Ledger      %s\n", filepath.Join(cfg.Logging.Dir, "ledger"))

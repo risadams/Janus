@@ -114,6 +114,33 @@ func TestValidate(t *testing.T) {
 			c.Guard = Guard{Patterns: []string{`ACME-[0-9]{6}`}, Allow: []string{"AKIAEXAMPLE"}, Entropy: true}
 		}, ""},
 		{"a guard pattern that does not compile", func(c *Config) { c.Guard.Patterns = []string{"ok", "(unclosed"} }, "guard.patterns[1] is not a valid regular expression"},
+		{"local-only paths and markers", func(c *Config) {
+			c.Features.Guard = true
+			c.Guard.LocalOnly = LocalOnly{Paths: []string{"secrets/**", "*.pem"}, Markers: []string{"COMPANY CONFIDENTIAL"}, Action: "withhold"}
+		}, ""},
+		{"a local-only path that protects everything", func(c *Config) { c.Guard.LocalOnly.Paths = []string{"**"} }, "guard.localOnly: "},
+		{"a local-only action that does not exist", func(c *Config) {
+			c.Guard.LocalOnly = LocalOnly{Paths: []string{".env"}, Action: "shred"}
+		}, `guard.localOnly.action is "shred"`},
+		{"an action with nothing to protect", func(c *Config) { c.Guard.LocalOnly.Action = "shred" }, `guard.localOnly.action is "shred"`},
+		{"keeping requests local with one local model", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Guard.LocalOnly = LocalOnly{Paths: []string{".env"}, Action: "local"}
+		}, ""},
+		{"keeping requests local with no local model", func(c *Config) {
+			c.Guard.LocalOnly = LocalOnly{Paths: []string{".env"}, Action: "local"}
+		}, "local.models has 0 entries"},
+		{"keeping requests local without saying which of two", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"a": {Model: "q"}, "b": {Model: "r"}}
+			c.Guard.LocalOnly = LocalOnly{Paths: []string{".env"}, Action: "local"}
+		}, "name the one to use as guard.localOnly.local"},
+		{"keeping requests local on a model that is not there", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"a": {Model: "q"}}
+			c.Guard.LocalOnly = LocalOnly{Paths: []string{".env"}, Action: "local", Local: "b"}
+		}, `guard.localOnly.local is "b", which is not an entry`},
+		{"naming a local model while withholding", func(c *Config) {
+			c.Guard.LocalOnly = LocalOnly{Paths: []string{".env"}, Local: "a"}
+		}, `guard.localOnly.local is only used with`},
 		{"route with nothing to route to", func(c *Config) { c.Features.Route = true }, "local.models is empty"},
 		{"route with a local model", func(c *Config) {
 			c.Features.Route = true

@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/risadams/janus/internal/guard"
 	"github.com/risadams/janus/internal/validate"
 )
 
@@ -59,7 +60,30 @@ type Guard struct {
 	// sent, and puts it back in the answer. Without it the guard only
 	// reports what it finds.
 	Redact bool `json:"redact,omitempty"`
+	// LocalOnly names content that must never be sent upstream, whatever
+	// is in it.
+	LocalOnly LocalOnly `json:"localOnly,omitzero"`
 }
+
+// LocalOnly is the local-only policy: content that stays on this machine.
+type LocalOnly struct {
+	// Paths are globs for files whose contents are local-only, matched
+	// against the end of a path: "secrets/**", "*.pem", ".env".
+	Paths []string `json:"paths,omitempty"`
+	// Markers are strings that make any text containing them local-only.
+	Markers []string `json:"markers,omitempty"`
+	// Action is what happens to a request holding such content: "withhold"
+	// (the default) sends the request with the content replaced by a
+	// notice; "local" has the local model answer the whole request, or
+	// refuses it.
+	Action string `json:"action,omitempty"`
+	// Local names the local.models entry that answers, for the "local"
+	// action. It may be left out when there is only one.
+	Local string `json:"local,omitempty"`
+}
+
+// On reports whether the policy protects anything.
+func (l LocalOnly) On() bool { return len(l.Paths) > 0 || len(l.Markers) > 0 }
 
 // Price is what one model costs, in US dollars per million tokens.
 type Price struct {
@@ -285,6 +309,26 @@ func (c Config) Validate() error {
 	for i, pattern := range c.Guard.Patterns {
 		if _, err := regexp.Compile(pattern); err != nil {
 			errs = append(errs, fmt.Errorf("guard.patterns[%d] is not a valid regular expression: %v", i, err))
+		}
+	}
+	if lo := c.Guard.LocalOnly; lo.On() || lo.Action != "" || lo.Local != "" {
+		if _, err := guard.NewPolicy(lo.Paths, lo.Markers); err != nil {
+			errs = append(errs, fmt.Errorf("guard.localOnly: %v", err))
+		}
+		switch lo.Action {
+		case "", "withhold":
+			if lo.Local != "" {
+				errs = append(errs, errors.New(`guard.localOnly.local is only used with "action": "local"`))
+			}
+		case "local":
+			switch _, known := c.Local.Models[lo.Local]; {
+			case lo.Local != "" && !known:
+				errs = append(errs, fmt.Errorf("guard.localOnly.local is %q, which is not an entry of local.models", lo.Local))
+			case lo.Local == "" && len(c.Local.Models) != 1:
+				errs = append(errs, fmt.Errorf(`guard.localOnly.action is "local" and local.models has %d entries; name the one to use as guard.localOnly.local`, len(c.Local.Models)))
+			}
+		default:
+			errs = append(errs, fmt.Errorf(`guard.localOnly.action is %q; it must be "withhold" or "local"`, lo.Action))
 		}
 	}
 	if c.Features.Route && len(c.Local.Models) == 0 {

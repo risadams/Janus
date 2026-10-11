@@ -88,6 +88,12 @@ type Guard struct {
 	// Restored is how many placeholders were turned back into secrets in
 	// the answer.
 	Restored int `json:"restored,omitempty"`
+	// LocalOnly says why the request held content the local-only policy
+	// keeps on this machine, and Withheld how many pieces of it were
+	// replaced with a notice in what was sent upstream. Local-only content
+	// with nothing withheld means the request did not go upstream at all.
+	LocalOnly []string `json:"local_only,omitempty"`
+	Withheld  int      `json:"withheld,omitempty"`
 	// Blocked says why the exchange was stopped, if it was.
 	Blocked string `json:"blocked,omitempty"`
 }

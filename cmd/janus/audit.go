@@ -81,7 +81,25 @@ func runAudit(args []string, stdout, stderr io.Writer) int {
 	if !*verify {
 		return 0
 	}
-	leaks := verifySent(stdout, a.sent, captures, newDetector(cfg).ScanRequest)
+	detector, policy := newDetector(cfg), newPolicy(cfg)
+	leaks := verifySent(stdout, a.sent, captures, func(req *anthropic.Request) guard.Report {
+		report := detector.ScanRequest(req)
+		if policy == nil {
+			return report
+		}
+		// Local-only content that went upstream is a leak like any other.
+		// Remaining, not Check: a request the content was withheld from
+		// still names the file, and that is not a leak.
+		if m := policy.Check(req); policy.Remaining(req) > 0 {
+			if report.Kinds == nil {
+				report.Kinds = map[string]int{}
+			}
+			report.Findings += len(m.Reasons)
+			report.Kinds["local-only content"] += len(m.Reasons)
+			report.Where = append(report.Where, m.Reasons...)
+		}
+		return report
+	})
 	if leaks > 0 {
 		return 1
 	}
@@ -95,6 +113,10 @@ type audit struct {
 	// Requests that reached Anthropic, as received and as changed.
 	untouched, changed int
 	redacted, repaired int
+	withheld           int
+	// keptLocal counts requests the local-only policy kept from Anthropic
+	// altogether: answered locally, or refused.
+	keptLocal int
 	// Requests that did not.
 	localOnly, stopped int
 	// Secrets.
@@ -146,7 +168,11 @@ func tally(records []ledger.Record) audit {
 			if wasRepaired {
 				a.repaired++
 			}
-			if wasRedacted || wasRepaired {
+			wasWithheld := g != nil && g.Withheld > 0
+			if wasWithheld {
+				a.withheld++
+			}
+			if wasRedacted || wasRepaired || wasWithheld {
 				a.changed++
 			} else {
 				a.untouched++
@@ -159,6 +185,9 @@ func tally(records []ledger.Record) audit {
 
 		if g == nil {
 			continue
+		}
+		if len(g.LocalOnly) > 0 && !reachedAnthropic(rec) {
+			a.keptLocal++
 		}
 		if g.Blocked != "" {
 			a.blocked = append(a.blocked, rec)
@@ -195,6 +224,9 @@ func printAudit(w io.Writer, dir string, a audit) {
 		if a.redacted > 0 {
 			how = append(how, fmt.Sprintf("%s with secrets replaced", commas(a.redacted)))
 		}
+		if a.withheld > 0 {
+			how = append(how, fmt.Sprintf("%s with local-only content withheld", commas(a.withheld)))
+		}
 		if a.repaired > 0 {
 			how = append(how, fmt.Sprintf("%s with a local model's thinking removed", commas(a.repaired)))
 		}
@@ -202,6 +234,12 @@ func printAudit(w io.Writer, dir string, a audit) {
 	}
 	fmt.Fprintf(w, "\n  %6s  to the local model only, never to Anthropic\n", commas(a.localOnly))
 	fmt.Fprintf(w, "  %6s  refused or stopped by janus, and sent nowhere\n", commas(a.stopped))
+
+	if a.withheld > 0 || a.keptLocal > 0 {
+		fmt.Fprintf(w, "\nLocal-only content\n")
+		fmt.Fprintf(w, "  %6s  requests went to Anthropic with it replaced by a notice\n", commas(a.withheld))
+		fmt.Fprintf(w, "  %6s  requests were kept from Anthropic because of it\n", commas(a.keptLocal))
+	}
 
 	fmt.Fprintf(w, "\nSecrets\n")
 	if a.carried == 0 {
@@ -354,7 +392,15 @@ func auditOne(stdout, stderr io.Writer, records []ledger.Record, captures, id st
 	if len(rec.Stages) > 0 {
 		fmt.Fprintf(stdout, "  Changed   %s\n", strings.Join(rec.Stages, ", "))
 	}
-	if g := rec.Guard; g != nil {
+	if g := rec.Guard; g != nil && len(g.LocalOnly) > 0 {
+		switch {
+		case g.Withheld > 0:
+			fmt.Fprintf(stdout, "  Local-only %d pieces withheld before sending: %s\n", g.Withheld, strings.Join(g.LocalOnly, "; "))
+		default:
+			fmt.Fprintf(stdout, "  Local-only %s\n", strings.Join(g.LocalOnly, "; "))
+		}
+	}
+	if g := rec.Guard; g != nil && (g.Blocked != "" || g.Findings > 0 || g.Redacted != nil) {
 		switch {
 		case g.Blocked != "":
 			fmt.Fprintf(stdout, "  Guard     stopped: %s\n", g.Blocked)

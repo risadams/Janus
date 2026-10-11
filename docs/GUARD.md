@@ -20,6 +20,10 @@ never sees the secret, and what it does with it still works.
 { "features": { "guard": true }, "guard": { "redact": true } }
 ```
 
+Separately, a **local-only policy** keeps the files, directories, and
+marked content you name from going to Anthropic at all, whatever is in
+them. See [Local-only content](#local-only-content).
+
 ## What it looks at
 
 Everything in a request that came from your machine: the system prompt,
@@ -255,7 +259,124 @@ What it depends on:
 - **The detector.** "Contain nothing that looks like a secret" means
   nothing a detector recognises. It is evidence, not proof.
 
-## What it does not do yet
+## Local-only content
 
-- Keep chosen files or directories from ever going upstream, whatever is
-  in them.
+Detectors go by what content looks like. The local-only policy goes by
+where it came from: you name files, directories, or a marker, and whatever
+is in them does not go to Anthropic, secret-shaped or not.
+
+```json
+"features": { "guard": true },
+"guard": {
+  "localOnly": {
+    "paths": ["secrets/**", ".env*", "*.pem"],
+    "markers": ["COMPANY CONFIDENTIAL"]
+  }
+}
+```
+
+A path is matched against the end of a file's path, so `*.pem` protects
+any such file wherever it is, `.env*` any file whose name starts that way,
+and `secrets/**` everything under any directory called `secrets`. `*`
+stays within one directory; `**` crosses them; a pattern naming a
+directory protects what is in it. A marker is a string: any message text
+or tool result containing it is protected.
+
+What counts as protected content:
+
+| Content | Why |
+| --- | --- |
+| The whole result of a tool call that named a protected path | `Read secrets/db.yaml`, `cat .env \| head`, an MCP tool given the path. The path is looked for anywhere in the call's arguments. |
+| Any message text or tool result carrying a marker | The whole block is protected, not only the marker. |
+| A line of other tool output that quotes a protected file | A search across the tree prints `secrets/db.yaml:2:...` without the call ever naming that file. Those lines go, and the lines of context around them; the rest of the output stays. |
+
+A line that only names a protected file, as a directory listing does, is
+left alone: Claude can know the file exists.
+
+### What happens to it
+
+`action` chooses, and the default is `withhold`.
+
+**`withhold`**: the request goes where it was going, and in anything bound
+for Anthropic the protected content is replaced by a notice saying that it
+was withheld and why. Claude carries on without it, and says so:
+
+> I can't tell you this one. When I tried to read `secrets/db.yaml`, a
+> tool called janus blocked it. It's set so anything under `secrets/**`
+> stays on your machine and isn't sent to me.
+
+Your own machine is unaffected: Claude Code still read the file, and a
+request that a rule sends to the local model goes there whole. The
+replacement is the same every time, so the conversation stays cacheable.
+
+**`local`**: a request holding protected content is answered by the local
+model instead, whole, and never goes to Anthropic. Set `local` to the
+`local.models` entry to use if there is more than one. This outranks
+everything: an `X-Janus-Route: upstream` header, the routing rules, the
+fallback to Claude when LM Studio is down, and escalation. If the local
+model cannot take the request, it is refused with an error saying why, and
+is not sent. Routing does not need to be switched on for this.
+
+Once a conversation has read a protected file, every later turn of it
+still holds that tool call, so with `local` the rest of the conversation
+is the local model's. That is the point, and it is also the cost: use
+`withhold` if you want Claude to keep working around the gap.
+
+Two things are the same under either action. Lines of search output that
+quote a protected file are withheld, and do not by themselves send a
+conversation to the local model. And token counting, which only Anthropic
+can do, has protected content withheld from it.
+
+### It fails closed
+
+A request that cannot be checked is not sent: one that does not parse, or
+is too large to read whole (32 MB). After withholding, the request is
+checked again as it will be sent, and if anything protected is still
+there it is stopped. Either shows up as a `500` in Claude Code with a
+message starting `janus:`, and under "Stopped by the guard" in
+`janus audit`.
+
+### Where it shows
+
+The console line says what happened, naming the path or marker and never
+the content:
+
+```
+POST /v1/messages -> 200 (4.264s) claude-opus-5-5 end_turn ... [local-only: 1 withheld from upstream (Read read /app/secrets/db.yaml, which "secrets/**" makes local-only)]
+POST /v1/messages -> 200 (31.76s) [local] qwen/qwen3.8-27b end_turn ... [local-only: kept on this machine (Read read /app/secrets/db.yaml, which "secrets/**" makes local-only)]
+```
+
+The ledger records the same in `guard.local_only` and `guard.withheld`.
+`janus audit` counts requests that went with content withheld and requests
+kept from Anthropic, and `janus audit -verify` re-reads what was sent and
+checks it against the policy as it is now, as well as for secrets. That
+makes it a way to find out what an earlier session sent before you added
+a path.
+
+### What it does not cover
+
+Be clear about these before relying on it.
+
+- **It follows tool calls and markers, not meaning.** Content from a
+  protected file that arrives some other way is not recognised: pasted
+  into the prompt, printed by a script that read the file itself, or
+  retold in the report a subagent hands back.
+- **Under `local`, the local model's answer is ordinary text.** It can
+  repeat what it read. While the tool call is still in the conversation
+  the conversation stays local, but once Claude Code compacts the history
+  into a summary the call is gone, and a summary that repeats the content
+  would go upstream. `withhold` does not have this problem, because
+  nothing downstream of the file ever saw it.
+- **Search output is recognised by its shape**, `path:line`. A tool that
+  prints the file name on a line of its own with the matches under it is
+  not caught. Claude Code's own Grep, `grep -r`, and `rg` when piped all
+  use the recognised shape.
+- **Paths with spaces in them** are not recognised in a shell command or
+  in search output. They are in a tool argument that is only the path.
+- **The system prompt and tool definitions** are not checked for markers.
+  Claude Code puts `CLAUDE.md` and the like in messages, which are.
+- **Captures are not withheld.** The request as Claude Code sent it is
+  saved under `logs/captures/` in full, on your disk, readable only by
+  you. Turn captures off if that is not wanted.
+- **What Claude writes.** If Claude is asked to write a protected file, it
+  composed the content, so Anthropic has seen it.
