@@ -42,6 +42,7 @@ ignore fields they do not know.
 | `response` | object | Messages responses only: `model`, `stop_reason`, `blocks` (content block types in order), `tools` (names of the tools called, in order) |
 | `usage` | object | Messages responses only; see below |
 | `unread` | string | Why a Messages response has no `usage`, e.g. `content-encoding br` |
+| `fault` | string | What went wrong reading the response from the backend when it broke off part-way, e.g. a dropped connection. Absent for a response that arrived whole, and for one the client abandoned. |
 | `capture` | string | The capture's path under `captures/`, without extension |
 | `shadow_of` | string | Present on a shadow run: the id of the real request it repeated on the local model. Shadow records have `route` `shadow` and an id ending `-shadow`, and are left out of every total. |
 | `compare` | object | On a shadow run that came back whole: `upstream_stop`, `local_stop`, `upstream_tools`, `local_tools`, `stop_match`, `tools_match`, and `upstream_ms` (how long the real answer took) |
