@@ -136,7 +136,7 @@ func TestPlanRefusals(t *testing.T) {
 		wantIn     string
 	}{
 		"model LM Studio does not have": {router(local, map[string]LocalModel{"janus-local": {ID: "no-such-model"}}), small,
-			400, "invalid_request_error", `mapped to local model "no-such-model", which LM Studio does not have`},
+			400, "invalid_request_error", `LM Studio does not have local model "no-such-model"`},
 		"LM Studio unreachable": {router(backend.NewLocal(deadURL, nil), qwen), small,
 			502, "api_error", "could not reach LM Studio"},
 		"larger than the loaded context": {router(local, qwen), big,
@@ -196,10 +196,20 @@ type result struct {
 
 func through(t *testing.T, local *backend.Local, aliases map[string]LocalModel, upstream http.HandlerFunc, body string) result {
 	t.Helper()
+	return throughRouter(t, local, aliases, nil, upstream, body)
+}
+
+func throughRules(t *testing.T, local *backend.Local, rules []Rule, upstream http.HandlerFunc, body string) result {
+	t.Helper()
+	return throughRouter(t, local, nil, rules, upstream, body)
+}
+
+func throughRouter(t *testing.T, local *backend.Local, aliases map[string]LocalModel, rules []Rule, upstream http.HandlerFunc, body string) result {
+	t.Helper()
 	up := httptest.NewServer(upstream)
 	defer up.Close()
 	u, _ := url.Parse(up.URL)
-	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local, Aliases: aliases}
+	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local, Aliases: aliases, Rules: rules}
 
 	reported := make(chan proxy.Exchange, 1)
 	janus := httptest.NewServer(proxy.New(proxy.Options{
@@ -371,5 +381,219 @@ func TestLocalUnreachableAtSendTime(t *testing.T) {
 
 	if res.Status != http.StatusBadGateway || !strings.Contains(res.Body, "janus: could not reach local") {
 		t.Errorf("status %d, body %s", res.Status, res.Body)
+	}
+}
+
+func yes() *bool { b := true; return &b }
+func no() *bool  { b := false; return &b }
+
+func subagentHeader() http.Header {
+	h := http.Header{}
+	h.Set("X-Claude-Code-Session-Id", "s1")
+	h.Set("X-Claude-Code-Agent-Id", "a1")
+	return h
+}
+
+func mainHeader() http.Header {
+	h := http.Header{}
+	h.Set("X-Claude-Code-Session-Id", "s1")
+	return h
+}
+
+const opusRequest = `{"model":"claude-opus-5-5","tools":[{"name":"Read"}],"messages":[{"role":"user","content":"hi"}]}`
+
+func TestRuleMatching(t *testing.T) {
+	facts := Facts{Class: Subagent, Model: "claude-opus-5-5", Tokens: 5000, Tools: true}
+	cases := map[string]struct {
+		rule Rule
+		want string // "" means it matches
+	}{
+		"no conditions":       {Rule{}, ""},
+		"class":               {Rule{Class: Subagent}, ""},
+		"other class":         {Rule{Class: Main}, "class is subagent, not main"},
+		"model":               {Rule{Model: "claude-opus-5-5"}, ""},
+		"other model":         {Rule{Model: "claude-haiku-5-5"}, "model is claude-opus-5-5, not claude-haiku-5-5"},
+		"within size":         {Rule{MaxTokens: 5000}, ""},
+		"over size":           {Rule{MaxTokens: 4999}, "about 5000 tokens, over the rule's 4999"},
+		"wants tools":         {Rule{Tools: yes()}, ""},
+		"wants no tools":      {Rule{Tools: no()}, "the request offers tools"},
+		"every condition met": {Rule{Class: Subagent, Model: "claude-opus-5-5", MaxTokens: 9000, Tools: yes()}, ""},
+		"one condition unmet": {Rule{Class: Subagent, Model: "claude-opus-5-5", MaxTokens: 100, Tools: yes()}, "about 5000 tokens, over the rule's 100"},
+	}
+	for name, c := range cases {
+		if got := c.rule.mismatch(facts); got != c.want {
+			t.Errorf("%s: mismatch = %q, want %q", name, got, c.want)
+		}
+	}
+	if got := (Rule{Tools: yes()}).mismatch(Facts{}); got != "the request offers no tools" {
+		t.Errorf("mismatch = %q", got)
+	}
+}
+
+func TestFactsOf(t *testing.T) {
+	facts := FactsOf(subagentHeader(), parse(t, opusRequest))
+	if facts.Class != Subagent || facts.Model != "claude-opus-5-5" || !facts.Tools || facts.Tokens != EstimateTokens([]byte(opusRequest)) {
+		t.Errorf("facts = %+v", facts)
+	}
+	if FactsOf(mainHeader(), parse(t, `{"model":"m","messages":[]}`)).Tools {
+		t.Error("a request with no tools reports tools")
+	}
+}
+
+func TestFirstMatchingRuleDecides(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	r.Rules = []Rule{
+		{Name: "haiku", Model: "claude-haiku-5-5", Route: RouteLocal, Local: qwen["janus-local"]},
+		{Name: "subagents", Class: Subagent, Route: RouteLocal, Local: qwen["janus-local"]},
+		{Name: "catch-all", Route: RouteUpstream},
+	}
+
+	plan, refusal, trace := r.Explain(context.Background(), subagentHeader(), parse(t, opusRequest))
+	if refusal != nil || plan.Backend.Name() != "local" || plan.Reason != "rule subagents" {
+		t.Fatalf("plan = %+v, refusal = %+v", plan, refusal)
+	}
+	// The client asked for a real model and is told that model answered;
+	// the ledger records which one really did.
+	if plan.ResponseModel != "claude-opus-5-5" || plan.BackendModel != "qwen/qwen3.8-27b" {
+		t.Errorf("response model %q, backend model %q", plan.ResponseModel, plan.BackendModel)
+	}
+	wantTrace := "rule haiku: no match (model is claude-opus-5-5, not claude-haiku-5-5)\nrule subagents: local, to qwen/qwen3.8-27b"
+	if got := strings.Join(trace, "\n"); got != wantTrace {
+		t.Errorf("trace:\n%s\nwant:\n%s", got, wantTrace)
+	}
+
+	// The same request from the main loop falls through to the catch-all.
+	plan, _, trace = r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
+	if plan.Backend.Name() != "upstream" || plan.Reason != "rule catch-all" || plan.Body != nil {
+		t.Errorf("plan = %+v", plan)
+	}
+	if len(trace) != 3 || trace[2] != "rule catch-all: upstream" {
+		t.Errorf("trace = %q", trace)
+	}
+}
+
+func TestNoRuleMatchesGoesUpstream(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	r.Rules = []Rule{{Class: Subagent, Route: RouteLocal, Local: qwen["janus-local"]}}
+
+	plan, refusal, trace := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
+	if refusal != nil || plan.Backend.Name() != "upstream" || plan.Reason != "passthrough" {
+		t.Errorf("plan = %+v", plan)
+	}
+	if got := strings.Join(trace, " | "); got != "rule 1: no match (class is main, not subagent) | no rule matched: upstream" {
+		t.Errorf("trace = %s", got)
+	}
+}
+
+// A rule sends a real model's request local. When local cannot take it,
+// the request must go to that real model untouched, not fail.
+func TestRuleFallsBackUpstreamWhenLocalCannotTakeIt(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL, _ := url.Parse(dead.URL)
+	dead.Close()
+	big := `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"` + strings.Repeat("word ", 40000) + `"}]}`
+
+	cases := map[string]struct {
+		local  *backend.Local
+		model  LocalModel
+		body   string
+		wantIn string
+	}{
+		"LM Studio down":    {backend.NewLocal(deadURL, nil), qwen["janus-local"], opusRequest, "could not reach LM Studio"},
+		"model missing":     {local, LocalModel{ID: "no-such-model"}, opusRequest, `LM Studio does not have local model "no-such-model"`},
+		"request too large": {local, qwen["janus-local"], big, "more than the 61696-token context"},
+		"cannot be adapted": {local, qwen["janus-local"], `{"model":"claude-opus-5-5","messages":[{"role":"system","content":[{"type":"tool_addition"}]}]}`, "cannot adapt this request"},
+	}
+	for name, c := range cases {
+		r := router(c.local, nil)
+		r.Rules = []Rule{{Name: "subagents", Class: Subagent, Route: RouteLocal, Local: c.model}}
+		req := parse(t, c.body)
+
+		plan, refusal, _ := r.Explain(context.Background(), subagentHeader(), req)
+		if refusal != nil {
+			t.Errorf("%s: refused (%s); a real model's request must fall back upstream", name, refusal.Message)
+			continue
+		}
+		if plan.Backend.Name() != "upstream" || plan.Body != nil || plan.ResponseModel != "" || req.Modified() {
+			t.Errorf("%s: plan = %+v, request modified = %v; want upstream with the request untouched", name, plan, req.Modified())
+		}
+		if !strings.HasPrefix(plan.Reason, "rule subagents: ") || !strings.Contains(plan.Reason, c.wantIn) || !strings.HasSuffix(plan.Reason, "; sent upstream") {
+			t.Errorf("%s: reason = %q", name, plan.Reason)
+		}
+	}
+}
+
+func TestEscalateRouteGoesUpstreamForNow(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	r.Rules = []Rule{{Name: "careful", Route: RouteEscalate, Local: qwen["janus-local"]}}
+
+	plan, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
+	if plan.Backend.Name() != "upstream" || plan.Reason != "rule careful: local-then-escalate is not available yet; sent upstream" {
+		t.Errorf("plan = %+v", plan)
+	}
+}
+
+func TestAliasBeatsRules(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, qwen)
+	r.Rules = []Rule{{Name: "everything upstream", Route: RouteUpstream}}
+
+	plan, refusal, trace := r.Explain(context.Background(), mainHeader(), parse(t, `{"model":"janus-local","messages":[{"role":"user","content":"hi"}]}`))
+	if refusal != nil || plan.Backend.Name() != "local" || plan.Reason != "model alias janus-local" {
+		t.Errorf("plan = %+v", plan)
+	}
+	if len(trace) != 1 || trace[0] != "model alias janus-local: local, to qwen/qwen3.8-27b" {
+		t.Errorf("trace = %q", trace)
+	}
+}
+
+func TestSubagentRuleEndToEnd(t *testing.T) {
+	local, sawLocal := lmStudio(t, nil)
+	rules := []Rule{{Name: "subagents", Class: Subagent, Route: RouteLocal, Local: qwen["janus-local"]}}
+
+	// through() sends Claude Code's session and agent headers, so the
+	// request is a subagent turn.
+	res := throughRules(t, local, rules, func(http.ResponseWriter, *http.Request) {
+		t.Error("a request a rule sent local reached the upstream")
+	}, opusRequest)
+
+	got := <-sawLocal
+	if parse(t, string(got.Body)).Model() != "qwen/qwen3.8-27b" || got.Header.Get("Authorization") != "" {
+		t.Errorf("LM Studio got model %q, auth %q", parse(t, string(got.Body)).Model(), got.Header.Get("Authorization"))
+	}
+	if !strings.Contains(res.Body, `"model":"claude-opus-5-5"`) || strings.Contains(res.Body, "qwen") {
+		t.Errorf("the client should see the model it asked for:\n%s", res.Body)
+	}
+	if ex := res.Exchange; ex.Backend != "local" || ex.Reason != "rule subagents" || ex.Summary.Model != "qwen/qwen3.8-27b" {
+		t.Errorf("exchange = backend %q reason %q model %q", ex.Backend, ex.Reason, ex.Summary.Model)
+	}
+}
+
+func TestSubagentRuleFallsBackEndToEnd(t *testing.T) {
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL, _ := url.Parse(dead.URL)
+	dead.Close()
+	rules := []Rule{{Name: "subagents", Class: Subagent, Route: RouteLocal, Local: qwen["janus-local"]}}
+	var upstreamBody string
+
+	res := throughRules(t, backend.NewLocal(deadURL, nil), rules, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		upstreamBody = string(b)
+		if r.Header.Get("Authorization") != "Bearer secret-token" {
+			t.Error("the fallback request lost its credentials")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"type":"message","model":"claude-opus-5-5","content":[],"usage":{"input_tokens":1,"output_tokens":1}}`)
+	}, opusRequest)
+
+	if upstreamBody != opusRequest {
+		t.Errorf("upstream got %q, want the request exactly as the client sent it", upstreamBody)
+	}
+	if res.Status != 200 || res.Exchange.Backend != "upstream" || !strings.Contains(res.Exchange.Reason, "could not reach LM Studio") {
+		t.Errorf("status %d, exchange backend %q reason %q", res.Status, res.Exchange.Backend, res.Exchange.Reason)
 	}
 }

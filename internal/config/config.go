@@ -23,8 +23,12 @@ type Config struct {
 	// exposing it beyond this machine is a decision, not a default.
 	AllowRemote bool `json:"allowRemote"`
 
-	Upstream Backend  `json:"upstream"`
-	Local    Local    `json:"local"`
+	Upstream Backend `json:"upstream"`
+	Local    Local   `json:"local"`
+	// Routing is the list of rules that decide where a Messages request
+	// goes, tried in order; the first that matches wins, and a request no
+	// rule matches goes upstream. Rules apply only with features.route on.
+	Routing  []Rule   `json:"routing,omitempty"`
 	Features Features `json:"features"`
 	Logging  Logging  `json:"logging"`
 	// Pricing adds to, or corrects, the prices janus ships with, keyed by
@@ -66,6 +70,32 @@ type LocalModel struct {
 	ContextTokens int `json:"contextTokens,omitempty"`
 	// TimeoutSeconds bounds one request. Zero means the default.
 	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
+}
+
+// Rule is one routing rule. The fields above Route are conditions, and a
+// request must meet every one that is set; a rule with none set matches
+// every Messages request.
+type Rule struct {
+	// Name identifies the rule in the ledger. Optional.
+	Name string `json:"name,omitempty"`
+	// Class is the request class: main, subagent, or unknown.
+	Class string `json:"class,omitempty"`
+	// Model is the model the client asked for.
+	Model string `json:"model,omitempty"`
+	// MaxTokens matches requests estimated at no more than this many
+	// tokens.
+	MaxTokens int `json:"maxTokens,omitempty"`
+	// Tools matches requests that do (true) or do not (false) offer the
+	// model any tools.
+	Tools *bool `json:"tools,omitempty"`
+
+	// Route is where a matching request goes: "upstream", "local", or
+	// "local-then-escalate", which is accepted but not built yet and
+	// behaves as "upstream".
+	Route string `json:"route"`
+	// Local names the entry of local.models to use. Required unless Route
+	// is "upstream".
+	Local string `json:"local,omitempty"`
 }
 
 // DefaultLocalTimeoutSeconds is how long a local request may take when the
@@ -209,6 +239,33 @@ func (c Config) Validate() error {
 	}
 	if c.Features.Route && len(c.Local.Models) == 0 {
 		errs = append(errs, errors.New(`features.route is on but local.models is empty; add an entry such as "janus-local": {"model": "<id of a model in LM Studio>"}`))
+	}
+	for i, rule := range c.Routing {
+		where := fmt.Sprintf("routing[%d]", i)
+		if rule.Name != "" {
+			where += fmt.Sprintf(" (%s)", rule.Name)
+		}
+		switch rule.Class {
+		case "", "main", "subagent", "unknown":
+		default:
+			errs = append(errs, fmt.Errorf("%s.class %q is not one of main, subagent, unknown", where, rule.Class))
+		}
+		if rule.MaxTokens < 0 {
+			errs = append(errs, fmt.Errorf("%s.maxTokens is negative; leave it out for no limit", where))
+		}
+		switch rule.Route {
+		case "upstream":
+		case "local", "local-then-escalate":
+			if rule.Local == "" {
+				errs = append(errs, fmt.Errorf("%s.local is not set; name an entry of local.models", where))
+			} else if _, ok := c.Local.Models[rule.Local]; !ok {
+				errs = append(errs, fmt.Errorf("%s.local %q is not an entry of local.models", where, rule.Local))
+			}
+		case "":
+			errs = append(errs, fmt.Errorf("%s.route is not set; use upstream, local, or local-then-escalate", where))
+		default:
+			errs = append(errs, fmt.Errorf("%s.route %q is not one of upstream, local, local-then-escalate", where, rule.Route))
+		}
 	}
 	for name, m := range c.Local.Models {
 		switch {

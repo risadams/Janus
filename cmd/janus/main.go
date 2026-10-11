@@ -20,6 +20,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -49,6 +50,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return runStats(args[1:], stdout, stderr)
 		case "doctor":
 			return runDoctor(args[1:], stdout, stderr)
+		case "route":
+			return runRoute(args[1:], stdout, stderr)
 		}
 	}
 
@@ -131,17 +134,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// newRouter builds the router from the config's local models.
+// newRouter builds the router from the config's local models and rules.
 func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local) *route.Router {
-	aliases := make(map[string]route.LocalModel, len(cfg.Local.Models))
+	models := make(map[string]route.LocalModel, len(cfg.Local.Models))
 	for name, m := range cfg.Local.Models {
 		seconds := m.TimeoutSeconds
 		if seconds == 0 {
 			seconds = config.DefaultLocalTimeoutSeconds
 		}
-		aliases[name] = route.LocalModel{ID: m.Model, ContextTokens: m.ContextTokens, Timeout: time.Duration(seconds) * time.Second}
+		models[name] = route.LocalModel{ID: m.Model, ContextTokens: m.ContextTokens, Timeout: time.Duration(seconds) * time.Second}
 	}
-	return &route.Router{Upstream: upstream, Local: local, Aliases: aliases}
+	rules := make([]route.Rule, len(cfg.Routing))
+	for i, r := range cfg.Routing {
+		rules[i] = route.Rule{
+			Name: r.Name, Class: route.Class(r.Class), Model: r.Model, MaxTokens: r.MaxTokens, Tools: r.Tools,
+			Route: r.Route, Local: models[r.Local],
+		}
+	}
+	return &route.Router{Upstream: upstream, Local: local, Aliases: models, Rules: rules}
 }
 
 // record writes down one finished request: its capture, its ledger line,
@@ -208,6 +218,53 @@ func versionLine() string {
 	return "janus " + version
 }
 
+// routingSummary describes, one line each, what the config routes where:
+// the aliases, then the rules in the order they are tried.
+func routingSummary(cfg config.Config) []string {
+	names := make([]string, 0, len(cfg.Local.Models))
+	for name := range cfg.Local.Models {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var lines []string
+	for _, name := range names {
+		lines = append(lines, fmt.Sprintf("model %q -> local %s", name, cfg.Local.Models[name].Model))
+	}
+	for i, r := range cfg.Routing {
+		var conditions []string
+		if r.Class != "" {
+			conditions = append(conditions, "class "+r.Class)
+		}
+		if r.Model != "" {
+			conditions = append(conditions, "model "+r.Model)
+		}
+		if r.MaxTokens > 0 {
+			conditions = append(conditions, fmt.Sprintf("up to %d tokens", r.MaxTokens))
+		}
+		if r.Tools != nil {
+			if *r.Tools {
+				conditions = append(conditions, "with tools")
+			} else {
+				conditions = append(conditions, "without tools")
+			}
+		}
+		when := "everything else"
+		if len(conditions) > 0 {
+			when = strings.Join(conditions, ", ")
+		}
+		target := r.Route
+		if r.Route != route.RouteUpstream {
+			target += " " + cfg.Local.Models[r.Local].Model
+		}
+		name := r.Name
+		if name == "" {
+			name = fmt.Sprintf("%d", i+1)
+		}
+		lines = append(lines, fmt.Sprintf("rule %s: %s -> %s", name, when, target))
+	}
+	return lines
+}
+
 // printClaudeCommand gives the exact command that points Claude Code at
 // janus, so nobody has to look up the variable.
 //
@@ -229,21 +286,15 @@ func printBanner(w io.Writer, cfg config.Config, addr string) {
 	fmt.Fprintf(w, "  Listening   %s\n", base)
 	fmt.Fprintf(w, "  Upstream    %s\n", cfg.Upstream.BaseURL)
 	fmt.Fprintf(w, "  Local       %s\n", cfg.Local.BaseURL)
-	switch {
-	case !cfg.Features.Route:
+	if !cfg.Features.Route {
 		fmt.Fprintf(w, "  Routing     off; every request goes upstream\n")
-	default:
-		names := make([]string, 0, len(cfg.Local.Models))
-		for name := range cfg.Local.Models {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for i, name := range names {
+	} else {
+		for i, line := range routingSummary(cfg) {
 			label := "  Routing     "
 			if i > 0 {
 				label = "              "
 			}
-			fmt.Fprintf(w, "%srequests for model %q go to local %s\n", label, name, cfg.Local.Models[name].Model)
+			fmt.Fprintf(w, "%s%s\n", label, line)
 		}
 	}
 	fmt.Fprintf(w, "  Ledger      %s\n", filepath.Join(cfg.Logging.Dir, "ledger"))

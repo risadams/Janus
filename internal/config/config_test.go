@@ -114,6 +114,15 @@ func TestValidate(t *testing.T) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "qwen/qwen3.8-27b"}}
 		}, ""},
 		{"local models without route", func(c *Config) { c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}} }, ""},
+		{"a rule", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Name: "subagents", Class: "subagent", MaxTokens: 40000, Route: "local", Local: "janus-local"}, {Route: "upstream"}}
+		}, ""},
+		{"rule with an unknown class", func(c *Config) { c.Routing = []Rule{{Class: "sidekick", Route: "upstream"}} }, `routing[0].class "sidekick"`},
+		{"rule with no route", func(c *Config) { c.Routing = []Rule{{Name: "x", Class: "main"}} }, "routing[0] (x).route is not set"},
+		{"rule with an unknown route", func(c *Config) { c.Routing = []Rule{{Route: "sideways"}} }, `routing[0].route "sideways"`},
+		{"local rule naming no model", func(c *Config) { c.Routing = []Rule{{Route: "local"}} }, "routing[0].local is not set"},
+		{"local rule naming a missing model", func(c *Config) { c.Routing = []Rule{{Route: "local-then-escalate", Local: "nope"}} }, `routing[0].local "nope" is not an entry of local.models`},
 		{"local model with no id", func(c *Config) { c.Local.Models = map[string]LocalModel{"janus-local": {}} }, "local.models.janus-local.model is not set"},
 		{"local model with a negative limit", func(c *Config) {
 			c.Local.Models = map[string]LocalModel{"x": {Model: "q", ContextTokens: -1}}

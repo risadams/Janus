@@ -22,17 +22,87 @@ type LocalModel struct {
 	Timeout time.Duration
 }
 
+// Routes a rule can choose.
+const (
+	RouteUpstream = "upstream"
+	RouteLocal    = "local"
+	// RouteEscalate is local first with Claude as the fallback. It is
+	// accepted so that configs can be written ahead of it, and until it is
+	// built it sends the request upstream.
+	RouteEscalate = "local-then-escalate"
+)
+
+// Rule sends the requests it matches somewhere. A request must meet every
+// condition that is set; a rule with none set matches everything.
+type Rule struct {
+	Name string
+	// Conditions.
+	Class     Class // empty matches any class
+	Model     string
+	MaxTokens int   // zero means no limit
+	Tools     *bool // nil matches either way
+	// Outcome.
+	Route string
+	// Local is the model to use, for every route but upstream.
+	Local LocalModel
+}
+
+// Facts is what a rule is matched against.
+type Facts struct {
+	Class  Class
+	Model  string
+	Tokens int // estimated
+	Tools  bool
+}
+
+// FactsOf gathers the facts about a request.
+func FactsOf(header http.Header, req *anthropic.Request) Facts {
+	return Facts{
+		Class:  Classify(http.MethodPost, "/v1/messages", header),
+		Model:  req.Model(),
+		Tokens: EstimateTokens(req.Bytes()),
+		Tools:  len(req.Tools()) > 0,
+	}
+}
+
+// mismatch says why a rule does not match, or returns "" if it does.
+func (rule Rule) mismatch(f Facts) string {
+	switch {
+	case rule.Class != "" && rule.Class != f.Class:
+		return fmt.Sprintf("class is %s, not %s", f.Class, rule.Class)
+	case rule.Model != "" && rule.Model != f.Model:
+		return fmt.Sprintf("model is %s, not %s", f.Model, rule.Model)
+	case rule.MaxTokens > 0 && f.Tokens > rule.MaxTokens:
+		return fmt.Sprintf("about %d tokens, over the rule's %d", f.Tokens, rule.MaxTokens)
+	case rule.Tools != nil && *rule.Tools != f.Tools:
+		if f.Tools {
+			return "the request offers tools"
+		}
+		return "the request offers no tools"
+	}
+	return ""
+}
+
+func (rule Rule) label(index int) string {
+	if rule.Name != "" {
+		return "rule " + rule.Name
+	}
+	return fmt.Sprintf("rule %d", index+1)
+}
+
 // Router decides which backend answers a Messages request.
 //
-// It has one rule so far: a request whose model is a configured alias goes
-// to the local model that alias names. This puts the choice in the
-// client's hands. Claude Code can be told to use an alias for its
-// subagents or its small, fast model, and everything else stays upstream.
+// Two things can send a request to the local model. A request whose model
+// is an alias always goes local: that puts the choice in the client's
+// hands, and has no upstream to fall back to. Otherwise the rules are
+// tried in order and the first match decides; a request that matches none
+// goes upstream untouched.
 type Router struct {
 	Upstream backend.Backend
 	Local    *backend.Local
 	// Aliases maps a requested model name to a local model.
 	Aliases map[string]LocalModel
+	Rules   []Rule
 }
 
 // bytesPerToken converts a request's size to a token estimate. janus has no
@@ -48,53 +118,117 @@ func EstimateTokens(body []byte) int {
 
 // Plan implements proxy.Planner.
 func (r *Router) Plan(ctx context.Context, header http.Header, req *anthropic.Request) (proxy.Plan, *proxy.Refusal) {
-	alias := req.Model()
-	local, ok := r.Aliases[alias]
-	if !ok {
-		return proxy.Plan{Backend: r.Upstream, Route: "upstream", Reason: "passthrough"}, nil
-	}
-	reason := "model alias " + alias
+	plan, refusal, _ := r.Explain(ctx, header, req)
+	return plan, refusal
+}
 
-	refuse := func(status int, kind, message string) (proxy.Plan, *proxy.Refusal) {
-		return proxy.Plan{}, &proxy.Refusal{Status: status, Type: kind, Message: "janus: " + message, Route: "local", Reason: reason + ": " + message}
+// Explain is Plan with its reasoning: one line per step considered, ending
+// with the decision.
+func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic.Request) (plan proxy.Plan, refusal *proxy.Refusal, trace []string) {
+	upstream := func(reason string) proxy.Plan {
+		return proxy.Plan{Backend: r.Upstream, Route: RouteUpstream, Reason: reason}
 	}
+	facts := FactsOf(header, req)
 
 	// An alias has no upstream model behind it, so there is nowhere to
-	// fall back to: a request that cannot go local is refused, and says why.
+	// fall back to: a request that cannot go local is refused, with why.
+	if local, ok := r.Aliases[facts.Model]; ok {
+		reason := "model alias " + facts.Model
+		plan, problem := r.local(ctx, req, local, facts.Model, reason)
+		if problem != nil {
+			trace = append(trace, fmt.Sprintf("%s: refused: %s", reason, problem.message))
+			return proxy.Plan{}, &proxy.Refusal{
+				Status: problem.status, Type: problem.kind, Message: "janus: " + problem.message,
+				Route: RouteLocal, Reason: reason + ": " + problem.message,
+			}, trace
+		}
+		trace = append(trace, fmt.Sprintf("%s: local, to %s", reason, local.ID))
+		return plan, nil, trace
+	}
+
+	for i, rule := range r.Rules {
+		label := rule.label(i)
+		if why := rule.mismatch(facts); why != "" {
+			trace = append(trace, fmt.Sprintf("%s: no match (%s)", label, why))
+			continue
+		}
+		switch rule.Route {
+		case RouteLocal:
+			// The client asked for a real model, so a request that
+			// cannot go local goes to that model instead of failing.
+			plan, problem := r.local(ctx, req, rule.Local, facts.Model, label)
+			if problem != nil {
+				reason := fmt.Sprintf("%s: %s; sent upstream", label, problem.message)
+				trace = append(trace, reason)
+				return upstream(reason), nil, trace
+			}
+			trace = append(trace, fmt.Sprintf("%s: local, to %s", label, rule.Local.ID))
+			return plan, nil, trace
+		case RouteEscalate:
+			reason := label + ": local-then-escalate is not available yet; sent upstream"
+			trace = append(trace, reason)
+			return upstream(reason), nil, trace
+		default:
+			trace = append(trace, label+": upstream")
+			return upstream(label), nil, trace
+		}
+	}
+
+	trace = append(trace, "no rule matched: upstream")
+	return upstream("passthrough"), nil, trace
+}
+
+// problem is why a request cannot go to the local model.
+type problem struct {
+	status  int
+	kind    string
+	message string
+}
+
+// local builds the plan for sending req to a local model. The response
+// reports reportAs as its model, which is the name the client asked for.
+//
+// It works on a copy of the request, so that a request which turns out not
+// to fit can still go upstream exactly as it arrived.
+func (r *Router) local(ctx context.Context, req *anthropic.Request, local LocalModel, reportAs, reason string) (proxy.Plan, *problem) {
 	limit := local.ContextTokens
 	info, found, err := r.Local.Model(ctx, local.ID)
 	switch {
 	case err != nil:
-		return refuse(http.StatusBadGateway, "api_error",
-			fmt.Sprintf("could not reach LM Studio at %s to serve %q: %v", r.Local.URL(), alias, err))
+		return proxy.Plan{}, &problem{http.StatusBadGateway, "api_error",
+			fmt.Sprintf("could not reach LM Studio at %s: %v", r.Local.URL(), err)}
 	case !found:
 		// LM Studio would not reject this; it would answer with whatever
 		// model happens to be loaded.
-		return refuse(http.StatusBadRequest, "invalid_request_error",
-			fmt.Sprintf("%q is mapped to local model %q, which LM Studio does not have", alias, local.ID))
+		return proxy.Plan{}, &problem{http.StatusBadRequest, "invalid_request_error",
+			fmt.Sprintf("LM Studio does not have local model %q", local.ID)}
 	case limit == 0:
 		limit = info.LoadedContext // zero if not loaded: nothing to check against yet
 	}
 
-	stages, err := backend.Normalize(req, local.ID)
+	adapted, err := anthropic.ParseRequest(req.Bytes())
 	if err != nil {
-		return refuse(http.StatusBadRequest, "invalid_request_error", "cannot adapt this request for the local model: "+err.Error())
+		return proxy.Plan{}, &problem{http.StatusBadRequest, "invalid_request_error", "cannot read this request: " + err.Error()}
 	}
-	body := req.Bytes()
+	stages, err := backend.Normalize(adapted, local.ID)
+	if err != nil {
+		return proxy.Plan{}, &problem{http.StatusBadRequest, "invalid_request_error", "cannot adapt this request for the local model: " + err.Error()}
+	}
+	body := adapted.Bytes()
 
 	if estimate := EstimateTokens(body); limit > 0 && estimate > limit {
-		return refuse(http.StatusBadRequest, "invalid_request_error",
-			fmt.Sprintf("this request is about %d tokens, more than the %d-token context of local model %q", estimate, limit, local.ID))
+		return proxy.Plan{}, &problem{http.StatusBadRequest, "invalid_request_error",
+			fmt.Sprintf("this request is about %d tokens, more than the %d-token context of local model %q", estimate, limit, local.ID)}
 	}
 
 	return proxy.Plan{
 		Backend:       r.Local,
-		Route:         "local",
+		Route:         RouteLocal,
 		Reason:        reason,
 		Stages:        stages,
 		Body:          body,
 		BackendModel:  local.ID,
-		ResponseModel: alias,
+		ResponseModel: reportAs,
 		Timeout:       local.Timeout,
 	}, nil
 }

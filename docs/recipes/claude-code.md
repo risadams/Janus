@@ -4,7 +4,8 @@ Claude stays the brain: the main conversation goes to Anthropic as usual.
 Subagents, which do the reading and the legwork, run on the model in LM
 Studio and cost nothing upstream.
 
-Checked on 2026-10-11 with Claude Code 2.1.296 and `qwen/qwen3.8-27b`.
+Checked on 2026-10-11 with Claude Code 2.1.296 and `qwen/qwen3.8-27b`. All
+three ways of sending subagents local described below were run end to end.
 
 ## 1. Tell Janus about the local model
 
@@ -29,7 +30,35 @@ every other request goes upstream untouched.
 Run `janus doctor`. It checks that LM Studio has the model and says whether
 it is loaded. Then start `janus`.
 
-## 2. Tell Claude Code to use the alias
+## 2. Choose how requests get there
+
+There are two ways. The first needs no change to Claude Code at all.
+
+### With a rule (simplest)
+
+Add a rule that sends the subagent class local:
+
+```json
+{
+  "routing": [
+    { "name": "subagents", "class": "subagent", "route": "local", "local": "janus-local" }
+  ]
+}
+```
+
+Start Claude Code as usual. Janus recognises subagent requests by a header
+Claude Code sets, and sends them to the local model. Claude Code still
+believes it is talking to the model it asked for, so there is no warning
+and nothing to configure on its side.
+
+If the local model cannot take a request (too large, LM Studio down), it
+goes to Claude instead. Add `"maxTokens"` to the rule to keep large
+subagent turns upstream on purpose.
+
+### With the alias
+
+This makes Claude Code itself ask for the local model, which is useful to
+pin one particular subagent.
 
 Either of these works. Both were tested.
 
@@ -59,15 +88,16 @@ You count lines in the files you are given and report one count per file.
   slowest; later turns reuse LM Studio's prompt cache.
 - **The first request after LM Studio starts waits for the model to load.**
   Load it beforehand to avoid that.
-- **Claude Code logs `unrecognized_model` for the alias.** It is a warning
-  and the session carries on.
-- **Claude Code's own cost figure is no longer right.** It does not know
-  what `janus-local` costs. Use `janus stats`, which counts local answers
-  as zero upstream cost.
-- **A request too large for the local model is refused, not rerouted.** An
-  alias has no upstream model behind it, so Janus returns an error saying
-  how large the request was and what the model's context is. Load the
-  model with a larger context in LM Studio, or set `contextTokens`.
+- **With the alias, Claude Code logs `unrecognized_model`.** It is a
+  warning and the session carries on. With a rule there is no warning.
+- **Claude Code's own cost figure is no longer right.** With the alias it
+  does not know what `janus-local` costs; with a rule it prices local
+  answers as if Claude had given them. Use `janus stats`, which counts
+  local answers as zero upstream cost.
+- **With the alias, a request too large for the local model is refused,
+  not rerouted.** An alias has no upstream model behind it, so Janus
+  returns an error saying how large the request was and what the model's
+  context is. With a rule, the same request goes to Claude instead.
 - **Quality is the local model's.** A subagent that reads files and
   reports back is within reach of a good local model; one that must make
   hard judgements may not be. Janus does not yet check local answers or
