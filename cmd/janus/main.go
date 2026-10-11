@@ -30,6 +30,7 @@ import (
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
 	"github.com/risadams/janus/internal/route"
+	"github.com/risadams/janus/internal/shadow"
 )
 
 // version is overridden at build time with
@@ -89,9 +90,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	localURL, _ := url.Parse(cfg.Local.BaseURL)
 	upstream := backend.NewUpstream(upstreamURL, nil)
 
+	local := backend.NewLocal(localURL, nil)
+
 	var plan proxy.Planner
 	if cfg.Features.Route {
-		plan = newRouter(cfg, upstream, backend.NewLocal(localURL, nil)).Plan
+		plan = newRouter(cfg, upstream, local).Plan
 	}
 
 	ln, err := net.Listen("tcp", cfg.Listen)
@@ -108,11 +111,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		captures = capture.New(filepath.Join(cfg.Logging.Dir, "captures"), cfg.Logging.RetainDays, cfg.Logging.MaxMegabytes)
 	}
 
+	// Shadows are only ever asked for by a routing rule, so the runner is
+	// only needed when routing is on.
+	var shadows *shadow.Runner
+	if cfg.Features.Route {
+		shadows = shadow.New(local, led, captures, logger.Printf)
+		defer shadows.Close()
+	}
+
 	srv := &http.Server{Handler: proxy.New(proxy.Options{
 		Upstream:   upstream,
 		Plan:       plan,
 		KeepBodies: captures != nil,
-		Done:       func(ex proxy.Exchange) { record(ex, led, captures, logger) },
+		Done: func(ex proxy.Exchange) {
+			rec := record(ex, led, captures, logger)
+			if shadows != nil {
+				shadows.Submit(ex, rec)
+			}
+		},
 	})}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -157,8 +173,8 @@ func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local
 // record writes down one finished request: its capture, its ledger line,
 // and a line on the console. It runs after the response has gone out, and
 // a failure here is logged and nothing more: logging must never be the
-// reason a request fails.
-func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, logger *log.Logger) {
+// reason a request fails. It returns the ledger record it wrote.
+func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, logger *log.Logger) ledger.Record {
 	rec := ledger.FromExchange(ex)
 	if captures != nil {
 		name, err := captures.Write(ex)
@@ -171,6 +187,7 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, log
 		logger.Printf("janus: %v", err)
 	}
 	logger.Print(formatExchange(ex))
+	return rec
 }
 
 // formatExchange is the one line janus logs per request. For a Messages
@@ -253,7 +270,11 @@ func routingSummary(cfg config.Config) []string {
 			when = strings.Join(conditions, ", ")
 		}
 		target := r.Route
-		if r.Route != route.RouteUpstream {
+		switch r.Route {
+		case route.RouteUpstream:
+		case route.RouteShadow:
+			target = "upstream, shadowed on " + cfg.Local.Models[r.Local].Model
+		default:
 			target += " " + cfg.Local.Models[r.Local].Model
 		}
 		name := r.Name

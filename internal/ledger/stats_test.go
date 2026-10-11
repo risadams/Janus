@@ -192,3 +192,63 @@ func TestSummariseCountsUnreadResponses(t *testing.T) {
 		t.Errorf("Unread = %d, want 1", rep.Unread)
 	}
 }
+
+// shadowOf builds the shadow record of a real one.
+func shadowOf(real Record, outcome string, stop, tools bool, localMs, upstreamMs int64) Record {
+	s := real
+	s.ID, s.ShadowOf = real.ID+"-shadow", real.ID
+	s.Route, s.Backend, s.Outcome, s.DurationMs = "shadow", "local", outcome, localMs
+	s.Usage = &Usage{Input: 5000, Output: 300}
+	s.Response = &Response{Model: "qwen/qwen3.8-27b", Blocks: []string{"tool_use"}}
+	if outcome == OutcomeOK {
+		s.Compare = &Compare{StopMatch: stop, ToolsMatch: tools, UpstreamMs: upstreamMs}
+	}
+	return s
+}
+
+func TestShadowRunsAreSummarisedApartFromEverythingElse(t *testing.T) {
+	u := &Usage{Input: 2, Output: 100, CacheRead: n(9000), CacheWrite: n(0)}
+	sub1, sub2, sub3, sub4, sub5 := rec("s1", at(10, 1), "subagent", u), rec("s2", at(10, 2), "subagent", u),
+		rec("s3", at(10, 3), "subagent", u), rec("s4", at(10, 4), "subagent", u), rec("s5", at(10, 5), "subagent", u)
+	main1 := rec("m1", at(10, 6), "main", u)
+
+	empty := shadowOf(sub4, OutcomeOK, true, true, 9000, 2000)
+	empty.Response.Blocks = []string{} // "successful" and empty
+	skipped := shadowOf(sub5, OutcomeSkipped, false, false, 0, 0)
+	skipped.Usage, skipped.Response = nil, nil
+
+	records := []Record{
+		sub1, shadowOf(sub1, OutcomeOK, true, true, 12000, 2000),
+		sub2, shadowOf(sub2, OutcomeOK, true, false, 20000, 3000),
+		sub3, shadowOf(sub3, OutcomeIncomplete, false, false, 4000, 0),
+		sub4, empty,
+		sub5, skipped,
+		main1, shadowOf(main1, OutcomeOK, false, false, 30000, 5000),
+	}
+	withShadows := Summarise(records, DefaultPrices)
+	without := Summarise([]Record{sub1, sub2, sub3, sub4, sub5, main1}, DefaultPrices)
+
+	// Shadows change no other figure: not the request count, the tokens,
+	// the cost, the outcomes, or the time range.
+	if withShadows.Total != without.Total || len(withShadows.ByBackend) != 1 || withShadows.Outcomes[OutcomeOK] != 6 || len(withShadows.Outcomes) != 1 {
+		t.Errorf("shadow runs leaked into the totals:\n with    %+v %v\n without %+v", withShadows.Total, withShadows.Outcomes, without.Total)
+	}
+	if !withShadows.To.Equal(at(10, 6)) {
+		t.Errorf("To = %v", withShadows.To)
+	}
+	if len(without.Shadow) != 0 {
+		t.Errorf("a report with no shadows has a shadow section: %+v", without.Shadow)
+	}
+
+	if len(withShadows.Shadow) != 2 || withShadows.Shadow[0].Class != "main" || withShadows.Shadow[1].Class != "subagent" {
+		t.Fatalf("shadow rows = %+v", withShadows.Shadow)
+	}
+	want := ShadowRow{Class: "subagent", Runs: 5, Skipped: 1, Failed: 2, Compared: 2, StopMatch: 2, ToolsMatch: 1, BothMatch: 1,
+		LocalMedianMs: 20000, UpstreamMedianMs: 3000}
+	if got := withShadows.Shadow[1]; got != want {
+		t.Errorf("subagent shadow row:\n got %+v\nwant %+v", got, want)
+	}
+	if got := withShadows.Shadow[0]; got.Compared != 1 || got.BothMatch != 0 || got.LocalMedianMs != 30000 {
+		t.Errorf("main shadow row = %+v", got)
+	}
+}

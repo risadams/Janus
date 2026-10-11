@@ -47,6 +47,10 @@ type Exchange struct {
 	Reason       string
 	Stages       []string
 	BackendModel string
+	// Shadow is set when the request should also be run on a local model
+	// for comparison. The proxy only carries it; whoever receives the
+	// Exchange does the running.
+	Shadow *Shadow
 
 	// Summary is what janus read from a Messages API response as it went
 	// past: model, stop reason, token usage. It is nil for every other kind
@@ -113,6 +117,19 @@ type Plan struct {
 	ResponseModel string
 	// Timeout bounds the whole exchange. Zero means no limit.
 	Timeout time.Duration
+	// Shadow, when set, asks for the request to also be run on a local
+	// model afterwards, for comparison. It changes nothing about how the
+	// request itself is handled.
+	Shadow *Shadow
+}
+
+// Shadow names the local model to compare an upstream answer against.
+type Shadow struct {
+	Model         string
+	ContextTokens int
+	Timeout       time.Duration
+	// Reason is the rule that asked for it.
+	Reason string
 }
 
 // Refusal is an error janus returns instead of forwarding a request.
@@ -284,6 +301,7 @@ func New(opts Options) http.Handler {
 				Reason:         state.plan.Reason,
 				Stages:         state.plan.Stages,
 				BackendModel:   state.plan.BackendModel,
+				Shadow:         state.plan.Shadow,
 				Unread:         state.unread,
 				ResponseHeader: state.responseHeader,
 			}

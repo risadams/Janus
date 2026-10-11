@@ -89,9 +89,10 @@ type Rule struct {
 	// model any tools.
 	Tools *bool `json:"tools,omitempty"`
 
-	// Route is where a matching request goes: "upstream", "local", or
-	// "local-then-escalate", which is accepted but not built yet and
-	// behaves as "upstream".
+	// Route is where a matching request goes: "upstream"; "local";
+	// "shadow", which sends it upstream as usual and afterwards runs it on
+	// the local model too, for comparison; or "local-then-escalate", which
+	// is accepted but not built yet and behaves as "upstream".
 	Route string `json:"route"`
 	// Local names the entry of local.models to use. Required unless Route
 	// is "upstream".
@@ -255,16 +256,16 @@ func (c Config) Validate() error {
 		}
 		switch rule.Route {
 		case "upstream":
-		case "local", "local-then-escalate":
+		case "local", "shadow", "local-then-escalate":
 			if rule.Local == "" {
 				errs = append(errs, fmt.Errorf("%s.local is not set; name an entry of local.models", where))
 			} else if _, ok := c.Local.Models[rule.Local]; !ok {
 				errs = append(errs, fmt.Errorf("%s.local %q is not an entry of local.models", where, rule.Local))
 			}
 		case "":
-			errs = append(errs, fmt.Errorf("%s.route is not set; use upstream, local, or local-then-escalate", where))
+			errs = append(errs, fmt.Errorf("%s.route is not set; use upstream, local, shadow, or local-then-escalate", where))
 		default:
-			errs = append(errs, fmt.Errorf("%s.route %q is not one of upstream, local, local-then-escalate", where, rule.Route))
+			errs = append(errs, fmt.Errorf("%s.route %q is not one of upstream, local, shadow, local-then-escalate", where, rule.Route))
 		}
 	}
 	for name, m := range c.Local.Models {

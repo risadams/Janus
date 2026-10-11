@@ -26,6 +26,10 @@ type LocalModel struct {
 const (
 	RouteUpstream = "upstream"
 	RouteLocal    = "local"
+	// RouteShadow sends the request upstream as usual and asks for it to be
+	// run on the local model afterwards, so the two answers can be compared
+	// without the local one ever reaching the client.
+	RouteShadow = "shadow"
 	// RouteEscalate is local first with Claude as the fallback. It is
 	// accepted so that configs can be written ahead of it, and until it is
 	// built it sends the request upstream.
@@ -163,6 +167,11 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				return upstream(reason), nil, trace
 			}
 			trace = append(trace, fmt.Sprintf("%s: local, to %s", label, rule.Local.ID))
+			return plan, nil, trace
+		case RouteShadow:
+			plan := upstream(label)
+			plan.Shadow = &proxy.Shadow{Model: rule.Local.ID, ContextTokens: rule.Local.ContextTokens, Timeout: rule.Local.Timeout, Reason: label}
+			trace = append(trace, fmt.Sprintf("%s: upstream, and shadowed on %s", label, rule.Local.ID))
 			return plan, nil, trace
 		case RouteEscalate:
 			reason := label + ": local-then-escalate is not available yet; sent upstream"

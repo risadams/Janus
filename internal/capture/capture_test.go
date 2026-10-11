@@ -320,3 +320,41 @@ func TestPruneWithNoLimitsOrNoDirectoryDoesNothing(t *testing.T) {
 		t.Errorf("Prune of a directory that does not exist = %v", err)
 	}
 }
+
+func TestWriteShadowSitsBesideTheRealCaptureAndIsPrunedWithIt(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "captures")
+	w := New(dir, 0, 0)
+	name, err := w.Write(exchange())
+	if err != nil {
+		t.Fatal(err)
+	}
+	shadow := exchange()
+	shadow.ID += "-shadow"
+	shadow.RequestBody = []byte(`{"model":"qwen/qwen3.8-27b","messages":[]}`)
+	if err := w.WriteShadow(name, shadow); err != nil {
+		t.Fatal(err)
+	}
+
+	base := filepath.Join(dir, name)
+	for ext, want := range map[string]string{".shadow.request.txt": `{"model":"qwen/qwen3.8-27b","messages":[]}`, ".shadow.response.txt": stream} {
+		got, err := os.ReadFile(base + ext)
+		if err != nil || string(got) != want {
+			t.Errorf("%s: err %v, matches %v", ext, err, string(got) == want)
+		}
+		if info, _ := os.Stat(base + ext); info != nil && info.Mode().Perm() != 0o600 {
+			t.Errorf("%s mode = %o, want 600", ext, info.Mode().Perm())
+		}
+	}
+	if md, _ := os.ReadFile(base + ".shadow.md"); !strings.Contains(string(md), "-shadow") || strings.Contains(string(md), "secret-token") {
+		t.Errorf(".shadow.md is wrong or leaks a credential")
+	}
+
+	// All six files belong to one capture, so they go together.
+	if stem(base+".shadow.response.txt") != base || stem(base+".md") != base {
+		t.Errorf("stem does not group shadow files with their capture")
+	}
+	(&Writer{dir: dir, maxBytes: 1}).Prune(time.Now())
+	if left := remaining(t, dir); left != "" {
+		t.Errorf("after pruning to nothing, these remain:\n%s", left)
+	}
+}

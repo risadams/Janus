@@ -11,8 +11,10 @@ local-first, to keep upstream token spend down.
 books, and can send chosen requests to the local model by rule. In practice
 that means Claude Code's subagents can run on LM Studio while the main
 conversation stays with Claude, with no change to Claude Code: see the
-[recipe](docs/recipes/claude-code.md). It does not yet check local answers
-or escalate a poor one to Claude.
+[recipe](docs/recipes/claude-code.md). A shadow rule runs the local model
+alongside Claude's real answers so you can compare the two before trusting
+it. Janus does not yet check live local answers or escalate a poor one to
+Claude.
 
 - [Charter](docs/CHARTER.md): what Janus is, goals, scope, risks
 - [Requirements](docs/REQUIREMENTS.md)

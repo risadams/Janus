@@ -30,6 +30,23 @@ every other request goes upstream untouched.
 Run `janus doctor`. It checks that LM Studio has the model and says whether
 it is loaded. Then start `janus`.
 
+## Before you switch: shadow it
+
+To see how the local model would do on your own subagent traffic without
+it answering anything, start with a shadow rule:
+
+```json
+{
+  "routing": [
+    { "name": "watch-subagents", "class": "subagent", "route": "shadow", "local": "janus-local" }
+  ]
+}
+```
+
+Work as normal for a while, then run `janus stats` and read the "Shadow
+runs" section. See [Configuration](../CONFIG.md#shadow-try-the-local-model-without-trusting-it)
+for how to read it. When you are satisfied, change `shadow` to `local`.
+
 ## 2. Choose how requests get there
 
 There are two ways. The first needs no change to Claude Code at all.
