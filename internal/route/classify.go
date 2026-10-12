@@ -27,6 +27,9 @@ const (
 	// conversation so far, to replace it: the main loop's request with an
 	// instruction added at the end, and no other turn following from it.
 	Compaction Class = "compaction"
+	// TokenCount is a request to count a prompt's tokens without running
+	// it. It is free, and only Claude can answer it.
+	TokenCount Class = "token_count"
 	// Unknown is everything else. Unknown requests are always passed
 	// through untouched.
 	Unknown Class = "unknown"
@@ -47,6 +50,8 @@ func Classify(method, path string, header http.Header) Class {
 		case header.Get("X-Claude-Code-Session-Id") != "":
 			return Main
 		}
+	case method == http.MethodPost && path == "/v1/messages/count_tokens":
+		return TokenCount
 	case (method == http.MethodGet || method == http.MethodHead) && (path == "/" || path == "/api/hello"):
 		return Connectivity
 	}

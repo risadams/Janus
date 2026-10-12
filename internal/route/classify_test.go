@@ -26,7 +26,9 @@ func TestClassify(t *testing.T) {
 		{"POST", "/v1/messages", h(session...), Main},
 		{"POST", "/v1/messages", h(agent...), Subagent},
 		{"POST", "/v1/messages", h(), Unknown}, // not Claude Code
-		{"POST", "/v1/messages/count_tokens", h(session...), Unknown},
+		{"POST", "/v1/messages/count_tokens", h(session...), TokenCount},
+		{"POST", "/v1/messages/count_tokens", h(), TokenCount},
+		{"GET", "/v1/messages/count_tokens", h(session...), Unknown},
 		{"GET", "/v1/messages", h(session...), Unknown},
 		{"HEAD", "/api/hello", h(), Connectivity},
 		{"GET", "/", h(), Connectivity},
