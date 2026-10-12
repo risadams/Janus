@@ -289,7 +289,9 @@ func TestReportsMessagesUsageWithoutChangingTheStream(t *testing.T) {
 	if string(body) != sampleStream {
 		t.Error("the stream the client received differs from what the upstream sent")
 	}
-	if ex.Method != "POST" || ex.Path != "/v1/messages" || ex.Status != 200 || ex.Duration <= 0 {
+	// Windows' clock ticks about once a millisecond, so a fast local
+	// exchange can take no measurable time; only a negative one is wrong.
+	if ex.Method != "POST" || ex.Path != "/v1/messages" || ex.Status != 200 || ex.Duration < 0 {
 		t.Errorf("exchange = %+v", ex)
 	}
 	s := ex.Summary

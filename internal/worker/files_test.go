@@ -149,8 +149,10 @@ func TestAskFilesGivesTheModelNumberedFilesAndReturnsItsAnswer(t *testing.T) {
 	}
 
 	c := (*calls)[0]
+	// A fast local call can measure as no time at all on Windows, whose
+	// clock ticks about once a millisecond.
 	if len(*calls) != 1 || c.Tool != "ask_files" || c.Files != 2 || c.BytesRead != 41 || c.ModelCalls != 1 || c.Failed ||
-		c.Usage.Input != 1000 || c.Usage.Output != 50 || c.AnswerBytes != len(out) || c.Duration <= 0 {
+		c.Usage.Input != 1000 || c.Usage.Output != 50 || c.AnswerBytes != len(out) || c.Duration < 0 {
 		t.Errorf("recorded call = %+v", c)
 	}
 }
