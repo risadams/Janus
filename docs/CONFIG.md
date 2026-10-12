@@ -104,7 +104,7 @@ matches everything.
 
 | Field | Matches when |
 | --- | --- |
-| `class` | The request is `main` (Claude Code's main conversation), `subagent`, or `unknown` |
+| `class` | The request is `main` (Claude Code's main conversation), `subagent`, or `unknown`. Claude Code's start-up quota check and its compaction requests are not `main`: only a rule without `class` matches them |
 | `model` | The client asked for exactly this model |
 | `maxTokens` | The request is estimated at no more than this many tokens |
 | `tools` | `true`: the request offers tools. `false`: it offers none. |
