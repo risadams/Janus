@@ -141,7 +141,7 @@ These change details, not direction. Defaults are assumed until decided.
 | # | Decision | Default assumed |
 | --- | --- | --- |
 | D1 | Claude Code auth: API key or subscription (OAuth)? Decides whether "spend" is dollars or rate-limit headroom. | Support both by passing auth through untouched; ledger reports tokens and estimated dollars |
-| D2 | Hardware and candidate local models | Decided by the M0 benchmark spike |
+| D2 | Hardware and candidate local models | Decided by the M0 benchmark spike: Apple M5 Max, 36 GB; `qwen/qwen3.8-27b` (MLX, 4-bit) for subagent conversations only ([models](research/models.md)) |
 | D3 | Keep blush's zero-dependency rule? | Stdlib first; each exception recorded as an ADR |
 | D4 | License | MIT, matching blush |
 | D5 | Module path casing (`risadams/Janus` vs `janus`) | Lowercase `github.com/risadams/janus` |
