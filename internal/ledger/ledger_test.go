@@ -139,6 +139,18 @@ func TestNonMessagesRecord(t *testing.T) {
 	}
 }
 
+func TestQuotaCheckHasItsOwnClass(t *testing.T) {
+	rec := FromExchange(proxy.Exchange{
+		ID: "q", Start: time.Now(), Method: "POST", Path: "/v1/messages",
+		Header:      http.Header{"X-Claude-Code-Session-Id": {"s1"}},
+		RequestBody: []byte(`{"model":"claude-opus-5-5","max_tokens":1,"messages":[{"role":"user","content":"quota"}]}`),
+		Status:      429,
+	})
+	if rec.Class != "quota" {
+		t.Errorf("class = %q", rec.Class)
+	}
+}
+
 func TestUnparseableOrTruncatedRequestStillGetsARecord(t *testing.T) {
 	for name, edit := range map[string]func(*proxy.Exchange){
 		"not json":  func(ex *proxy.Exchange) { ex.RequestBody = []byte("not json") },

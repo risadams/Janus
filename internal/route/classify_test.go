@@ -3,6 +3,8 @@ package route
 import (
 	"net/http"
 	"testing"
+
+	"github.com/risadams/janus/internal/anthropic"
 )
 
 func TestClassify(t *testing.T) {
@@ -34,6 +36,38 @@ func TestClassify(t *testing.T) {
 	for _, c := range cases {
 		if got := Classify(c.method, c.path, c.header); got != c.want {
 			t.Errorf("Classify(%s %s, %v) = %s, want %s", c.method, c.path, c.header, got, c.want)
+		}
+	}
+}
+
+func TestClassifyRequestFindsTheQuotaCheck(t *testing.T) {
+	main := http.Header{"X-Claude-Code-Session-Id": {"s1"}}
+	sub := http.Header{"X-Claude-Code-Session-Id": {"s1"}, "X-Claude-Code-Agent-Id": {"a1"}}
+	// As Claude Code sends it at start-up, metadata aside.
+	quota := `{"model":"claude-opus-5-5","max_tokens":1,"messages":[{"role":"user","content":"quota"}]}`
+
+	cases := []struct {
+		name   string
+		header http.Header
+		body   string
+		want   Class
+	}{
+		{"the quota check", main, quota, Quota},
+		{"as a block", main, `{"model":"m","max_tokens":1,"messages":[{"role":"user","content":[{"type":"text","text":"quota"}]}]}`, Quota},
+		{"more output", main, `{"model":"m","max_tokens":2,"messages":[{"role":"user","content":"quota"}]}`, Main},
+		{"other text", main, `{"model":"m","max_tokens":1,"messages":[{"role":"user","content":"hello"}]}`, Main},
+		{"with tools", main, `{"model":"m","max_tokens":1,"tools":[{"name":"t","input_schema":{}}],"messages":[{"role":"user","content":"quota"}]}`, Main},
+		{"a later turn", main, `{"model":"m","max_tokens":1,"messages":[{"role":"user","content":"quota"},{"role":"assistant","content":"x"},{"role":"user","content":"quota"}]}`, Main},
+		{"from a subagent", sub, quota, Subagent},
+		{"not Claude Code", http.Header{}, quota, Unknown},
+	}
+	for _, c := range cases {
+		req, err := anthropic.ParseRequest([]byte(c.body))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got := ClassifyRequest(c.header, req); got != c.want {
+			t.Errorf("%s: got %s, want %s", c.name, got, c.want)
 		}
 	}
 }

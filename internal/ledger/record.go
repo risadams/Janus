@@ -275,6 +275,9 @@ func FromExchange(ex proxy.Exchange) Record {
 				Tools:            len(req.Tools()),
 				CacheBreakpoints: req.CacheBreakpoints(),
 			}
+			if ex.Path == "/v1/messages" {
+				rec.Class = string(route.ClassifyRequest(ex.Header, req))
+			}
 		}
 	}
 

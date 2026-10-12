@@ -50,6 +50,7 @@ does. Anything listed under "Not seen" could still exist there.
 | Main loop | No `X-Claude-Code-Agent-Id` header | 11 | 3 blocks, about 9k characters | 1 hour |
 | Subagent | `X-Claude-Code-Agent-Id` present; first system block contains `cc_is_subagent` | 8 | 3 blocks, about 2.7k characters | 5 minutes |
 | Connectivity check | `GET /` and `GET /api/hello`, once each at session start, empty body | – | – | – |
+| Quota check | Interactive sessions only: `POST /v1/messages` with the main loop's headers, `max_tokens: 1`, no tools, one user message `quota`, not streamed. Sent at start-up to read the rate-limit response headers; on a subscription it is often answered `429`. Seen 2026-10-12. | – | – | – |
 
 Common to both Messages classes: model `claude-opus-5-5`, `stream: true`,
 `max_tokens: 128000`, `thinking: {type: "adaptive", display: "omitted"}`,
@@ -58,10 +59,11 @@ Common to both Messages classes: model `claude-opus-5-5`, `stream: true`,
 
 ### Not seen
 
-- Any model other than the main one. No small/fast-model calls.
+- Any model other than the main one. No small/fast-model calls, in
+  headless sessions or, on 2026-10-12, in an interactive one of 30 turns.
 - `POST /v1/messages/count_tokens`.
 - Title generation, summarisation, or compaction requests.
-- Non-streaming Messages requests.
+- Non-streaming Messages requests, other than the quota check.
 
 ## Signals
 
@@ -185,5 +187,5 @@ subagent reaches a correct final answer. Both belong to #8.
 - Capture an interactive session, and one long enough to trigger
   compaction, to fill the "Not seen" list. Needs to be run by hand.
 - #22: add the `tool_addition` normalisation to the LM Studio backend.
-- #23: classes are `main`, `subagent`, `connectivity`, `unknown` for now.
+- #23: classes are `main`, `subagent`, `connectivity`, `quota`, `unknown` for now.
 - #28: evaluate subagents as the first class to switch.
