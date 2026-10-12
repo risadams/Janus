@@ -97,6 +97,24 @@ func streamUsing(w http.ResponseWriter, r *http.Request, seen string) {
 	fmt.Fprint(w, "event: message_stop\n"+`data: {"type":"message_stop"}`+"\n\n")
 }
 
+// unissued has the shape of a placeholder and is not one janus made.
+const unissued = "JANUS_" + "REDACTED_0123456789ab"
+
+// streamAs answers with a stream of one block, a delta per piece.
+func streamAs(w http.ResponseWriter, deltaType, field string, pieces ...string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	fmt.Fprint(w, "event: message_start\n"+`data: {"type":"message_start","message":{"id":"m","model":"claude-opus-5-5","usage":{"input_tokens":2}}}`+"\n\n")
+	fmt.Fprint(w, "event: content_block_start\n"+`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`+"\n\n")
+	for _, piece := range pieces {
+		enc, _ := json.Marshal(piece)
+		fmt.Fprintf(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":%q,%q:%s}}\n\n", deltaType, field, enc)
+		w.(http.Flusher).Flush()
+	}
+	fmt.Fprint(w, "event: content_block_stop\n"+`data: {"type":"content_block_stop","index":0}`+"\n\n")
+	fmt.Fprint(w, "event: message_delta\n"+`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":9}}`+"\n\n")
+	fmt.Fprint(w, "event: message_stop\n"+`data: {"type":"message_stop"}`+"\n\n")
+}
+
 func textOfStream(stream string) (text string, sawError bool) {
 	for _, line := range strings.Split(stream, "\n") {
 		data, ok := strings.CutPrefix(line, "data: ")
@@ -233,7 +251,7 @@ func TestCountTokensIsRedactedToo(t *testing.T) {
 func TestUnrestorableAnswerIsStoppedNotPassedOn(t *testing.T) {
 	// A stream that uses a placeholder janus never issued.
 	res := guarded(t, "/v1/messages", withSecret("claude-opus-5-5"), func(w http.ResponseWriter, r *http.Request, seen string) {
-		streamUsing(w, r, "JANUS_REDACTED_0123456789ab")
+		streamAs(w, "input_json_delta", "partial_json", `{"command":"deploy `, unissued+`"}`)
 	})
 	_, sawError := textOfStream(res.Body)
 	if !sawError || strings.Contains(res.Body, "message_stop") || strings.Contains(res.Body, fakeKey) {
@@ -241,6 +259,16 @@ func TestUnrestorableAnswerIsStoppedNotPassedOn(t *testing.T) {
 	}
 	if g := res.Exchange.Guard; g == nil || g.Blocked == "" {
 		t.Errorf("guard = %+v", g)
+	}
+
+	// In prose nothing acts on the token, so the turn goes through as the
+	// model wrote it.
+	res = guarded(t, "/v1/messages", withSecret("claude-opus-5-5"), func(w http.ResponseWriter, r *http.Request, seen string) {
+		streamAs(w, "text_delta", "text", "The placeholder looks like ", unissued+".")
+	})
+	text, sawError := textOfStream(res.Body)
+	if sawError || text != "The placeholder looks like "+unissued+"." || !strings.Contains(res.Body, "message_stop") || res.Exchange.Guard.Blocked != "" {
+		t.Errorf("prose naming a placeholder was stopped:\n%s", res.Body)
 	}
 
 	// The same in a JSON answer: the whole answer is withheld.

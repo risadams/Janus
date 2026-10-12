@@ -118,7 +118,9 @@ func (r *Redactor) Redact(body []byte) (*Redaction, error) {
 	})
 
 	rd := &Redaction{Body: body, Report: found.report, restore: map[string]string{}, literal: map[string]bool{}}
-	for _, m := range placeholderLike.FindAll(body, -1) {
+	// damagedLike takes in whole placeholders and partial ones alike: the
+	// bare prefix in a conversation about janus is the client's own text.
+	for _, m := range damagedLike.FindAll(body, -1) {
 		rd.literal[string(m)] = true
 	}
 

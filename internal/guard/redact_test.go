@@ -447,13 +447,17 @@ func TestStreamStopsOnWhatItCannotRestore(t *testing.T) {
 	rd := redact(t, r, body(t, "sys", user(textBlock(key.text))))
 	good := r.placeholder(key.want)
 
-	cases := map[string][]string{
-		"a placeholder janus never issued": {"run with " + placeholderPrefix + "0123456789ab", " now"},
-		"a placeholder cut off by the end": {"run with " + good[:len(good)-3]},
-		"a damaged placeholder":            {"run with " + placeholderPrefix + "zzzz", " now"},
+	cases := map[string]string{
+		"a placeholder janus never issued": "run with " + placeholderPrefix + "0123456789ab now",
+		"a placeholder cut off by the end": "run with " + good[:len(good)-3],
+		"a damaged placeholder":            "run with " + placeholderPrefix + "zzzz now",
 	}
-	for name, pieces := range cases {
-		out, restorer := restoreStream(t, rd, sse("text_delta", "text", pieces...), false)
+	for name, text := range cases {
+		// In a tool call the token would become a command or an edit, so
+		// the turn is stopped.
+		args := `{"command":"` + text + `"}`
+		cut := len(args) - 6
+		out, restorer := restoreStream(t, rd, sse("input_json_delta", "partial_json", args[:cut], args[cut:]), false)
 		_, sawError := joined(t, out)
 		if !sawError || !errors.Is(restorer.Err, ErrUnresolvable) {
 			t.Errorf("%s: error event %v, Err %v", name, sawError, restorer.Err)
@@ -466,6 +470,31 @@ func TestStreamStopsOnWhatItCannotRestore(t *testing.T) {
 		if strings.Contains(out, key.want) {
 			t.Errorf("%s: a secret was sent in a turn that was stopped", name)
 		}
+
+		// In prose nothing acts on it. A session about janus itself writes
+		// such things all the time, and must not be cut off for it.
+		for deltaType, field := range map[string]string{"text_delta": "text", "thinking_delta": "thinking"} {
+			out, restorer := restoreStream(t, rd, sse(deltaType, field, text[:12], text[12:]), false)
+			got, sawError := joined(t, out)
+			if got != text || sawError || restorer.Err != nil || !strings.Contains(out, "message_stop") {
+				t.Errorf("%s in %s: got %q, error event %v, Err %v", name, deltaType, got, sawError, restorer.Err)
+			}
+		}
+	}
+}
+
+// The prefix on its own, in something the client sent, is the client's
+// text: a tool call that repeats it is searching for it, not using a
+// secret.
+func TestPartialPlaceholderFromTheClientIsNotAnError(t *testing.T) {
+	r := NewRedactor(&Detector{})
+	key := positives()[3]
+	rd := redact(t, r, body(t, "sys", user(textBlock(key.text+" and grep for "+placeholderPrefix+" in the docs"))))
+
+	args := `{"command":"grep -rn ` + placeholderPrefix + ` docs"}`
+	out, restorer := restoreStream(t, rd, sse("input_json_delta", "partial_json", args[:20], args[20:]), false)
+	if got, sawError := joined(t, out); got != args || sawError || restorer.Err != nil {
+		t.Errorf("got %q, error event %v, Err %v", got, sawError, restorer.Err)
 	}
 }
 
