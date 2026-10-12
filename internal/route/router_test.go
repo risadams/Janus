@@ -111,7 +111,7 @@ func TestPlanSendsAnAliasLocal(t *testing.T) {
 	if plan.BackendModel != "qwen/qwen3.8-27b" || plan.ResponseModel != "janus-local" || plan.Timeout != time.Minute {
 		t.Errorf("models and timeout: %+v", plan)
 	}
-	if got := strings.Join(plan.Stages, ","); got != "set_model,lift_tool_additions,drop_deferred_tools" {
+	if got := strings.Join(plan.Stages, ","); got != "set_model,lift_tool_additions,fold_system_messages,drop_deferred_tools" {
 		t.Errorf("stages = %s", got)
 	}
 	sent := parse(t, string(plan.Body))

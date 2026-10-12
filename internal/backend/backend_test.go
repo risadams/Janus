@@ -169,7 +169,8 @@ func loadRequest(t *testing.T) *anthropic.Request {
 }
 
 // The synthetic request has what a real Claude Code request has: two
-// tool_addition blocks in a system message, and a deferred placeholder tool.
+// tool_addition blocks in a system message, another system message later
+// on, and a deferred placeholder tool.
 func TestNormalize(t *testing.T) {
 	req := loadRequest(t)
 	before := req.Messages()
@@ -178,7 +179,7 @@ func TestNormalize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(stages, ","); got != "set_model,lift_tool_additions,drop_deferred_tools" {
+	if got := strings.Join(stages, ","); got != "set_model,lift_tool_additions,fold_system_messages,drop_deferred_tools" {
 		t.Errorf("stages = %s", got)
 	}
 
@@ -203,15 +204,29 @@ func TestNormalize(t *testing.T) {
 		t.Error("tool_addition blocks remain")
 	}
 
-	// The message that held them keeps its other content and its role;
-	// every other message is byte for byte what it was.
+	// The two system messages are folded into the user messages before
+	// them, as reminders; every other message is byte for byte what it was.
 	after := out.Messages()
-	if len(after) != len(before) || after[1].Role != "system" || len(after[1].Blocks()) != 1 || after[1].Blocks()[0].Text() != "Deferred tools are now available." {
-		t.Errorf("messages[1] = role %q, %d blocks", after[1].Role, len(after[1].Blocks()))
+	if len(after) != len(before)-2 {
+		t.Fatalf("%d messages after normalising, want %d", len(after), len(before)-2)
 	}
-	for i := range before {
-		if i != 1 && string(after[i].Raw()) != string(before[i].Raw()) {
-			t.Errorf("messages[%d] changed though it held no tool_addition", i)
+	for i, m := range after {
+		if m.Role == "system" {
+			t.Errorf("messages[%d] is still a system message", i)
+		}
+	}
+	reminder := func(text string) string { return "<system-reminder>\n" + text + "\n</system-reminder>" }
+	first := after[0].Blocks()
+	if len(first) != 3 || first[2].Text() != reminder("Deferred tools are now available.") {
+		t.Errorf("messages[0] = %d blocks, last %q", len(first), first[len(first)-1].Text())
+	}
+	third := after[2].Blocks()
+	if after[2].Role != "user" || len(third) != 2 || third[0].Type != "tool_result" || third[1].Text() != reminder("The user changed the working directory.") {
+		t.Errorf("messages[2] = role %q, %d blocks", after[2].Role, len(third))
+	}
+	for i, j := range map[int]int{1: 2, 3: 5, 4: 6} {
+		if string(after[i].Raw()) != string(before[j].Raw()) {
+			t.Errorf("messages[%d] changed though it was not a system message's neighbour", j)
 		}
 	}
 	// Fields LM Studio tolerates are left in.
@@ -249,8 +264,10 @@ func TestNormalizeEdgeCases(t *testing.T) {
 	if len(out.Tools()) != 1 {
 		t.Errorf("%d tools, want the duplicate definition ignored", len(out.Tools()))
 	}
-	if blocks := out.Messages()[1].Blocks(); len(blocks) != 1 || blocks[0].Type != "text" {
-		t.Errorf("emptied message = %+v, want one placeholder text block", blocks)
+	// The emptied system message says what was there, and is then folded
+	// into the user message before it like any other.
+	if m := out.Messages(); len(m) != 1 || len(m[0].Blocks()) != 2 || !strings.Contains(m[0].Blocks()[1].Text(), "tool definitions were added here") {
+		t.Errorf("messages = %+v, want the placeholder folded into the user message", m)
 	}
 
 	// A tool_addition janus cannot read is an error, not a silent drop:
@@ -400,5 +417,37 @@ func TestRepairForUpstreamLeavesClaudeOnlyHistoryAlone(t *testing.T) {
 	before := string(req.Bytes())
 	if RepairForUpstream(req) || req.Modified() || string(req.Bytes()) != before {
 		t.Error("a request with no unsigned thinking was modified")
+	}
+}
+
+// A system message with no user message before it becomes one; an empty
+// one there is dropped. And folding is stable: a conversation that has
+// grown by a turn folds to the same bytes as before, plus the new turn,
+// which is what keeps the local model's prompt cache useful.
+func TestFoldSystem(t *testing.T) {
+	msgs := func(raw string) []anthropic.Message {
+		req, err := anthropic.ParseRequest([]byte(`{"model":"m","messages":` + raw + `}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return req.Messages()
+	}
+
+	out, folded := foldSystem(msgs(`[{"role":"system","content":"first"},{"role":"system","content":[]},{"role":"user","content":"hi"}]`))
+	if !folded || len(out) != 2 || out[0].Role != "user" || out[0].Blocks()[0].Text() != "<system-reminder>\nfirst\n</system-reminder>" || out[1].Role != "user" {
+		t.Errorf("leading system messages: %d messages, roles %q %q", len(out), out[0].Role, out[len(out)-1].Role)
+	}
+
+	if _, folded := foldSystem(msgs(`[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"}]`)); folded {
+		t.Error("a conversation with no system message was reported as folded")
+	}
+
+	short := `[{"role":"user","content":"read it"},{"role":"system","content":"reminder"},{"role":"assistant","content":"done"}`
+	a, _ := foldSystem(msgs(short + `]`))
+	b, _ := foldSystem(msgs(short + `,{"role":"user","content":"thanks"},{"role":"system","content":"another"}]`))
+	for i := range a {
+		if string(a[i].Raw()) != string(b[i].Raw()) {
+			t.Errorf("messages[%d] folds differently once the conversation grows", i)
+		}
 	}
 }
