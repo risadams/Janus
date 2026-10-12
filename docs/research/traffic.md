@@ -1,6 +1,6 @@
 # Spike: what Claude Code sends
 
-Issue: #5 · Date: 2026-10-11 · Status: complete for headless sessions; interactive sessions still to capture
+Issue: #5 · Date: 2026-10-11, interactive and compaction captures 2026-10-12 · Status: complete
 
 ## Question
 
@@ -23,9 +23,11 @@ blush against a scratch copy of the blush source, with
 small repo. It shows the shape of the traffic; it is not a baseline. That
 is M1's job (#19).
 
-**Gap: no interactive session was captured.** Headless mode identifies
-itself as `cc_entrypoint=sdk-cli` and may skip work the interactive UI
-does. Anything listed under "Not seen" could still exist there.
+Headless mode identifies itself as `cc_entrypoint=sdk-cli` and may skip
+work the interactive UI does, so on 2026-10-12 the first day of real use
+through Janus was captured as well: interactive sessions of about 30
+main-loop turns, and one `/compact` of a 183-message conversation. What
+they added is marked with that date below.
 
 ## Decisions
 
@@ -51,6 +53,8 @@ does. Anything listed under "Not seen" could still exist there.
 | Subagent | `X-Claude-Code-Agent-Id` present; first system block contains `cc_is_subagent` | 8 | 3 blocks, about 2.7k characters | 5 minutes |
 | Connectivity check | `GET /` and `GET /api/hello`, once each at session start, empty body | – | – | – |
 | Quota check | Interactive sessions only: `POST /v1/messages` with the main loop's headers, `max_tokens: 1`, no tools, one user message `quota`, not streamed. Sent at start-up to read the rate-limit response headers; on a subscription it is often answered `429`. Seen 2026-10-12. | – | – | – |
+| Compaction | The main loop's request, unchanged, with one text block added to the end of the last user message: an instruction that begins "CRITICAL: Respond with TEXT ONLY" and asks for "a detailed summary of the conversation so far". Seen 2026-10-12; see "Compaction". | Same as main | Same as main | 5 minutes |
+| Token count | `POST /v1/messages/count_tokens`, two at once just after compaction. One user message of about 10k characters, no tools, main model. Ledger class `unknown`. Seen 2026-10-12. | – | – | – |
 
 Common to both Messages classes: model `claude-opus-5-5`, `stream: true`,
 `max_tokens: 128000`, `thinking: {type: "adaptive", display: "omitted"}`,
@@ -61,9 +65,39 @@ Common to both Messages classes: model `claude-opus-5-5`, `stream: true`,
 
 - Any model other than the main one. No small/fast-model calls, in
   headless sessions or, on 2026-10-12, in an interactive one of 30 turns.
-- `POST /v1/messages/count_tokens`.
-- Title generation, summarisation, or compaction requests.
+- Title generation, or any summarisation other than compaction.
 - Non-streaming Messages requests, other than the quota check.
+- Auto-compaction. Only `/compact` run by hand was captured; auto-compaction
+  is assumed to send the same request.
+
+### Compaction
+
+One `/compact`, run by hand on 2026-10-12 in a session of 183 messages
+through Janus:
+
+- **It is the previous turn's request plus an instruction.** System
+  prompt, tools, and all 182 earlier messages were the same as the turn
+  before it. The last message carried the same tool result, followed by
+  the summary instruction as a second text block. `max_tokens`,
+  `thinking`, and `context_management` were unchanged, and nothing told
+  the model not to use the tools except the instruction's own words.
+- **It reads the cache and writes nothing.** The breakpoint stayed on the
+  previous turn's tail, and the system blocks asked for a 5-minute TTL
+  where every other main-loop turn asks for an hour. The prefix the main
+  loop had written with a 1-hour TTL was read all the same: 130,041 tokens
+  read, 2,066 uncached, 0 written.
+- **Its cost is output.** 7,926 tokens of summary in 68 seconds (8.6 s to
+  the first byte), against a few hundred for an ordinary turn of
+  the same session.
+- **The turn after it starts small.** The first turn of the compacted
+  conversation had 5 messages and 35k tokens of context, and wrote 23,840
+  tokens to cache with a 1-hour TTL.
+
+So serving compaction locally (#46) would trade a cheap cache read and
+about 8k output tokens upstream for a cold local prefill of about 160k
+tokens, which is well past the context `qwen/qwen3.8-27b` was loaded
+with. Whether that is worth doing depends on how often it happens, which
+the `compaction` class now lets the baseline (#19) count.
 
 ## Signals
 
@@ -154,6 +188,9 @@ All of these appeared in real requests or responses, and the typed model in
   zstd` and the API answered with gzip, streams included. blush hid this by
   forcing `Accept-Encoding: identity`; it was found when Janus, which
   leaves the header alone, first tried to read a response (2026-10-11).
+  Janus now narrows the header to gzip on Messages requests only, so
+  `count_tokens` answers arrive brotli-compressed, and are captured as they
+  arrived (2026-10-12).
 
 ## Replay against the local model
 
@@ -184,8 +221,8 @@ subagent reaches a correct final answer. Both belong to #8.
 
 ## Follow-ups
 
-- Capture an interactive session, and one long enough to trigger
-  compaction, to fill the "Not seen" list. Needs to be run by hand.
 - #22: add the `tool_addition` normalisation to the LM Studio backend.
-- #23: classes are `main`, `subagent`, `connectivity`, `quota`, `unknown` for now.
+- #23: classes are `main`, `subagent`, `connectivity`, `quota`,
+  `compaction`, `unknown` for now. `count_tokens` is still `unknown`.
+- #46: the compaction numbers above are one sample; the baseline decides.
 - #28: evaluate subagents as the first class to switch.

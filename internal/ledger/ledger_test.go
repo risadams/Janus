@@ -151,6 +151,18 @@ func TestQuotaCheckHasItsOwnClass(t *testing.T) {
 	}
 }
 
+func TestCompactionHasItsOwnClass(t *testing.T) {
+	rec := FromExchange(proxy.Exchange{
+		ID: "c", Start: time.Now(), Method: "POST", Path: "/v1/messages",
+		Header:      http.Header{"X-Claude-Code-Session-Id": {"s1"}},
+		RequestBody: []byte(`{"model":"claude-opus-5-5","max_tokens":128000,"messages":[{"role":"user","content":"Your task is to create a detailed summary of the conversation so far."}]}`),
+		Status:      200,
+	})
+	if rec.Class != "compaction" {
+		t.Errorf("class = %q", rec.Class)
+	}
+}
+
 func TestUnparseableOrTruncatedRequestStillGetsARecord(t *testing.T) {
 	for name, edit := range map[string]func(*proxy.Exchange){
 		"not json":  func(ex *proxy.Exchange) { ex.RequestBody = []byte("not json") },

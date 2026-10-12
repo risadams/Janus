@@ -71,3 +71,38 @@ func TestClassifyRequestFindsTheQuotaCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestClassifyRequestFindsCompaction(t *testing.T) {
+	main := http.Header{"X-Claude-Code-Session-Id": {"s1"}}
+	sub := http.Header{"X-Claude-Code-Session-Id": {"s1"}, "X-Claude-Code-Agent-Id": {"a1"}}
+	ask := `CRITICAL: Respond with TEXT ONLY.\n\nYour task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests.`
+	// As Claude Code 2.1.296 sends it: the main loop's conversation, with
+	// the instruction added after the tool result that ended the last turn.
+	compact := `{"model":"m","max_tokens":128000,"messages":[` +
+		`{"role":"user","content":"fix the test"},` +
+		`{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{}}]},` +
+		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"},{"type":"text","text":"` + ask + `"}]}]}`
+
+	cases := []struct {
+		name   string
+		header http.Header
+		body   string
+		want   Class
+	}{
+		{"compaction", main, compact, Compaction},
+		{"as the whole message", main, `{"model":"m","max_tokens":1000,"messages":[{"role":"user","content":"` + ask + `"}]}`, Compaction},
+		{"quoted earlier, then a real turn", main, `{"model":"m","max_tokens":1000,"messages":[{"role":"user","content":"` + ask + `"},{"role":"assistant","content":"x"},{"role":"user","content":"thanks"}]}`, Main},
+		{"in a tool result", main, `{"model":"m","max_tokens":1000,"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"` + ask + `"}]}]}`, Main},
+		{"from a subagent", sub, compact, Subagent},
+		{"not Claude Code", http.Header{}, compact, Unknown},
+	}
+	for _, c := range cases {
+		req, err := anthropic.ParseRequest([]byte(c.body))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got := ClassifyRequest(c.header, req); got != c.want {
+			t.Errorf("%s: got %s, want %s", c.name, got, c.want)
+		}
+	}
+}
