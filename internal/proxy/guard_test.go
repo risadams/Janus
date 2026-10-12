@@ -79,11 +79,12 @@ func guarded(t *testing.T, path, body string, respond func(w http.ResponseWriter
 }
 
 // streamUsing answers with a stream whose text uses whatever placeholder
-// was in the request, cut in two so that it straddles two events.
+// was in the request, cut in two so that it straddles two events. With no
+// placeholder in the request, the text has none either.
 func streamUsing(w http.ResponseWriter, r *http.Request, seen string) {
 	token := placeholderShape.FindString(seen)
 	text := "Deploying with " + token + " now."
-	cut := len("Deploying with ") + 7
+	cut := len("Deploying with ") + min(7, len(token))
 	w.Header().Set("Content-Type", "text/event-stream")
 	fmt.Fprint(w, "event: message_start\n"+`data: {"type":"message_start","message":{"id":"m","model":"claude-opus-5-5","usage":{"input_tokens":2}}}`+"\n\n")
 	fmt.Fprint(w, "event: content_block_start\n"+`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`+"\n\n")
