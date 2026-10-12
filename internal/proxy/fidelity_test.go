@@ -12,6 +12,7 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/rand"
 	"fmt"
 	"github.com/risadams/janus/internal/backend"
@@ -189,7 +190,10 @@ func perform(t *testing.T, target string, c fidelityCase) got {
 }
 
 func tryPerform(target string, c fidelityCase) (got, error) {
-	req, err := http.NewRequest(c.method, target+c.path, bytes.NewReader(c.body))
+	// A stalled transfer fails here rather than holding up the whole run.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, c.method, target+c.path, bytes.NewReader(c.body))
 	if err != nil {
 		return got{}, err
 	}
