@@ -1,6 +1,6 @@
 # Spike: can a conversation mix local and upstream turns?
 
-Issue: #7 · Date: 2026-10-11 · Status: the main question answered by experiment; quality questions still open
+Issue: #7 · Date: 2026-10-11, case by case 2026-10-12 · Status: complete
 
 ## Question
 
@@ -85,16 +85,72 @@ This is one run of a two-turn conversation on one model. It shows the
 repair removes the failure that was observed; it does not show that no
 other shape of local turn can fail.
 
-## Still open from the original spike
+## Finding 3: case by case
 
-- Behaviour with thinking disabled.
+On 2026-10-12 each kind of mixed history was tried on its own. A
+throwaway pass-through proxy sat between headless Claude Code (2.1.296,
+`claude -p --effort high`, model `claude-opus-5-5`) and the API. Claude
+Code authenticated as usual with the machine's Pro subscription; the
+proxy forwarded the auth header untouched and never read or stored it.
+On each request that already held assistant turns, it made one change to
+the history, the kind a local model's turn would bring, and recorded the
+API's status, error, and usage.
+
+The task was a short tool loop over a scratch repo: three file reads, one
+of them needing worked reasoning, so that the history held signed thinking
+blocks (`display: "omitted"`: empty text and a real signature) once the
+model had thought.
+
+| Change to the history | API answer |
+| --- | --- |
+| None (control) | 200 |
+| Signature field removed from the last turn's thinking block | 400 `messages.7.content.0.thinking.signature: Field required` |
+| Ten characters of a real signature altered | 400 ``Invalid `signature` in `thinking` block`` |
+| Thinking text replaced with a local model's, signature `""` | 400 ``Invalid `signature` in `thinking` block`` |
+| Signed thinking removed from the last assistant turn | 200 |
+| Signed thinking removed from every assistant turn | 200 |
+| Last turn made local-shaped: text first, no thinking, tool ids `call_…` | 200 |
+| Every tool id renamed to `call_…`, in `tool_use` and `tool_result` | 200 |
+| `thinking: {type: "disabled"}` | 400 `"thinking.type.disabled" is not supported for this model. Use "thinking.type.adaptive" and "output_config.effort"` |
+
+What this adds to findings 1 and 2:
+
+- **The API checks every signature it is shown, and nothing else about
+  origin.** A thinking block must carry a signature the API issued, for
+  that text. Tool ids in any format, a turn with no thinking, and text
+  before a tool call all pass.
+- **Removing signed thinking is accepted, but not free.** In the turn
+  after the removal, Claude worked the reasoning out again: 840 and 875
+  output tokens with a fresh thinking block, against 117 with no thinking
+  at the same step of the control. One run each, and adaptive thinking
+  varies from run to run, so read this as a direction, not a size.
+- **Thinking off is not an option on this model.** The "thinking on and
+  off" half of the original question does not arise for
+  `claude-opus-5-5`; every request must use adaptive thinking.
+- **Claude Code repairs a rejected history itself.** All three times a
+  signature was refused, Claude Code sent the request again without the
+  thinking blocks in the failing turn, and that succeeded. So a mistake
+  here costs a failed request rather than a failed turn, which also means
+  it is easy to miss without the ledger.
+
+## Routing granularity
+
+| Granularity | Safe? | Why |
+| --- | --- | --- |
+| Per request class | Yes | Nothing crosses between conversations. |
+| Per whole subagent conversation | Yes | A subagent's conversation never mixes origins. |
+| Local, then upstream within a conversation (escalation, fallback) | Yes, with `drop_unsigned_thinking` | The only history the API rejects is thinking it did not sign, and the repair removes exactly that. |
+| Turn by turn in the main loop | Accepted by the API; not recommended | No longer an integrity question. Each local turn costs Claude its reasoning for the next turn (finding 3), and a local turn takes 10 to 50 seconds where Claude takes 2 to 8 (#8). Whether that ever pays is for shadow and replay data on real work to show. |
+
+FR-4.4 is met by the repair: no routing Janus can do produces a history
+the API rejects, as long as no local thinking block is ever sent upstream
+as a thinking block.
+
+## Still open
+
 - What a later Claude turn does, in quality terms, with a history that
   holds a local model's tool calls. Acceptance is not the same as working
   well.
 - A local turn that is only thinking, with no text or tool call. The
   repair replaces it with a placeholder text block; that path is tested
   against a fake upstream only.
-- Routing granularity. A conversation can now cross from local to
-  upstream without failing, which is what escalation needs. Whether it
-  should, turn by turn, is a quality question that shadow and replay data
-  on real work will have to answer.
