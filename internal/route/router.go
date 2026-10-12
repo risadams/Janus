@@ -77,7 +77,7 @@ type Facts struct {
 // FactsOf gathers the facts about a request.
 func FactsOf(header http.Header, req *anthropic.Request) Facts {
 	return Facts{
-		Class:  Classify(http.MethodPost, "/v1/messages", header),
+		Class:  ClassifyRequest(header, req),
 		Model:  req.Model(),
 		Tokens: EstimateTokens(req.Bytes()),
 		Tools:  len(req.Tools()) > 0,
