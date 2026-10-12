@@ -54,7 +54,7 @@ they added is marked with that date below.
 | Connectivity check | `GET /` and `GET /api/hello`, once each at session start, empty body | – | – | – |
 | Quota check | Interactive sessions only: `POST /v1/messages` with the main loop's headers, `max_tokens: 1`, no tools, one user message `quota`, not streamed. Sent at start-up to read the rate-limit response headers; on a subscription it is often answered `429`. Seen 2026-10-12. | – | – | – |
 | Compaction | The main loop's request, unchanged, with one text block added to the end of the last user message: an instruction that begins "CRITICAL: Respond with TEXT ONLY" and asks for "a detailed summary of the conversation so far". Seen 2026-10-12; see "Compaction". | Same as main | Same as main | 5 minutes |
-| Token count | `POST /v1/messages/count_tokens`, two at once just after compaction. One user message of about 10k characters, no tools, main model. Ledger class `unknown`. Seen 2026-10-12. | – | – | – |
+| Token count | `POST /v1/messages/count_tokens`, two at once just after compaction. One user message of about 10k characters, no tools, main model. Ledger class `token_count`. Seen 2026-10-12. | – | – | – |
 
 Common to both Messages classes: model `claude-opus-5-5`, `stream: true`,
 `max_tokens: 128000`, `thinking: {type: "adaptive", display: "omitted"}`,
@@ -223,6 +223,6 @@ subagent reaches a correct final answer. Both belong to #8.
 
 - #22: add the `tool_addition` normalisation to the LM Studio backend.
 - #23: classes are `main`, `subagent`, `connectivity`, `quota`,
-  `compaction`, `unknown` for now. `count_tokens` is still `unknown`.
+  `compaction`, `token_count`, `unknown` for now.
 - #46: the compaction numbers above are one sample; the baseline decides.
 - #28: evaluate subagents as the first class to switch.
