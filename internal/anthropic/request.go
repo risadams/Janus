@@ -195,6 +195,15 @@ func (m Message) WithBlocks(blocks []Block) Message {
 	return m
 }
 
+// WithRole returns a copy of the message with its role replaced. Every
+// other field of the message, known or not, is kept.
+func (m Message) WithRole(role string) Message {
+	m.members = set(m.members, "role", encode(role))
+	m.raw = encodeObject(m.members)
+	m.Role = role
+	return m
+}
+
 // parseContent reads a content value, which the API allows to be either a
 // string or an array of blocks. It is also the shape of the system field.
 func parseContent(data json.RawMessage) (blocks []Block, plain bool, err error) {

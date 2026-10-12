@@ -148,6 +148,7 @@ const (
 	StageModel        = "set_model"
 	StageLiftTools    = "lift_tool_additions"
 	StageDropDeferred = "drop_deferred_tools"
+	StageFoldSystem   = "fold_system_messages"
 	// StageDropThinking is applied on the way upstream, not to the local
 	// model; see RepairForUpstream.
 	StageDropThinking = "drop_unsigned_thinking"
@@ -156,12 +157,15 @@ const (
 // Normalize rewrites a Claude Code request into one LM Studio accepts, and
 // returns the stages it applied.
 //
-// Three things change (docs/research/traffic.md, "Replay"):
+// Four things change (docs/research/traffic.md, "Replay"):
 //   - model becomes the local model's id; LM Studio would otherwise answer
 //     with whatever happens to be loaded
 //   - tool_addition blocks, which carry tool definitions inside messages
 //     and which LM Studio rejects, are lifted into the tools array
 //   - tools marked defer_loading, placeholders for the above, are dropped
+//   - system messages in the middle of the conversation are folded into
+//     the user message before them, since many models' chat templates
+//     refuse a system message anywhere but first (docs/research/models.md)
 //
 // Everything else LM Studio tolerates and is left alone.
 func Normalize(req *anthropic.Request, localModel string) (stages []string, err error) {
@@ -218,9 +222,15 @@ func Normalize(req *anthropic.Request, localModel string) (stages []string, err 
 		}
 	}
 
-	if lifted {
+	messages, folded := foldSystem(messages)
+	if lifted || folded {
 		req.SetMessages(messages)
+	}
+	if lifted {
 		stages = append(stages, StageLiftTools)
+	}
+	if folded {
+		stages = append(stages, StageFoldSystem)
 	}
 	if dropped {
 		stages = append(stages, StageDropDeferred)
@@ -229,6 +239,40 @@ func Normalize(req *anthropic.Request, localModel string) (stages []string, err 
 		req.SetTools(tools)
 	}
 	return stages, nil
+}
+
+// foldSystem moves each system message into the user message before it,
+// as text marked the way Claude Code marks its own reminders. Claude Code
+// always puts a system message straight after a user message, and the two
+// arrive together, so a conversation folds to the same bytes on every turn
+// and the local model's prompt cache keeps working. A system message with
+// no user message before it becomes a user message itself.
+func foldSystem(messages []anthropic.Message) ([]anthropic.Message, bool) {
+	out := make([]anthropic.Message, 0, len(messages))
+	folded := false
+	for _, m := range messages {
+		if m.Role != "system" {
+			out = append(out, m)
+			continue
+		}
+		folded = true
+		var blocks []anthropic.Block
+		for _, b := range m.Blocks() {
+			if b.Type == "text" {
+				b = anthropic.NewTextBlock("<system-reminder>\n" + b.Text() + "\n</system-reminder>")
+			}
+			blocks = append(blocks, b)
+		}
+		if n := len(out); n > 0 && out[n-1].Role == "user" {
+			out[n-1] = out[n-1].WithBlocks(append(append([]anthropic.Block{}, out[n-1].Blocks()...), blocks...))
+			continue
+		}
+		if len(blocks) == 0 {
+			continue // nothing to keep, and a message cannot be empty
+		}
+		out = append(out, m.WithRole("user").WithBlocks(blocks))
+	}
+	return out, folded
 }
 
 // RepairForUpstream removes from a request's history the thinking blocks a
