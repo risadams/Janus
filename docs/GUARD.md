@@ -131,12 +131,20 @@ It fails closed, in two places:
 - **A request that cannot be checked is not sent.** If Janus cannot read
   a request to look for secrets, or finds one it cannot remove, the client
   gets an error and nothing goes upstream.
-- **An answer that cannot be restored is stopped.** If Claude refers to a
-  secret with a placeholder Janus did not issue, or a damaged one, the
-  turn ends with an error rather than handing your machine a command with
-  a meaningless token in it. A streamed answer is cut off with an error
+- **A tool call that cannot be restored is stopped.** If Claude calls a
+  tool with a placeholder Janus did not issue, or a damaged one, the turn
+  ends with an error rather than handing your machine a command with a
+  meaningless token in it. A streamed answer is cut off with an error
   event; what was sent before it cannot be recalled, but a client does not
-  act on a turn that ended in an error.
+  act on a turn that ended in an error. Claude Code shows this as "Server
+  error mid-response"; the ledger and `janus audit` give the reason.
+
+  Text and thinking are not stopped for this. Nothing acts on prose, and
+  a session about Janus itself writes placeholder-shaped text all the
+  time, so such a token is passed on as Claude wrote it. Placeholder-shaped
+  text that was already in your request, whole or partial, is yours and
+  is never an error anywhere. An answer that is not streamed is still
+  checked whole and withheld.
 
 What it costs and what it cannot do:
 

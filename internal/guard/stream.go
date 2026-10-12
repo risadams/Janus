@@ -176,6 +176,12 @@ func (r *Restorer) emit(index int, deltaType, piece string) {
 	if err == nil && damaged(restored, r.rd) {
 		err = ErrUnresolvable
 	}
+	// Prose is read, not run. A token janus cannot restore is only
+	// dangerous in a tool call, where it would become a command or an
+	// edit; in text or thinking it is left as the model wrote it.
+	if err == ErrUnresolvable && deltaType != "input_json_delta" {
+		err = nil
+	}
 	if err != nil {
 		r.fail(err)
 		return

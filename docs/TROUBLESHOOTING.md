@@ -111,6 +111,13 @@ says why: the request could not be read, was too large to check (over
 32 MB), or still held a secret or local-only content after replacement.
 `janus audit` lists these under "Stopped by the guard".
 
+**Claude Code says `Server error mid-response` and the turn stops.** If
+the ledger record's `guard.blocked` says the model referred to a redacted
+secret in a form Janus cannot restore, Claude called a tool with a
+placeholder Janus never issued, and Janus stopped the turn before the
+tool ran. Ask again. If it keeps happening, `janus audit <id>` shows which
+request; the capture beside it holds the answer as far as it got.
+
 **Something that is not a secret keeps being replaced.** Add the exact
 value to `guard.allow`. If it is the entropy search finding random-looking
 strings, turn `guard.entropy` off; it is off by default for that reason.
