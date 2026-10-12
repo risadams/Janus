@@ -27,7 +27,9 @@ jobs:
           else
             echo "version=v0.0.0-pr.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
-      - run: go test ./...
+      # The full suite, stress tests included, has already passed on this
+      # commit in the test workflow; here the tests only confirm the build.
+      - run: go test -short ./...
       - run: scripts/release.sh "${{ steps.version.outputs.version }}"
       - name: Run the binary that was built
         run: |
