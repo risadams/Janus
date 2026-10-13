@@ -368,6 +368,9 @@ func exchangeNotes(ex proxy.Exchange) []note {
 			notes = append(notes, note{info, fmt.Sprintf("%s tried for %s first, then it went to Claude: %s", a.Backend, humanDuration(a.Duration), a.Why)})
 		}
 	}
+	if ex.NoFallback != "" {
+		notes = append(notes, note{warn, ex.NoFallback})
+	}
 	if ex.Fault != "" {
 		notes = append(notes, note{bad, "fault: " + ex.Fault})
 	}

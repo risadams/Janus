@@ -42,7 +42,10 @@ fix them.
   it asked for. Watch Janus's console to know which you are talking to.
 - **Requests too large for the local model fail** with Claude's original
   error, since there is nowhere else to send them. A long main
-  conversation can outgrow a local context.
+  conversation can outgrow a local context. A model LM Studio has not
+  loaded is only sent requests up to 32,768 tokens unless `contextTokens`
+  says otherwise. The console line's `↳ no local stand-in: ...` and the
+  ledger's `reason` say why the local model did not answer.
 - **It only works before an answer starts.** If Claude fails part-way
   through a streamed answer, what was already sent cannot be taken back.
 - **Picking up again is safe.** When Claude is back, the conversation

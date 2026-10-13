@@ -325,17 +325,23 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		}
 		local := *rule.IfDown
 		plan.FallBackOn = upstreamDown
+		// When there is no stand-in after all, the returned plan's Reason
+		// says why, for the record: Claude's failure is the answer.
+		noStandIn := func(why string) (proxy.Plan, bool) {
+			return proxy.Plan{Reason: "no local stand-in: " + why}, false
+		}
 		plan.Fallback = func(ctx context.Context) (proxy.Plan, bool) {
-			if skip, _, _ := r.health.open(); skip {
-				return proxy.Plan{}, false
+			if skip, failures, until := r.health.open(); skip {
+				return noStandIn(fmt.Sprintf("the local backend has failed %d times in a row and is being skipped until %s",
+					failures, until.Format("15:04:05")))
 			}
 			copy, err := anthropic.ParseRequest(arrived)
 			if err != nil {
-				return proxy.Plan{}, false
+				return noStandIn("the request could not be read again: " + err.Error())
 			}
 			release, ok := r.busy.take(local)
 			if !ok {
-				return proxy.Plan{}, false // the local model is full: Claude's failure stands
+				return noStandIn(fmt.Sprintf("%s already has %d requests in flight, its limit", local.ID, local.MaxConcurrent))
 			}
 			fallback, _, problem := r.local(ctx, copy, local, facts.Model, label)
 			if problem != nil {
@@ -343,7 +349,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				if problem.status == http.StatusBadGateway {
 					r.health.record(false)
 				}
-				return proxy.Plan{}, false
+				return noStandIn(problem.message)
 			}
 			fallback.Release = release
 			return fallback, true
