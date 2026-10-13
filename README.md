@@ -42,27 +42,31 @@ keeps the books.
 You need Claude Code. LM Studio is only needed for the local-model
 features.
 
-Download the archive for your machine from the
-[releases page](https://github.com/risadams/Janus/releases). The current
-release is the pre-release `v0.9.0-rc.6`:
-
-```bash
-curl -LO https://github.com/risadams/Janus/releases/download/v0.9.0-rc.6/janus_0.9.0-rc.6_darwin_arm64.tar.gz
-curl -LO https://github.com/risadams/Janus/releases/download/v0.9.0-rc.6/checksums.txt
-shasum -a 256 -c checksums.txt --ignore-missing
-tar -xzf janus_0.9.0-rc.6_darwin_arm64.tar.gz
-cd janus_0.9.0-rc.6_darwin_arm64
-```
-
-Other builds are `darwin_amd64`, `linux_amd64`, `linux_arm64`, and, as
-`.zip`, `windows_amd64` and `windows_arm64`. The binaries are not signed: a
-copy downloaded in a browser on macOS is quarantined, which
-`xattr -d com.apple.quarantine janus` clears. Or build it with Go 1.27 or
-later:
+With Go 1.27 or later, install the newest release:
 
 ```bash
 go install github.com/risadams/janus/cmd/janus@latest
 ```
+
+Or download a build. These commands find the newest release on the
+[releases page](https://github.com/risadams/Janus/releases), release
+candidates included, then download the build for macOS on Apple silicon,
+check it, and unpack it:
+
+```bash
+url=$(curl -s https://api.github.com/repos/risadams/Janus/releases | grep -m1 -o 'https://[^"]*_darwin_arm64\.tar\.gz')
+curl -LO "$url"
+curl -LO "${url%/*}/checksums.txt"
+shasum -a 256 -c checksums.txt --ignore-missing
+tar -xzf "${url##*/}"
+cd janus_*_darwin_arm64
+```
+
+For another machine, put its build in place of `darwin_arm64`:
+`darwin_amd64`, `linux_amd64`, or `linux_arm64`. Windows builds are `.zip`
+files on the releases page. The binaries are not signed: a copy downloaded
+in a browser on macOS is quarantined, which
+`xattr -d com.apple.quarantine janus` clears.
 
 Check the setup, then start it (drop the `./` if you used `go install`):
 
