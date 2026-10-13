@@ -386,3 +386,36 @@ func TestStatsReportsTransforms(t *testing.T) {
 		t.Logf("exit %d, report was:\n%s", code, out)
 	}
 }
+
+func TestStatsReportsLocalOnly(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	l := ledger.Open(dir)
+	when := time.Date(2026, 10, 13, 15, 0, 0, 0, time.UTC)
+	reason := `Read read secrets/db.yaml, which "secrets/**" makes local-only`
+	for i, backend := range []string{"upstream", "upstream", "local", "none"} {
+		rec := ledger.Record{V: 1, ID: fmt.Sprint(i), Time: when.Add(time.Duration(i) * time.Minute), Class: "main", Route: "upstream",
+			Backend: backend, Status: 200, Outcome: ledger.OutcomeOK, Guard: &ledger.Guard{LocalOnly: []string{reason}}}
+		if backend == "upstream" {
+			rec.Guard.Withheld = 1
+		}
+		if err := l.Append(rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, _, code := stats(t, "-dir", dir)
+	squeezed := strings.Join(strings.Fields(out), " ")
+	for _, want := range []string{
+		"LOCAL-ONLY: 4 requests held content the local-only policy keeps on this machine.",
+		"2 were sent upstream with it replaced by a notice (2 pieces withheld).",
+		"1 were answered by the local model instead.",
+		"1 were refused: they could not be answered without sending it.",
+		"4: " + reason,
+	} {
+		if !strings.Contains(squeezed, want) {
+			t.Errorf("report is missing %q", want)
+		}
+	}
+	if code != 0 || t.Failed() {
+		t.Logf("exit %d, report was:\n%s", code, out)
+	}
+}

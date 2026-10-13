@@ -165,6 +165,39 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		}
 		fmt.Fprintf(w, "  A secret in a conversation is resent with every turn and counted each time.\n")
 	}
+	if lo := rep.LocalOnly; lo.Requests > 0 {
+		fmt.Fprintf(w, "\nLOCAL-ONLY: %s requests held content the local-only policy keeps on this\nmachine.\n", commas(lo.Requests))
+		if lo.Withheld > 0 {
+			fmt.Fprintf(w, "  %s were sent upstream with it replaced by a notice (%s pieces withheld).\n", commas(lo.Withheld), commas(lo.Pieces))
+		}
+		if lo.KeptLocal > 0 {
+			fmt.Fprintf(w, "  %s were answered by the local model instead.\n", commas(lo.KeptLocal))
+		}
+		if lo.Refused > 0 {
+			fmt.Fprintf(w, "  %s were refused: they could not be answered without sending it.\n", commas(lo.Refused))
+		}
+		type reason struct {
+			text string
+			n    int
+		}
+		var reasons []reason
+		for text, n := range lo.Reasons {
+			reasons = append(reasons, reason{text, n})
+		}
+		sort.Slice(reasons, func(i, j int) bool {
+			if reasons[i].n != reasons[j].n {
+				return reasons[i].n > reasons[j].n
+			}
+			return reasons[i].text < reasons[j].text
+		})
+		if len(reasons) > 3 {
+			reasons = reasons[:3]
+		}
+		for _, r := range reasons {
+			fmt.Fprintf(w, "  %s: %s\n", commas(r.n), r.text)
+		}
+		fmt.Fprintf(w, "  Content in a conversation is withheld again on every turn and counted each time.\n")
+	}
 	if rep.StoodIn > 0 {
 		fmt.Fprintf(w, "\nNOTE: %s requests were answered by the local model because Claude could not\n"+
 			"answer them (unreachable, rate limited, overloaded, or failing). Search the\n"+

@@ -185,6 +185,12 @@ outcomes.
   report lists how many and why. An unpriced request is never counted as
   free.
 
+When the guard was on, sections follow for what it did: secrets found and
+replaced, and content the local-only policy kept from Anthropic, by how
+(withheld with a notice, answered locally, or refused) and by its most
+frequent reasons. Both count a conversation's content again on every turn,
+since it is sent again on every turn.
+
 When transforms ran, a table follows of what each did: requests touched,
 blocks rewritten, revised, and declined, tokens cut, what was **saved** (the
 tokens cut, priced at what they would have cost on those requests, less the
