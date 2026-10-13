@@ -310,5 +310,11 @@ is under `logging.maxMegabytes`. It only ever touches directories named
 like a date and the files inside them; anything else you put under
 `captures/` is left alone.
 
+The originals of digested tool results, in `originals/` (see
+[CONFIG](CONFIG.md)), are pruned by age only: at startup and then at most
+once an hour while Janus runs, each is deleted once it has gone unused
+for `logging.retainDays`. They don't count towards `logging.maxMegabytes`,
+because a digest promises its original back for that long.
+
 A body larger than 32 MB is cut short in the capture, and the render says
 so. The request and response themselves are always relayed in full.

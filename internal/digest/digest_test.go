@@ -250,6 +250,39 @@ func TestStore(t *testing.T) {
 	}
 }
 
+// A Janus that runs for weeks must still delete originals past the
+// retention period, not only when it next starts.
+func TestStorePrunesWhileRunning(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "originals")
+	s := NewStore(dir, 1)
+	start := time.Now()
+	clock := start
+	s.now = func() time.Time { return clock }
+
+	old, err := s.Put("from three days ago")
+	if err != nil {
+		t.Fatal(err)
+	}
+	then := start.Add(-3 * 24 * time.Hour)
+	os.Chtimes(filepath.Join(dir, old+".txt"), then, then)
+
+	// Within the hour since the last look, Put does not look again.
+	clock = start.Add(30 * time.Minute)
+	s.Put("half an hour later")
+	if _, err := s.Get(old); err != nil {
+		t.Fatalf("pruned sooner than once an hour: %v", err)
+	}
+
+	clock = start.Add(2 * time.Hour)
+	recent, _ := s.Put("two hours later")
+	if _, err := s.Get(old); !errors.Is(err, ErrNotFound) {
+		t.Errorf("an original past retention survived a running store: %v", err)
+	}
+	if _, err := s.Get(recent); err != nil {
+		t.Errorf("a recent original was pruned: %v", err)
+	}
+}
+
 func TestTargetWords(t *testing.T) {
 	for bytes, want := range map[int]int{100: 80, 4000: 200, 9000: 400, 1 << 20: 400} {
 		if got := targetWords(bytes); got != want {

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,14 +21,38 @@ import (
 type Store struct {
 	dir    string
 	retain time.Duration
+	now    func() time.Time
+
+	mu     sync.Mutex
+	pruned time.Time // when Prune last ran
 }
+
+// pruneEvery is how often Put looks for originals past the retention
+// period. Janus can run for weeks, so pruning only at start would keep
+// them all until the next restart.
+const pruneEvery = time.Hour
 
 // NewStore returns a store in dir that keeps originals for retainDays, or
 // for good if that is zero, and deletes what is already older.
 func NewStore(dir string, retainDays int) *Store {
-	s := &Store{dir: dir, retain: time.Duration(retainDays) * 24 * time.Hour}
-	s.Prune(time.Now())
+	s := &Store{dir: dir, retain: time.Duration(retainDays) * 24 * time.Hour, now: time.Now}
+	s.pruned = s.now()
+	s.Prune(s.pruned)
 	return s
+}
+
+// pruneIfDue runs Prune if it has not run for pruneEvery.
+func (s *Store) pruneIfDue() {
+	now := s.now()
+	s.mu.Lock()
+	due := now.Sub(s.pruned) >= pruneEvery
+	if due {
+		s.pruned = now
+	}
+	s.mu.Unlock()
+	if due {
+		s.Prune(now)
+	}
 }
 
 // idPattern is what Put returns; anything else is not an id, and Get
@@ -35,8 +60,10 @@ func NewStore(dir string, retainDays int) *Store {
 var idPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 // Put saves text and returns its id: a hash of the text, so the same
-// output saved twice is one file.
+// output saved twice is one file. Now and then it also deletes originals
+// past the retention period.
 func (s *Store) Put(text string) (id string, err error) {
+	defer s.pruneIfDue()
 	sum := sha256.Sum256([]byte(text))
 	id = hex.EncodeToString(sum[:8])
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {
@@ -44,7 +71,7 @@ func (s *Store) Put(text string) (id string, err error) {
 	}
 	path := filepath.Join(s.dir, id+".txt")
 	if _, err := os.Stat(path); err == nil {
-		os.Chtimes(path, time.Now(), time.Now()) // kept as long as it is in use
+		os.Chtimes(path, s.now(), s.now()) // kept as long as it is in use
 		return id, nil
 	}
 	tmp, err := os.CreateTemp(s.dir, "."+id+"-*")
