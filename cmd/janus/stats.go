@@ -1,5 +1,6 @@
-// stats.go — the `janus stats` command: where the tokens and the money
-// went, read from the ledger.
+// stats.go is `janus stats`: where the tokens and the money went, read
+// from the ledger.
+
 package main
 
 import (

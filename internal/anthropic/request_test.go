@@ -252,9 +252,10 @@ func TestParseRequestErrors(t *testing.T) {
 	}
 }
 
-// Set JANUS_CAPTURES to a directory of blush captures to check the model
-// against real traffic. Captures hold account identifiers and prompts, so
-// they are never committed; this test is how they still get exercised.
+// Set JANUS_CAPTURES to a directory of captures (logging.dir/captures) to
+// check the model against real traffic. Captures hold account identifiers
+// and prompts, so they are never committed; this test is how they still
+// get exercised.
 func TestRealCaptures(t *testing.T) {
 	dir := os.Getenv("JANUS_CAPTURES")
 	if dir == "" {

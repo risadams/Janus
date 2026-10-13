@@ -1,5 +1,6 @@
-// replay.go — the `janus replay` command: run saved requests on the local
-// model and compare its answers with the ones Claude gave.
+// replay.go is `janus replay`: it runs saved requests on the local model
+// and compares its answers with the ones Claude gave.
+
 package main
 
 import (

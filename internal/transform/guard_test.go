@@ -120,7 +120,9 @@ func TestARewriteThatDoesNotShrinkIsDeclined(t *testing.T) {
 }
 
 // prune revises a "read <file>:" tool result that a later read of the same
-// file supersedes, as stale-context pruning (#45) would.
+// file supersedes: the kind of reviser stale-context pruning would be.
+// #45 measured it and left it unbuilt, but the guard must still price one
+// correctly.
 type prune struct{}
 
 func (prune) Name() string { return "prune" }

@@ -1,4 +1,5 @@
-// audit.go — the `janus audit` command: what left this machine.
+// audit.go is `janus audit`: what left this machine, request by request.
+
 package main
 
 import (

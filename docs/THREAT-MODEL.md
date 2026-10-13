@@ -80,19 +80,23 @@ Under `logging.dir`:
 | --- | --- | --- |
 | Ledger | One line per request: sizes, tokens, timings, routes, guard counts, and the paths and markers that made content local-only. | Low. No content, no secrets. File names appear. |
 | Captures | Every request and response in full. | High. Your prompts and code, any secrets in them, and local-only content, **as Claude Code sent them, before redaction**. |
+| Originals, with `features.compress` on | The full output of each tool result Janus digested, for `tool_output` to return. | High. Command output, which can hold secrets. Never content the local-only policy covers, since that is never digested. |
 
-- Both are created private to you (`0600` in `0700` directories) on macOS
+- All are created private to you (`0600` in `0700` directories) on macOS
   and Linux. **Windows has no such modes**: files get the access their
   directory allows. Keep `logging.dir` under your user profile.
-- Captures are pruned by age (7 days by default) and size. Pruning deletes
-  files; it does not overwrite them.
+- Captures are pruned by age (7 days by default) and size; originals by
+  age only. Originals are kept whether or not `logging.capture` is on,
+  because a digest promises them. Pruning deletes files; it does not
+  overwrite them.
 - Redaction protects what goes to Anthropic, not what is on your disk. A
   capture of a redacted request holds the original beside what was sent.
   Set `logging.capture` to false if a week of prompts on disk is not
   acceptable, and note that `janus audit -verify` needs captures to work.
-- Backups and sync tools that cover `logging.dir` will copy captures.
-- There is no memo store: the compression milestone that would have added
-  one is not built.
+- Backups and sync tools that cover `logging.dir` will copy captures and
+  originals.
+- The transforms' memo of what each conversation has sent is kept in
+  memory only, and is gone when Janus stops.
 
 ## Redaction and placeholders
 
@@ -134,7 +138,8 @@ Requests to LM Studio go over plain HTTP to `local.baseUrl`, by default
 
 - If LM Studio is on another machine, **everything routed to it crosses
   your network unencrypted**, including content the local-only policy
-  kept from Anthropic.
+  kept from Anthropic, and, with `features.compress` on, every tool
+  result sent to it to be digested.
 - `.local` names are resolved by mDNS, which any machine on the network
   can answer. A hostile device could claim the name and receive those
   requests, and answer them.
@@ -153,6 +158,9 @@ under whatever permissions you have given it. The validators in
 `local-then-escalate` check that an answer is well formed, not that it is
 right or safe.
 
+- A digest is the local model's text standing in for a tool result, and
+  Claude reads it as one. A model steered by what it was digesting can
+  put words there that Claude acts on. Digests are off by default.
 - Use models you chose and downloaded yourself.
 - A weaker model is easier to steer with text it reads in files and tool
   output. Route locally the work where that matters least, and keep
@@ -170,6 +178,9 @@ right or safe.
   protects a path and the call names that path, the answer is withheld
   like any other tool result; a call that reaches the file by a glob the
   policy does not recognise is not caught.
+- `tool_output` returns originals of digested tool results. It takes an
+  id of 16 hex digits and nothing else, so it cannot be pointed at a
+  path, and it returns at most about 60 kB per call.
 - The MCP server is a separate process from the proxy. It works whether
   or not Claude Code is pointed at Janus, and when it is not, nothing the
   guard does applies to its answers.
@@ -177,8 +188,8 @@ right or safe.
 ## What Janus adds to requests
 
 Janus changes a request only in ways it records: the model name for a
-local route, repairs for a mixed history, placeholders, and withheld
-content. Each is named in the ledger, and `janus audit` shows them. It
+local route, repairs for a mixed history, placeholders, withheld content,
+and digests of large tool results. Each is named in the ledger, and `janus audit` shows them. It
 narrows `Accept-Encoding` to gzip on Messages requests so that it can read
 the response. It adds no identifying header to what it sends upstream.
 

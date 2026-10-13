@@ -1,5 +1,6 @@
-// route.go — the `janus route` command: say where a saved request would be
-// sent, and why.
+// route.go is `janus route`: it says where a saved request would be sent,
+// and why.
+
 package main
 
 import (

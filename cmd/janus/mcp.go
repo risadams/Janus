@@ -1,5 +1,7 @@
-// mcp.go — the `janus mcp` command: an MCP server offering Claude tools
-// that the local model carries out.
+// mcp.go is `janus mcp`: an MCP server that gives Claude tools for the
+// local model to carry out, and tool_output, which returns the originals of
+// tool results the proxy digested.
+
 package main
 
 import (

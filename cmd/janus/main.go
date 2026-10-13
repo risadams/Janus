@@ -1,9 +1,11 @@
-// main.go — entry point for the janus binary.
+// Command janus is a proxy between Claude Code and the Anthropic API. With
+// nothing switched on it forwards every request untouched and records what
+// each one was and what it cost. The config can switch on routing to a
+// local model, a guard that keeps secrets and protected files from leaving,
+// and transforms that send fewer tokens.
 //
-// For now janus is a transparent proxy that keeps the books: it forwards
-// everything to the upstream API untouched, and records what each request
-// was and what it cost. Routing to the local model, and everything built on
-// it, arrives in later milestones.
+// Run with no arguments, it serves. The subcommands are version, stats,
+// doctor, route, replay, audit, and mcp; each answers -h.
 package main
 
 import (
@@ -325,8 +327,8 @@ func scanForSecrets(detector *guard.Detector, ex proxy.Exchange) (guard.Report, 
 	return detector.ScanRequest(req), true
 }
 
-// newPipeline builds the transforms for features.compress: for now, the
-// digest of large tool results. Validate has already established that
+// newPipeline builds the transforms for features.compress, of which there
+// is one: the digest of large tool results. Validate has already established that
 // there is a local model to write them.
 func newPipeline(cfg config.Config, local *backend.Local, policy *guard.Policy, logger *log.Logger) *transform.Pipeline {
 	d := cfg.Compress.Digest

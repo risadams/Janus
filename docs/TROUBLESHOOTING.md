@@ -139,6 +139,27 @@ request did not look like it came from a program on this machine: its
 page. If you reach Janus through a name of your own, use `127.0.0.1` or
 `localhost` in `ANTHROPIC_BASE_URL`.
 
+## Compression
+
+**Nothing is digested.** Only tool results over
+`compress.digest.minBytes` (4,000 bytes by default) qualify, from the tools
+in `compress.digest.tools` if it is set. Errors, files printed with Bash to
+read, and protected content are left alone, and Claude Code already cuts
+very large output down to a preview. When a result that
+qualified is not digested, the console says why. The usual reason is
+`the request offers no mcp__<server>__tool_output tool`: add `janus mcp` to
+Claude Code, as in [the workers recipe](recipes/workers.md), so that the
+original can be fetched.
+
+**Turns take longer.** Each digest holds its turn while the local model
+writes it, 9 to 56 seconds on the evaluation's Mac. Lower
+`compress.digest.maxSeconds`, or switch compression off; on ordinary use
+it saved little ([the evaluation](research/digest.md)).
+
+**Claude says a digest left something out.** It can fetch the original
+with `tool_output`, by line range or pattern, and usually does. The
+original is in `<logging.dir>/originals` for `logging.retainDays`.
+
 ## The books
 
 **`janus stats` says there are no requests.** It reads `logs/ledger`

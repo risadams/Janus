@@ -1,5 +1,6 @@
-// doctor.go — the `janus doctor` command: check the setup and say exactly
-// what to fix.
+// doctor.go is `janus doctor`: it checks the setup and says exactly what
+// to fix.
+
 package main
 
 import (

@@ -230,8 +230,9 @@ type Features struct {
 }
 
 // Logging controls what janus writes to disk. Everything goes under Dir:
-// the ledger, which is always kept, in Dir/ledger, and captures in
-// Dir/captures.
+// the ledger, which is always kept, in Dir/ledger; captures in
+// Dir/captures; and, with features.compress on, the originals of digested
+// tool results in Dir/originals.
 type Logging struct {
 	Dir string `json:"dir"`
 	// Capture saves every request and response in full. Captures contain

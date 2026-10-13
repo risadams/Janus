@@ -1,4 +1,8 @@
-// Package guard finds secrets in what is about to leave the machine.
+// Package guard keeps secrets and protected content from leaving the
+// machine. It finds secrets in requests going upstream, can replace them
+// with placeholders and put them back in the answer, and applies the
+// local-only policy, which keeps named files and marked text off the
+// upstream altogether.
 //
 // A detector here has one job: point at text that is a credential. It is
 // tuned to be quiet. A guard that cries wolf over every hash and
