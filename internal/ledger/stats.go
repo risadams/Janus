@@ -136,6 +136,8 @@ type Report struct {
 	// Guard totals what the search for secrets found in requests that
 	// went upstream.
 	Guard GuardTotals `json:"guard,omitzero"`
+	// LocalOnly totals what the local-only policy did.
+	LocalOnly LocalOnlyTotals `json:"local_only,omitzero"`
 	// Delegated summarises, by tool, work Claude handed to the local model.
 	// It is in no other figure.
 	Delegated []DelegatedRow `json:"delegated,omitempty"`
@@ -217,6 +219,9 @@ func Summarise(records []Record, prices Prices) Report {
 		}
 		if g := rec.Guard; g != nil && g.Blocked != "" {
 			rep.Guard.Blocked++
+		}
+		if g := rec.Guard; g != nil && len(g.LocalOnly) > 0 {
+			rep.LocalOnly.add(rec)
 		}
 		if g := rec.Guard; g != nil && g.Findings > 0 {
 			rep.Guard.Requests++
@@ -466,6 +471,43 @@ func (t *delegatedTally) add(rec Record) {
 	t.row.ReadBytes += rec.Worker.ReadBytes
 	t.row.AvoidedTokens += rec.Worker.AvoidedTokens
 	t.ms = append(t.ms, rec.DurationMs)
+}
+
+// LocalOnlyTotals is what the local-only policy did with the requests
+// that held content it protects. Like a secret, such content stays in its
+// conversation and is counted again on every turn.
+type LocalOnlyTotals struct {
+	Requests int `json:"requests"`
+	// Withheld were sent upstream with the content replaced by a notice;
+	// Pieces is how many pieces that was in all. KeptLocal were answered
+	// by the local model instead, and Refused were not sent anywhere.
+	Withheld  int `json:"withheld"`
+	Pieces    int `json:"pieces"`
+	KeptLocal int `json:"kept_local"`
+	Refused   int `json:"refused"`
+	// Reasons counts why, by the policy's own words, which name paths and
+	// markers and never content.
+	Reasons map[string]int `json:"reasons,omitempty"`
+}
+
+func (t *LocalOnlyTotals) add(rec Record) {
+	g := rec.Guard
+	t.Requests++
+	switch {
+	case rec.Backend == "local":
+		t.KeptLocal++
+	case rec.Backend == "none":
+		t.Refused++
+	default:
+		t.Withheld++
+		t.Pieces += g.Withheld
+	}
+	if t.Reasons == nil {
+		t.Reasons = map[string]int{}
+	}
+	for _, reason := range g.LocalOnly {
+		t.Reasons[reason]++
+	}
 }
 
 // GuardTotals is how often secrets were seen going upstream. A secret that

@@ -374,3 +374,26 @@ func TestSummariseTotalsTransforms(t *testing.T) {
 		t.Errorf("prune = %+v", prune)
 	}
 }
+
+func TestSummariseTotalsLocalOnly(t *testing.T) {
+	reason := `Read read secrets/db.yaml, which "secrets/**" makes local-only`
+	marker := `a text carries "COMPANY CONFIDENTIAL"`
+	withheld := rec("w", at(10, 1), "main", nil)
+	withheld.Guard = &Guard{LocalOnly: []string{reason}, Withheld: 2}
+	again := rec("w2", at(10, 2), "main", nil)
+	again.Guard = &Guard{LocalOnly: []string{reason}, Withheld: 2}
+	local := rec("l", at(10, 3), "main", nil)
+	local.Backend, local.Guard = "local", &Guard{LocalOnly: []string{marker}}
+	refused := rec("r", at(10, 4), "main", nil)
+	refused.Backend, refused.Guard = "none", &Guard{LocalOnly: []string{marker}}
+	secretOnly := rec("s", at(10, 5), "main", nil)
+	secretOnly.Guard = &Guard{Findings: 1}
+
+	lo := Summarise([]Record{withheld, again, local, refused, secretOnly}, DefaultPrices).LocalOnly
+	if lo.Requests != 4 || lo.Withheld != 2 || lo.Pieces != 4 || lo.KeptLocal != 1 || lo.Refused != 1 {
+		t.Errorf("local-only totals = %+v", lo)
+	}
+	if lo.Reasons[reason] != 2 || lo.Reasons[marker] != 2 {
+		t.Errorf("reasons = %v", lo.Reasons)
+	}
+}
