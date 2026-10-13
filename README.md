@@ -176,9 +176,11 @@ Diagrams for use outside GitHub are in [docs/diagrams](docs/diagrams/).
 go test ./...
 ```
 
-The suite runs offline against fake servers. [AGENTS.md](AGENTS.md) has
-the conventions, the opt-in tests on real traffic, and the rules that keep
-Janus safe to change.
+The suite runs offline against fake servers. [CONTRIBUTING.md](CONTRIBUTING.md)
+says how changes are made here, and [AGENTS.md](AGENTS.md) has the full
+conventions, the opt-in tests on real traffic, and the rules that keep
+Janus safe to change. Report security problems as
+[SECURITY.md](SECURITY.md) describes.
 
 ## License
 
