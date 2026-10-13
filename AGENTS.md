@@ -20,6 +20,13 @@ Some tests run only when pointed at real traffic or asked for:
 | `JANUS_PERF=1` | Overhead benchmarks and the soak test in `internal/route` |
 | `JANUS_DIGEST_EVAL` and friends | The digest evaluation; see `internal/digest/eval_test.go` |
 
+Fuzz targets (`Fuzz*`) cover the code that reads untrusted input: request
+parsing, response streams, the secret-restoring stream, the MCP loop, and
+`tool_output`. CI runs each for 30 seconds; run one longer with
+`go test ./internal/guard -run '^$' -fuzz FuzzRestoreAnyCut -fuzztime 5m`.
+A failure lands in `testdata/fuzz/`; commit it with the fix, as a
+regression case. Seeds are built by hand, never taken from captures.
+
 ## Rules that keep Janus safe to change
 
 - **Pass-through is byte-for-byte.** With every feature off, what reaches
