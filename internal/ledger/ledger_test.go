@@ -14,6 +14,7 @@ import (
 
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/proxy"
+	"github.com/risadams/janus/internal/transform"
 )
 
 func n(i int) *int { return &i }
@@ -341,5 +342,22 @@ func TestAttemptRecords(t *testing.T) {
 
 	if FromExchange(exchange()).Attempt != nil {
 		t.Error("an ordinary exchange has an attempt")
+	}
+}
+
+func TestRecordCarriesTransforms(t *testing.T) {
+	ex := exchange()
+	ex.Transforms = []transform.Effect{{Name: "digest", Blocks: 2, Rewritten: 1, Declined: 1, Tokens: 900, SavedUSD: 0.0072, ExpectedUSD: 0.009}}
+	rec := FromExchange(ex)
+	want := []Transform{{Name: "digest", Blocks: 2, Rewritten: 1, Declined: 1, Tokens: 900, SavedUSD: 0.0072, ExpectedUSD: 0.009}}
+	if len(rec.Transforms) != 1 || rec.Transforms[0] != want[0] {
+		t.Errorf("transforms = %+v, want %+v", rec.Transforms, want)
+	}
+	line, _ := json.Marshal(rec)
+	if !strings.Contains(string(line), `"transforms":[{"name":"digest","blocks":2,"rewritten":1,"declined":1,"tokens":900,"saved_usd":0.0072,"expected_usd":0.009}]`) {
+		t.Errorf("ledger line = %s", line)
+	}
+	if line, _ := json.Marshal(FromExchange(exchange())); strings.Contains(string(line), "transforms") {
+		t.Error("a request no transform touched has a transforms field")
 	}
 }

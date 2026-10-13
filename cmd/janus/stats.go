@@ -129,6 +129,7 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 	printLocalFirst(w, rep.LocalFirst)
 	printDelegated(w, rep.Delegated)
 	printShadow(w, rep.Shadow)
+	printTransforms(w, rep.Transforms)
 
 	outcomes := make([]string, 0, len(rep.Outcomes))
 	for outcome, count := range rep.Outcomes {
@@ -259,6 +260,31 @@ func printDelegated(w io.Writer, rows []ledger.DelegatedRow) {
 		"  to itself Claude often searches a file and reads a little of it. Compare cost\n"+
 		"  per session with and without the tool to see what was really saved. Time is\n"+
 		"  the median per call.\n")
+}
+
+// printTransforms reports what each transform saved, beside what the
+// net-savings guard expected.
+func printTransforms(w io.Writer, rows []ledger.TransformRow) {
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\nTransforms (requests rewritten on their way upstream)\n")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintf(tw, "  transform\trequests\trewritten\trevised\tdeclined\ttokens cut\tsaved\texpected\t\n")
+	for _, r := range rows {
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\t$%.4f\t$%.4f\t\n", r.Name, commas(r.Requests), commas(r.Rewritten),
+			commas(r.Revised), commas(r.Declined), commas(r.Tokens), r.SavedUSD-r.CostUSD, r.ExpectedUSD)
+	}
+	tw.Flush()
+	fmt.Fprintf(w, "  \"saved\" is what the tokens cut would have cost on these requests, less the cache\n"+
+		"  that revisions broke. \"expected\" is what the guard expected its decisions in\n"+
+		"  this range to save over the rest of their conversations. Saved catches up with\n"+
+		"  expected as conversations go on; if it stays well below, the guard is too hopeful.\n")
+	for _, r := range rows {
+		if r.Unpriced > 0 {
+			fmt.Fprintf(w, "  %s: %s requests were for a model with no price and are in no dollar figure.\n", r.Name, commas(r.Unpriced))
+		}
+	}
 }
 
 // printShadow reports how the local model did when run alongside real

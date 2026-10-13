@@ -74,6 +74,35 @@ type Record struct {
 	ShadowOf string `json:"shadow_of,omitempty"`
 	// Compare sets a shadow's answer beside the real one.
 	Compare *Compare `json:"compare,omitempty"`
+	// Transforms is present when a transform rewrote the request on its
+	// way upstream, or declined to: one entry per transform.
+	Transforms []Transform `json:"transforms,omitempty"`
+}
+
+// Transform is what one transform did to one request, and what the
+// net-savings guard made of it. Tokens are estimated from the size of the
+// JSON; dollars are at list price, and absent for an unpriced model.
+type Transform struct {
+	Name string `json:"name"`
+	// Blocks carry the transform's output; of them, Rewritten were
+	// rewritten for the first time and Revised were already sent and
+	// changed. Declined counts answers not used: one that was not smaller,
+	// or a revision the guard expected to cost more than it saves.
+	Blocks    int `json:"blocks"`
+	Rewritten int `json:"rewritten,omitempty"`
+	Revised   int `json:"revised,omitempty"`
+	Declined  int `json:"declined,omitempty"`
+	// Tokens is about how many fewer tokens the request sent, SavedUSD
+	// what they would have cost on it, and CostUSD what revising cost:
+	// cache written again where it would have been read.
+	Tokens   int     `json:"tokens"`
+	SavedUSD float64 `json:"saved_usd"`
+	CostUSD  float64 `json:"cost_usd,omitempty"`
+	// ExpectedUSD is the guard's estimate, when it decided, of what the
+	// rewrites and revisions made on this request will save over the rest
+	// of the conversation, net of cost.
+	ExpectedUSD float64 `json:"expected_usd,omitempty"`
+	Unpriced    bool    `json:"unpriced,omitempty"`
 }
 
 // Guard is what the search for secrets found in one request.
@@ -245,6 +274,12 @@ func FromExchange(ex proxy.Exchange) Record {
 
 	if rec.Stages == nil {
 		rec.Stages = []string{}
+	}
+	for _, e := range ex.Transforms {
+		rec.Transforms = append(rec.Transforms, Transform{
+			Name: e.Name, Blocks: e.Blocks, Rewritten: e.Rewritten, Revised: e.Revised, Declined: e.Declined,
+			Tokens: e.Tokens, SavedUSD: e.SavedUSD, CostUSD: e.CostUSD, ExpectedUSD: e.ExpectedUSD, Unpriced: e.Unpriced,
+		})
 	}
 
 	if a := ex.Attempt; a != nil {

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -352,5 +353,36 @@ func TestStatsGuardNoteWhenRedacting(t *testing.T) {
 	}
 	if strings.Contains(squeezed, "only detecting") {
 		t.Errorf("a fully redacted ledger is described as exposed:\n%s", out)
+	}
+}
+
+func TestStatsReportsTransforms(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	l := ledger.Open(dir)
+	when := time.Date(2026, 10, 13, 15, 0, 0, 0, time.UTC)
+	for i, tr := range [][]ledger.Transform{
+		{{Name: "digest", Blocks: 1, Rewritten: 1, Tokens: 1000, SavedUSD: 0.008, ExpectedUSD: 0.0084}},
+		{{Name: "digest", Blocks: 1, Tokens: 1000, SavedUSD: 0.0002}, {Name: "prune", Blocks: 1, Revised: 1, Declined: 2, Tokens: 5000, SavedUSD: 0.001, CostUSD: 0.0004, ExpectedUSD: 0.002}},
+	} {
+		rec := ledger.Record{V: 1, ID: fmt.Sprint(i), Time: when.Add(time.Duration(i) * time.Minute), Class: "main", Route: "upstream",
+			Backend: "upstream", Status: 200, Outcome: ledger.OutcomeOK, Transforms: tr}
+		if err := l.Append(rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, _, code := stats(t, "-dir", dir)
+	squeezed := strings.Join(strings.Fields(out), " ")
+	for _, want := range []string{
+		"Transforms (requests rewritten on their way upstream)",
+		"transform requests rewritten revised declined tokens cut saved expected",
+		"digest 2 1 0 0 2,000 $0.0082 $0.0084",
+		"prune 1 0 1 2 5,000 $0.0006 $0.0020",
+	} {
+		if !strings.Contains(squeezed, want) {
+			t.Errorf("report is missing %q", want)
+		}
+	}
+	if code != 0 || t.Failed() {
+		t.Logf("exit %d, report was:\n%s", code, out)
 	}
 }
