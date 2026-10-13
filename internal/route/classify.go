@@ -27,6 +27,11 @@ const (
 	// conversation so far, to replace it: the main loop's request with an
 	// instruction added at the end, and no other turn following from it.
 	Compaction Class = "compaction"
+	// Status is Claude Code asking for a few words on what a subagent is
+	// doing, for the line it shows while the subagent runs. It carries the
+	// subagent's whole conversation for an answer of a handful of tokens,
+	// so it is cheap from Claude's cache and slow from a local model.
+	Status Class = "status"
 	// TokenCount is a request to count a prompt's tokens without running
 	// it. It is free, and only Claude can answer it.
 	TokenCount Class = "token_count"
@@ -59,10 +64,17 @@ func Classify(method, path string, header http.Header) Class {
 }
 
 // ClassifyRequest is Classify for a Messages request whose body has been
-// read, which separates the quota check and compaction from real turns:
-// both carry the same headers as the main loop.
+// read, which separates the quota check, compaction, and status summaries
+// from real turns: they carry the same headers as the turns they belong
+// to.
 func ClassifyRequest(header http.Header, req *anthropic.Request) Class {
 	class := Classify(http.MethodPost, "/v1/messages", header)
+	switch {
+	case class == Subagent || class == Main:
+		if statusSummary(req) {
+			return Status
+		}
+	}
 	switch {
 	case class != Main:
 	case quotaCheck(req):
@@ -89,6 +101,35 @@ func compaction(req *anthropic.Request) bool {
 	m := messages[len(messages)-1]
 	blocks := m.Blocks()
 	return m.Role == "user" && len(blocks) > 0 && strings.Contains(blocks[len(blocks)-1].Text(), compactionAsk)
+}
+
+// statusAsk begins Claude Code's request for a status line (2.1.296). It is
+// prompt text, so a new release could word it differently; the class would
+// then fall back to the turn's own.
+const statusAsk = "Describe your most recent action in "
+
+// statusSummary reports whether req asks for a status line: the last user
+// message ends in a text block that begins with Claude Code's instruction.
+// System messages may follow that user message. The instruction quoted
+// anywhere else, such as in a tool result, does not count.
+func statusSummary(req *anthropic.Request) bool {
+	messages := req.Messages()
+	for i := len(messages) - 1; i >= 0; i-- {
+		switch messages[i].Role {
+		case "system":
+			continue
+		case "user":
+			var last string
+			for _, b := range messages[i].Blocks() {
+				if b.Type == "text" {
+					last = b.Text()
+				}
+			}
+			return strings.HasPrefix(strings.TrimSpace(last), statusAsk)
+		}
+		return false
+	}
+	return false
 }
 
 // quotaCheck reports whether req is Claude Code's start-up quota check:

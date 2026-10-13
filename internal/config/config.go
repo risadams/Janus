@@ -172,7 +172,7 @@ type LocalModel struct {
 type Rule struct {
 	// Name identifies the rule in the ledger. Optional.
 	Name string `json:"name,omitempty"`
-	// Class is the request class: main, subagent, or unknown.
+	// Class is the request class: main, subagent, status, or unknown.
 	Class string `json:"class,omitempty"`
 	// Model is the model the client asked for.
 	Model string `json:"model,omitempty"`
@@ -404,9 +404,9 @@ func (c Config) Validate() error {
 			where += fmt.Sprintf(" (%s)", rule.Name)
 		}
 		switch rule.Class {
-		case "", "main", "subagent", "unknown":
+		case "", "main", "subagent", "status", "unknown":
 		default:
-			errs = append(errs, fmt.Errorf("%s.class %q is not one of main, subagent, unknown", where, rule.Class))
+			errs = append(errs, fmt.Errorf("%s.class %q is not one of main, subagent, status, unknown", where, rule.Class))
 		}
 		if rule.MaxTokens < 0 {
 			errs = append(errs, fmt.Errorf("%s.maxTokens is negative; leave it out for no limit", where))
