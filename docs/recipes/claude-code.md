@@ -80,6 +80,12 @@ Claude Code sets, and sends them to the local model. Claude Code still
 believes it is talking to the model it asked for, so there is no warning
 and nothing to configure on its side.
 
+While a subagent runs, Claude Code also asks for a few words on what it is
+doing, for the line it shows you. Those requests are class `status`, not
+`subagent`, so this rule leaves them with Claude: each carries the whole
+subagent conversation for a five-word answer, which Claude reads from
+cache in a moment and a local model takes seconds to a minute over.
+
 If the local model cannot take a request (too large, LM Studio down), it
 goes to Claude instead. Add `"maxTokens"` to the rule to keep large
 subagent turns upstream on purpose.

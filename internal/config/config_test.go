@@ -129,6 +129,9 @@ func TestValidate(t *testing.T) {
 			c.Compress.Digest.Tools = []string{"Bash", " "}
 		}, "compress.digest.tools[1] is empty"},
 		{"guard on", func(c *Config) { c.Features.Guard = true }, ""},
+		{"a rule for status summaries", func(c *Config) {
+			c.Routing = []Rule{{Class: "status", Route: "upstream"}}
+		}, ""},
 		{"guard with patterns", func(c *Config) {
 			c.Features.Guard = true
 			c.Guard = Guard{Patterns: []string{`ACME-[0-9]{6}`}, Allow: []string{"AKIAEXAMPLE"}, Entropy: true}

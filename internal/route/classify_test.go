@@ -176,3 +176,43 @@ func capturedRequest(page string) (method, path string, header http.Header) {
 	}
 	return method, path, header
 }
+
+func TestClassifyRequestFindsStatusSummaries(t *testing.T) {
+	main := http.Header{"X-Claude-Code-Session-Id": {"s1"}}
+	sub := http.Header{"X-Claude-Code-Session-Id": {"s1"}, "X-Claude-Code-Agent-Id": {"a1"}}
+	ask := `Describe your most recent action in 3-5 words using present tense (-ing). Name the file or function, not the branch. Do not use tools.`
+	// As Claude Code 2.1.296 sends it for a subagent: the conversation so
+	// far, the instruction as the last text of the last user message, and
+	// sometimes a system message after it.
+	withSystem := `{"model":"m","max_tokens":128000,"messages":[` +
+		`{"role":"user","content":[{"type":"text","text":"find the env vars"},{"type":"text","text":"` + ask + `"}]},` +
+		`{"role":"system","content":[{"type":"text","text":"tools changed"}]}]}`
+	later := `{"model":"m","max_tokens":128000,"messages":[` +
+		`{"role":"user","content":"find the env vars"},` +
+		`{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Grep","input":{}}]},` +
+		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"config.go:311"},{"type":"text","text":"` + ask + `"}]}]}`
+
+	cases := []struct {
+		name   string
+		header http.Header
+		body   string
+		want   Class
+	}{
+		{"subagent, system message after", sub, withSystem, Status},
+		{"subagent, after a tool result", sub, later, Status},
+		{"main loop", main, later, Status},
+		{"quoted in a tool result", sub, `{"model":"m","max_tokens":1000,"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"` + ask + `"}]}]}`, Subagent},
+		{"quoted mid-sentence", main, `{"model":"m","max_tokens":1000,"messages":[{"role":"user","content":"Claude Code asks: ` + ask + `"}]}`, Main},
+		{"in an earlier user message", sub, `{"model":"m","max_tokens":1000,"messages":[{"role":"user","content":"` + ask + `"},{"role":"assistant","content":"Reading config.go"},{"role":"user","content":"thanks"}]}`, Subagent},
+		{"not Claude Code", http.Header{}, later, Unknown},
+	}
+	for _, c := range cases {
+		req, err := anthropic.ParseRequest([]byte(c.body))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got := ClassifyRequest(c.header, req); got != c.want {
+			t.Errorf("%s: got %s, want %s", c.name, got, c.want)
+		}
+	}
+}
