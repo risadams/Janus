@@ -198,10 +198,15 @@ the response. It adds no identifying header to what it sends upstream.
 - Janus uses the Go standard library and nothing else, by
   [decision](adr/001-dependencies.md). There are no third-party modules to
   compromise.
-- Release binaries are built by GitHub Actions from the tagged commit.
-  **They are not signed.** `checksums.txt` is published beside them, which
-  detects a corrupted download and not a replaced release. Build from
-  source if that matters to you.
+- Release binaries are built by GitHub Actions from the tagged commit, and
+  each archive carries a signed build-provenance attestation: a statement,
+  recorded with GitHub, that this repository's release workflow built it
+  from that commit. Check one with
+  `gh attestation verify <archive> --repo risadams/Janus`. That catches a
+  replaced release, which `checksums.txt` alone cannot.
+- **The binaries themselves are not code-signed**, so macOS quarantines a
+  copy downloaded in a browser. Build from source if you would rather not
+  trust a release at all.
 
 ## Review findings
 
