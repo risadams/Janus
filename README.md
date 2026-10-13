@@ -44,14 +44,14 @@ features.
 
 Download the archive for your machine from the
 [releases page](https://github.com/risadams/Janus/releases). The current
-release is the pre-release `v0.9.0-rc.4`:
+release is the pre-release `v0.9.0-rc.5`:
 
 ```bash
-curl -LO https://github.com/risadams/Janus/releases/download/v0.9.0-rc.4/janus_0.9.0-rc.4_darwin_arm64.tar.gz
-curl -LO https://github.com/risadams/Janus/releases/download/v0.9.0-rc.4/checksums.txt
+curl -LO https://github.com/risadams/Janus/releases/download/v0.9.0-rc.5/janus_0.9.0-rc.5_darwin_arm64.tar.gz
+curl -LO https://github.com/risadams/Janus/releases/download/v0.9.0-rc.5/checksums.txt
 shasum -a 256 -c checksums.txt --ignore-missing
-tar -xzf janus_0.9.0-rc.4_darwin_arm64.tar.gz
-cd janus_0.9.0-rc.4_darwin_arm64
+tar -xzf janus_0.9.0-rc.5_darwin_arm64.tar.gz
+cd janus_0.9.0-rc.5_darwin_arm64
 ```
 
 Other builds are `darwin_amd64`, `linux_amd64`, `linux_arm64`, and, as
