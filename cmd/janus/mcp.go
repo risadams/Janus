@@ -77,14 +77,10 @@ func runMCP(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	// The ledger goes where the proxy's does: logging.dir, which if it is
-	// relative is relative to the config file and not to the project this
-	// was started in.
+	// The ledger goes where the proxy's does. config.Read has already made
+	// logging.dir relative to the config file, not to the project this was
+	// started in.
 	logDir := cfg.Logging.Dir
-	if !filepath.IsAbs(logDir) {
-		abs, _ := filepath.Abs(*configPath)
-		logDir = filepath.Join(filepath.Dir(abs), logDir)
-	}
 	led := ledger.Open(filepath.Join(logDir, "ledger"))
 
 	seconds := model.TimeoutSeconds

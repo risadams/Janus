@@ -128,10 +128,13 @@ func TestStatsUsesConfigForDirectoryAndPrices(t *testing.T) {
 		Response: &ledger.Response{Model: "my-gateway-model"}, Usage: &ledger.Usage{Output: 1_000_000}})
 	cfgPath := filepath.Join(root, "janus.config.json")
 	cfg, _ := json.Marshal(map[string]any{
-		"logging": map[string]any{"dir": logs},
+		"logging": map[string]any{"dir": "logs"},
 		"pricing": map[string]any{"my-gateway-model": map[string]any{"input": 1, "output": 7.5}},
 	})
 	os.WriteFile(cfgPath, cfg, 0o600)
+	// Run from another folder: the relative logging.dir is the config
+	// file's, so the ledger the proxy wrote is the one read.
+	t.Chdir(t.TempDir())
 
 	var out, errOut bytes.Buffer
 	if code := run([]string{"stats", "-config", cfgPath}, &out, &errOut); code != 0 {
@@ -139,6 +142,23 @@ func TestStatsUsesConfigForDirectoryAndPrices(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "$7.5000") || strings.Contains(out.String(), "could not be priced") {
 		t.Errorf("the configured price was not used:\n%s", out.String())
+	}
+}
+
+func TestStatsSaysWhenThereIsNoConfig(t *testing.T) {
+	root := t.TempDir()
+	var out, errOut bytes.Buffer
+	run([]string{"stats", "-config", filepath.Join(root, "janus.config.json")}, &out, &errOut)
+	if !strings.Contains(errOut.String(), "no config file at") || !strings.Contains(out.String(), "Ledger "+filepath.Join(root, "logs", "ledger")) {
+		t.Errorf("stdout %q, stderr %q", out.String(), errOut.String())
+	}
+
+	// Given -dir, the config does not matter and nothing is said about it.
+	out.Reset()
+	errOut.Reset()
+	run([]string{"stats", "-config", filepath.Join(root, "janus.config.json"), "-dir", root}, &out, &errOut)
+	if errOut.Len() != 0 {
+		t.Errorf("stderr %q", errOut.String())
 	}
 }
 
