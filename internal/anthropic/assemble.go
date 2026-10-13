@@ -62,7 +62,11 @@ const maxBlocks = 4096
 
 func assembleStream(body []byte) (Answer, bool) {
 	var answer Answer
-	var text []strings.Builder
+	// Pointers, because growing a slice copies its elements, and a
+	// strings.Builder that has been written to panics once copied. A
+	// stream that writes to an earlier block after a later one has
+	// appeared would otherwise crash this (found by fuzzing).
+	var text []*strings.Builder
 	seen := false
 
 	for _, line := range bytes.Split(body, []byte("\n")) {
@@ -93,7 +97,7 @@ func assembleStream(body []byte) (Answer, bool) {
 		grow := func() {
 			for len(answer.Blocks) <= ev.Index {
 				answer.Blocks = append(answer.Blocks, AnswerBlock{})
-				text = append(text, strings.Builder{})
+				text = append(text, &strings.Builder{})
 			}
 		}
 		switch ev.Type {

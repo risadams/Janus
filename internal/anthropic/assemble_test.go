@@ -67,3 +67,20 @@ func TestAssembleRejectsWhatIsNotAnAnswer(t *testing.T) {
 		t.Errorf("%d blocks allocated for an out-of-range index", len(a.Blocks))
 	}
 }
+
+// Anthropic sends blocks in order, but a local server need not: text for an
+// earlier block after a later one has appeared must be assembled, not
+// crash the request (found by FuzzObserverIgnoresHowTheBodyIsCut).
+func TestAssembleInterleavedBlocks(t *testing.T) {
+	ev := func(s string) string { return "data: " + s + "\n\n" }
+	stream := ev(`{"type":"message_start","message":{"model":"m"}}`) +
+		ev(`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`) +
+		ev(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"one "}}`) +
+		ev(`{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}`) +
+		ev(`{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"two"}}`) +
+		ev(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"again"}}`)
+	answer, ok := Assemble([]byte(stream), "text/event-stream")
+	if !ok || len(answer.Blocks) != 2 || answer.Blocks[0].Text != "one again" || answer.Blocks[1].Text != "two" {
+		t.Errorf("answer = %+v, ok %v", answer, ok)
+	}
+}
