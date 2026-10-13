@@ -2,6 +2,9 @@ package route
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/risadams/janus/internal/anthropic"
@@ -107,4 +110,69 @@ func TestClassifyRequestFindsCompaction(t *testing.T) {
 			t.Errorf("%s: got %s, want %s", c.name, got, c.want)
 		}
 	}
+}
+
+// TestRealCapturesAreClassified classifies every captured request, from the
+// method, path, and headers its capture recorded. No request Claude Code
+// sent may come out unknown. Opt-in, like the other tests on real traffic:
+//
+//	JANUS_CAPTURES=~/logs/captures go test ./internal/route -run RealCapturesAreClassified -v
+func TestRealCapturesAreClassified(t *testing.T) {
+	dir := os.Getenv("JANUS_CAPTURES")
+	if dir == "" {
+		t.Skip("JANUS_CAPTURES is not set")
+	}
+	pages, _ := filepath.Glob(filepath.Join(dir, "*", "*.md"))
+	counts := map[Class]int{}
+	for _, page := range pages {
+		if strings.Contains(page, ".shadow.") {
+			continue
+		}
+		data, err := os.ReadFile(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		method, path, header := capturedRequest(string(data))
+		if method == "" {
+			continue
+		}
+		class := Classify(method, path, header)
+		if method == http.MethodPost && path == "/v1/messages" {
+			body, err := os.ReadFile(strings.TrimSuffix(page, ".md") + ".request.txt")
+			if err != nil {
+				continue
+			}
+			req, err := anthropic.ParseRequest(body)
+			if err != nil {
+				t.Errorf("%s: %v", filepath.Base(page), err)
+				continue
+			}
+			class = ClassifyRequest(header, req)
+		}
+		counts[class]++
+		if class == Unknown && header.Get("X-Claude-Code-Session-Id") != "" {
+			t.Errorf("%s: %s %s from Claude Code was classified unknown", filepath.Base(page), method, path)
+		}
+	}
+	t.Logf("%d captures: %v", len(pages), counts)
+	if counts[Main] == 0 {
+		t.Error("no main-loop turn among the captures, so the test proves little")
+	}
+}
+
+// capturedRequest reads the request line and headers from a capture's page.
+func capturedRequest(page string) (method, path string, header http.Header) {
+	header = http.Header{}
+	first, rest, _ := strings.Cut(page, "\n")
+	if fields := strings.Fields(strings.TrimPrefix(first, "# ")); len(fields) == 2 {
+		method, path = fields[0], fields[1]
+	}
+	_, block, _ := strings.Cut(rest, "<headers>")
+	block, _, _ = strings.Cut(block, "</headers>")
+	for _, line := range strings.Split(block, "\n") {
+		if k, v, ok := strings.Cut(line, ": "); ok {
+			header.Add(k, v)
+		}
+	}
+	return method, path, header
 }
