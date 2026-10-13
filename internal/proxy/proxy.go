@@ -144,10 +144,14 @@ type Attempt struct {
 	Fault    bool
 	Duration time.Duration
 	// Summary and ResponseBody are the attempt's own answer. They are set
-	// for a rejected trial; for an accepted one the Exchange itself
+	// for a rejected trial, and ResponseBody for a backend that answered
+	// with an error status; for an accepted attempt the Exchange itself
 	// carries them.
 	Summary      *anthropic.Summary
 	ResponseBody []byte
+	// ResponseHeader is the header of a backend's error response: for an
+	// upstream that could not answer, what it said about when to retry.
+	ResponseHeader http.Header
 }
 
 // IsMessages reports whether this was a call to the Messages API itself,
@@ -268,6 +272,10 @@ const maxKept = 32 << 20
 
 // exchangeState carries what the response hook learns back to the handler
 // that started the request.
+// maxFailedBody is how much of an error response given up for a fallback
+// is kept. An API error body is a few hundred bytes.
+const maxFailedBody = 64 << 10
+
 type exchangeState struct {
 	messages       bool
 	keep           bool
@@ -280,6 +288,10 @@ type exchangeState struct {
 
 	attempt      *Attempt
 	backendFault bool
+	// failed is the error response given up in favour of the fallback,
+	// kept for the attempt's record.
+	failedHeader http.Header
+	failedBody   []byte
 
 	// redaction is what was replaced in the request now being sent, if it
 	// is going upstream and anything was found. guard accumulates what to
@@ -386,6 +398,8 @@ func New(opts Options) http.Handler {
 				// else to go. Otherwise it is the answer, error and all.
 				if next, ok := state.resolve(); ok {
 					state.next = &next
+					state.failedHeader = resp.Header.Clone()
+					state.failedBody, _ = io.ReadAll(io.LimitReader(resp.Body, maxFailedBody))
 					return errBackendStatus(resp.StatusCode)
 				}
 				state.fallBack = nil
@@ -693,7 +707,8 @@ func New(opts Options) http.Handler {
 				}
 				if state.attempt == nil {
 					state.attempt = &Attempt{Backend: tried.Backend.Name(), Model: tried.BackendModel, Stages: tried.Stages,
-						Why: why, Fault: fault, Duration: time.Since(start)}
+						Why: why, Fault: fault, Duration: time.Since(start),
+						ResponseHeader: state.failedHeader, ResponseBody: state.failedBody}
 				}
 				state.plan = *next
 				state.hold(state.plan)

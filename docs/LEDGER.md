@@ -78,6 +78,7 @@ ignore fields they do not know.
 | `status` | int | HTTP status, or `0` if no response was started |
 | `outcome` | string | See below |
 | `error` | string | The API's error type, when `outcome` is `api_error` |
+| `limits` | object | For a `429` or a `5xx`: the response's `retry-after`, `x-should-retry`, and `anthropic-ratelimit-*` headers, by lower-case name. What the API said about when it would answer again. |
 | `ttfb_ms` | int | Time until the first byte of the response body |
 | `duration_ms` | int | Time until the response ended |
 | `request` | object | Messages requests only: `model`, `stream`, `bytes`, `messages`, `tools`, `cache_breakpoints` |
@@ -117,7 +118,10 @@ ignore fields they do not know.
 `attempt.backend` is which backend was tried first. It is `local` for the
 cases above. It is `upstream` when Claude could not answer and the local
 model stood in: the verdict is then `failed`, the record is the local
-model's answer, and `reason` ends `; sent local`.
+model's answer, and `reason` ends `; sent local`. `attempt.limits` then
+holds Claude's retry and rate-limit headers, as `limits` does above, and
+with captures on, Claude's error body is saved as
+`.attempt.response.txt`.
 
 `attempt.duration_ms` is how long the local model was given before the
 decision. For a rejected or failed attempt, that time was spent before
@@ -284,7 +288,7 @@ Each request produces three files sharing a name:
 
 | File | Contents |
 | --- | --- |
-| `.md` | The readable render: headers with credentials redacted, model, system prompt, tools, messages, and the response assembled from its stream. Start here. |
+| `.md` | The readable render: request headers with credentials redacted, model, system prompt, tools, messages, response headers (cookies redacted), and the response assembled from its stream. For a backend tried and given up on, such as Claude at a rate limit when the local model stood in, an `<attempt>` section says why and gives its response headers. Start here. |
 | `.request.txt` | The request body exactly as the client sent it |
 | `.response.txt` | The response body, decompressed |
 | `.sent.txt` | Only when Janus changed the request before sending it: the request as it went. `janus audit -body` prints it. |

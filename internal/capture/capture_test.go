@@ -108,6 +108,32 @@ func TestRenderRedactsCredentials(t *testing.T) {
 	wantAll(t, md, "Authorization: [redacted]", "X-Api-Key: [redacted]", "Cookie: [redacted]")
 }
 
+// The response's headers are in the render, and so are those of an
+// upstream that was given up on, which say when it would answer again.
+// Cookies are redacted in both.
+func TestRenderShowsResponseAndAttemptHeaders(t *testing.T) {
+	ex := exchange()
+	ex.ResponseHeader.Set("Set-Cookie", "session=secret-cookie")
+	failed := http.Header{}
+	failed.Set("Retry-After", "17")
+	failed.Set("Anthropic-Ratelimit-Unified-Status", "rejected")
+	failed.Set("Set-Cookie", "other=secret-cookie")
+	ex.Attempt = &proxy.Attempt{Backend: "upstream", Why: "upstream answered HTTP 429", ResponseHeader: failed}
+
+	md := Render(ex)
+	wantAll(t, md, "<response-headers>", "Content-Type: text/event-stream; charset=utf-8",
+		"<attempt>", "upstream was tried first and given up on: upstream answered HTTP 429",
+		"<attempt-response-headers>", "Retry-After: 17", "Anthropic-Ratelimit-Unified-Status: rejected", "Set-Cookie: [redacted]")
+	if strings.Contains(md, "secret-cookie") {
+		t.Error("the render contains a cookie")
+	}
+	// An accepted attempt answered, so there is nothing to say about it.
+	ex.Attempt.Accepted = true
+	if strings.Contains(Render(ex), "<attempt>") {
+		t.Error("an accepted attempt was rendered as given up on")
+	}
+}
+
 // A tool result containing a code fence must not be able to close the
 // fence the render puts around it.
 func TestRenderFencesContentThatContainsFences(t *testing.T) {

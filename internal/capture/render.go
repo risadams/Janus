@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -60,10 +61,27 @@ func Render(ex proxy.Exchange) string {
 	}
 	b.WriteString("\n")
 
-	writeHeaders(&b, ex)
+	writeHeaders(&b, "headers", ex.Header)
 	writeRequest(&b, ex)
+	writeAttempt(&b, ex.Attempt)
+	writeHeaders(&b, "response-headers", ex.ResponseHeader)
 	writeResponse(&b, ex)
 	return b.String()
+}
+
+// writeAttempt says what became of a backend that was tried and given up
+// on, with the headers of its error response: for an upstream rate limit,
+// what it said about when to try again. Its body is in the
+// .attempt.response.txt file.
+func writeAttempt(b *strings.Builder, a *proxy.Attempt) {
+	if a == nil || a.Accepted {
+		return
+	}
+	fmt.Fprintf(b, "<attempt>\n\n%s was tried first and given up on: %s\n\n", a.Backend, a.Why)
+	if len(a.ResponseHeader) > 0 {
+		writeHeaders(b, "attempt-response-headers", a.ResponseHeader)
+	}
+	b.WriteString("</attempt>\n\n")
 }
 
 func orDash(s string) string {
@@ -88,21 +106,25 @@ func usageLine(u anthropic.Usage) string {
 	return strings.Join(parts, ", ")
 }
 
-func writeHeaders(b *strings.Builder, ex proxy.Exchange) {
-	b.WriteString("<headers>\n\n")
-	keys := make([]string, 0, len(ex.Header))
-	for k := range ex.Header {
+// writeHeaders writes h inside a tag, credentials and cookies redacted.
+func writeHeaders(b *strings.Builder, tag string, h http.Header) {
+	if len(h) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "<%s>\n\n", tag)
+	keys := make([]string, 0, len(h))
+	for k := range h {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		v := strings.Join(ex.Header[k], ", ")
+		v := strings.Join(h[k], ", ")
 		if secretHeaders[strings.ToLower(k)] {
 			v = "[redacted]"
 		}
 		fmt.Fprintf(b, "%s: %s\n", k, v)
 	}
-	b.WriteString("\n</headers>\n\n")
+	fmt.Fprintf(b, "\n</%s>\n\n", tag)
 }
 
 // writeRequest tags out the parts of a Messages request. Anything that is
