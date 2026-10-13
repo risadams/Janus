@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,16 +33,16 @@ func TestRecordNotesLocalOnlyContent(t *testing.T) {
 		guard   proxy.Guard
 		console string
 	}{
-		{"withheld", "upstream", proxy.Guard{LocalOnly: why, Withheld: 1}, "[local-only: 1 withheld from upstream (" + why[0] + ")]"},
-		{"kept local", "local", proxy.Guard{LocalOnly: why}, "[local-only: kept on this machine (" + why[0] + ")]"},
+		{"withheld", "upstream", proxy.Guard{LocalOnly: why, Withheld: 1}, "↳ local-only: 1 withheld from upstream (" + why[0] + ")"},
+		{"kept local", "local", proxy.Guard{LocalOnly: why}, "↳ local-only: kept on this machine (" + why[0] + ")"},
 		// With the redactor on as well, and nothing for it to find.
-		{"withheld and scanned", "upstream", proxy.Guard{LocalOnly: why, Withheld: 1, Scanned: true}, "[local-only: 1 withheld from upstream"},
+		{"withheld and scanned", "upstream", proxy.Guard{LocalOnly: why, Withheld: 1, Scanned: true}, "↳ local-only: 1 withheld from upstream"},
 	}
 	for _, c := range cases {
 		var console bytes.Buffer
 		ex := exchangeCarrying("nothing secret")
 		ex.Backend, ex.Guard = c.backend, &c.guard
-		rec := record(ex, ledger.Open(filepath.Join(t.TempDir(), "ledger")), nil, nil, log.New(&console, "", 0))
+		rec := record(ex, ledger.Open(filepath.Join(t.TempDir(), "ledger")), nil, nil, testConsole(&console))
 		g := rec.Guard
 		if g == nil || len(g.LocalOnly) != 1 || g.Withheld != c.guard.Withheld || g.Findings != 0 {
 			t.Errorf("%s: guard = %+v", c.name, g)

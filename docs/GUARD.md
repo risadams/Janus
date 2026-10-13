@@ -376,8 +376,10 @@ The console line says what happened, naming the path or marker and never
 the content:
 
 ```
-POST /v1/messages -> 200 (4.264s) claude-opus-5-5 end_turn ... [local-only: 1 withheld from upstream (Read read /app/secrets/db.yaml, which "secrets/**" makes local-only)]
-POST /v1/messages -> 200 (31.76s) [local] qwen/qwen3.8-27b end_turn ... [local-only: kept on this machine (Read read /app/secrets/db.yaml, which "secrets/**" makes local-only)]
+16:35:50  main       Opus 5.5                ✓ 4.3s    answered    ...
+          ↳ local-only: 1 withheld from upstream (Read read /app/secrets/db.yaml, which "secrets/**" makes local-only)
+16:36:22  main       qwen3.8-27b (local)     ✓ 31.8s   answered    ...
+          ↳ local-only: kept on this machine (Read read /app/secrets/db.yaml, which "secrets/**" makes local-only)
 ```
 
 The ledger records the same in `guard.local_only` and `guard.withheld`.

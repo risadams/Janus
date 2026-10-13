@@ -17,6 +17,45 @@ Days are UTC. Every file is created readable by its owner only (0600, in
 get whatever access the directory they are in allows, so keep `logging.dir`
 somewhere only you can read, such as under your user profile.
 
+## The console
+
+While Janus runs it prints a line for every request, for a person
+watching; the ledger is the record. The date is printed when it changes,
+and each line starts with the time:
+
+```
+── Tuesday 13 October 2026 ──
+16:35:50  main       Opus 5.5                ✓ 20.6s   tool call   151k in · 98% cached    2.3k out   $0.092
+16:35:51  status     Sonnet 5                ✓ 967ms   stopped     84k in · 97% cached     9 out      $0.022
+16:36:03  subagent   qwen3.8-27b (local)     ✓ 14.2s   answered    1.8k in                 212 out    free
+16:36:20  main       Opus 5.5                ✓ 31.0s   answered    151k in · 0% cached     410 out    $1.22
+16:59:29  main       qwen3.8-27b (local)     ✓ 3.2s    answered    22 in                   37 out     free
+          ↳ Claude could not answer (upstream answered HTTP 429), so the local model stood in
+```
+
+| Column | Says |
+| --- | --- |
+| Kind | `main` for Claude Code's conversation, `subagent`, and its background requests: `status` (the one-line summary of what it is doing), `quota`, `compact`, `count` (token counts), `ping` (connectivity checks), `other` |
+| Answered by | The model, `(local)` if LM Studio answered. Requests that are not Messages show their method and path instead |
+| Outcome | `✓` and how long it took, or `✗` with the status and what the error means, or `✗ refused` |
+| Stop | Why the model stopped: `answered`, `tool call`, `stopped` (a stop sequence), `max tokens`, `refused`, or `cut off` if the response ended early |
+| In | The whole prompt, and the share read from the prompt cache |
+| Out | Tokens generated |
+| Cost | The list-price estimate, worked out as `janus stats` does; `free` for local answers |
+
+Anything unusual goes on a `↳` line beneath: a local model standing in
+for Claude or a local answer sent on to Claude, and why; a refusal; a
+fault in Janus or the connection; what the guard or the local-only policy
+did; a transform's decision.
+
+In a terminal, color marks what matters: the main conversation in bold,
+subagents in cyan and Claude Code's background requests dimmed; local
+answers in magenta; failures in red. The cache share is green on a large
+prompt that came from the cache, and yellow on one that did not, which is
+the cache being written again at many times the price. A turn over half a
+dollar is yellow for the same reason. Color is off when the output is not
+a terminal, or with `NO_COLOR` set; `FORCE_COLOR` turns it on regardless.
+
 ## Ledger record, schema version 1
 
 One JSON object per line. `v` goes up when a field changes meaning or is

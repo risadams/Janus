@@ -144,7 +144,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	printBanner(stdout, cfg, ln.Addr().String())
 
-	logger := log.New(stderr, "", log.LstdFlags)
+	color := false
+	if f, ok := stderr.(*os.File); ok {
+		color = wantColor(f, os.Getenv)
+	}
+	console := NewConsole(stderr, color, prices(cfg))
+	logger := console.Logger()
 	led := ledger.Open(filepath.Join(cfg.Logging.Dir, "ledger"))
 	var captures *capture.Writer
 	if cfg.Logging.Capture {
@@ -199,7 +204,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		LocalOnly:    keepLocal,
 		KeepBodies:   captures != nil,
 		Done: func(ex proxy.Exchange) {
-			rec := record(ex, led, captures, detector, logger)
+			rec := record(ex, led, captures, detector, console)
 			if router != nil {
 				router.Report(ex) // so it notices the local backend failing
 			}
@@ -278,11 +283,11 @@ func trialTimeout(r config.Rule) time.Duration {
 
 // record writes down one finished request: its capture, its ledger line,
 // and a line on the console. It runs after the response has gone out, and
-// a failure here is logged and nothing more: logging must never be the
+// a failure here is reported and nothing more: logging must never be the
 // reason a request fails. It returns the ledger record it wrote.
-func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, detector *guard.Detector, logger *log.Logger) ledger.Record {
+func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, detector *guard.Detector, console *Console) ledger.Record {
 	rec := ledger.FromExchange(ex)
-	found := ""
+	var guardNotes []note
 	g := ex.Guard
 	if g == nil {
 		g = &proxy.Guard{}
@@ -304,38 +309,69 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 			rec.Guard = &ledger.Guard{}
 		}
 		rec.Guard.Findings, rec.Guard.Kinds, rec.Guard.Where = report.Findings, report.Kinds, report.Where
-		found = fmt.Sprintf(" [guard: %d found going upstream: %s]", report.Findings, report.Summary())
+		guardNotes = append(guardNotes, note{warn, fmt.Sprintf("guard: %d found going upstream: %s", report.Findings, report.Summary())})
 	}
 	switch {
 	case g.Blocked != "":
-		found = " [guard: stopped: " + g.Blocked + "]"
+		guardNotes = []note{{bad, "guard: stopped: " + g.Blocked}}
 	case g.Replaced > 0:
-		found = fmt.Sprintf(" [guard: %d kept from going upstream (%s), %d put back in the answer]", g.Replaced, g.Report.Summary(), g.Restored)
+		guardNotes = []note{{info, fmt.Sprintf("guard: %d kept from going upstream (%s), %d put back in the answer", g.Replaced, g.Report.Summary(), g.Restored)}}
 	}
 	switch {
 	case len(g.LocalOnly) == 0 || g.Blocked != "":
 	case g.Withheld > 0:
-		found += fmt.Sprintf(" [local-only: %d withheld from upstream (%s)]", g.Withheld, strings.Join(g.LocalOnly, "; "))
+		guardNotes = append(guardNotes, note{info, fmt.Sprintf("local-only: %d withheld from upstream (%s)", g.Withheld, strings.Join(g.LocalOnly, "; "))})
 	case ex.Backend == "local":
-		found += fmt.Sprintf(" [local-only: kept on this machine (%s)]", strings.Join(g.LocalOnly, "; "))
+		guardNotes = append(guardNotes, note{info, fmt.Sprintf("local-only: kept on this machine (%s)", strings.Join(g.LocalOnly, "; "))})
 	}
 	if captures != nil {
 		name, err := captures.Write(ex)
 		if err != nil {
-			logger.Printf("janus: %v", err)
+			console.Printf("janus: %v", err)
 		}
 		rec.Capture = name
 		if a := ex.Attempt; a != nil && !a.Accepted && len(a.ResponseBody) > 0 && name != "" {
 			if err := captures.WriteAttempt(name, a.ResponseBody); err != nil {
-				logger.Printf("janus: %v", err)
+				console.Printf("janus: %v", err)
 			}
 		}
 	}
 	if err := led.Append(rec); err != nil {
-		logger.Printf("janus: %v", err)
+		console.Printf("janus: %v", err)
 	}
-	logger.Print(formatExchange(ex) + found)
+	console.Request(ex, rec, append(exchangeNotes(ex), guardNotes...))
 	return rec
+}
+
+// exchangeNotes are what is worth saying about a request beyond who
+// answered and what it cost: a refusal, a stand-in or an escalation and
+// why, a fault, a transform's decision, a response that could not be read.
+func exchangeNotes(ex proxy.Exchange) []note {
+	var notes []note
+	if ex.Backend == "none" {
+		notes = append(notes, note{bad, "refused: " + ex.Reason})
+	}
+	if a := ex.Attempt; a != nil && !a.Accepted {
+		if a.Backend == "upstream" {
+			notes = append(notes, note{warn, "Claude could not answer (" + a.Why + "), so the local model stood in"})
+		} else {
+			notes = append(notes, note{info, fmt.Sprintf("%s tried for %s first, then it went to Claude: %s", a.Backend, humanDuration(a.Duration), a.Why)})
+		}
+	}
+	if ex.Fault != "" {
+		notes = append(notes, note{bad, "fault: " + ex.Fault})
+	}
+	// Transforms are noted on the turn that decides something; later turns
+	// carry the same output without comment.
+	for _, e := range ex.Transforms {
+		if e.Rewritten+e.Revised > 0 {
+			notes = append(notes, note{info, fmt.Sprintf("%s: %d rewritten, %d revised, about %s tokens fewer", e.Name, e.Rewritten, e.Revised, humanCount(e.Tokens))})
+		}
+	}
+	if ex.Unread != "" {
+		notes = append(notes, note{warn, "response not read: " + ex.Unread})
+	}
+	return notes
 }
 
 // scanForSecrets looks for secrets in a Messages request that was sent to
@@ -411,60 +447,6 @@ func newDetector(cfg config.Config) *guard.Detector {
 		d.Patterns = append(d.Patterns, regexp.MustCompile(pattern))
 	}
 	return d
-}
-
-// formatExchange is the one line janus logs per request. For a Messages
-// response it adds what the model did and what it cost in tokens.
-func formatExchange(ex proxy.Exchange) string {
-	line := fmt.Sprintf("%s %s -> %d (%s)", ex.Method, ex.Path, ex.Status, ex.Duration.Round(time.Millisecond))
-	switch ex.Backend {
-	case "", "upstream":
-	case "none":
-		line += " refused: " + ex.Reason
-	default:
-		line += " [" + ex.Backend + "]"
-	}
-	if a := ex.Attempt; a != nil && !a.Accepted {
-		line += fmt.Sprintf(" [after %s tried for %s: %s]", a.Backend, a.Duration.Round(100*time.Millisecond), a.Why)
-	}
-	if ex.Fault != "" {
-		line += " [fault: " + ex.Fault + "]"
-	}
-	// Transforms are noted on the turn that decides something; later turns
-	// carry the same output without comment.
-	for _, e := range ex.Transforms {
-		if e.Rewritten+e.Revised > 0 {
-			line += fmt.Sprintf(" [%s: %d rewritten, %d revised, about %d tokens fewer]", e.Name, e.Rewritten, e.Revised, e.Tokens)
-		}
-	}
-	if ex.Unread != "" {
-		return line + " response not read: " + ex.Unread
-	}
-	s := ex.Summary
-	if s == nil {
-		return line
-	}
-	if s.Error != nil {
-		return line + " error=" + s.Error.Type
-	}
-	if s.Model != "" {
-		line += " " + s.Model
-	}
-	if s.StopReason != "" {
-		line += " " + s.StopReason
-	}
-	line += fmt.Sprintf(" in=%d", s.Usage.Input)
-	if s.Usage.CacheWrite != nil {
-		line += fmt.Sprintf(" cache_write=%d", *s.Usage.CacheWrite)
-	}
-	if s.Usage.CacheRead != nil {
-		line += fmt.Sprintf(" cache_read=%d", *s.Usage.CacheRead)
-	}
-	line += fmt.Sprintf(" out=%d", s.Usage.Output)
-	if !s.Complete {
-		line += " (incomplete)"
-	}
-	return line
 }
 
 // versionLine is what `janus version` prints. A release build has its

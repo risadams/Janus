@@ -179,10 +179,11 @@ toy task, enough to show the mechanism works and nothing more.
 
 ## Checking that it worked
 
-The console line for a locally answered request is marked `[local]`:
+The console line for a locally answered request names the model with
+`(local)`:
 
 ```
-POST /v1/messages -> 200 (12.106s) [local] qwen/qwen3.8-27b tool_use in=3468 cache_read=2048 out=250
+16:36:03  subagent   qwen3.8-27b (local)     ✓ 12.1s   tool call   5.5k in · 37% cached    250 out    free
 ```
 
 and `janus stats` shows the split under "By backend".
