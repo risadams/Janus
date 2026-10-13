@@ -34,6 +34,7 @@ import (
 	"github.com/risadams/janus/internal/config"
 	"github.com/risadams/janus/internal/digest"
 	"github.com/risadams/janus/internal/guard"
+	"github.com/risadams/janus/internal/instance"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
 	"github.com/risadams/janus/internal/route"
@@ -114,10 +115,32 @@ func run(args []string, stdout, stderr io.Writer) int {
 		plan = router.Plan
 	}
 
+	// One Janus per log folder: a second would write the same ledger and
+	// captures. The lock is taken before listening, so a second Janus on
+	// the same port hears about the first rather than about the port.
+	lock, err := instance.Acquire(cfg.Logging.Dir)
+	if err != nil {
+		var held *instance.HeldError
+		if errors.As(err, &held) {
+			fmt.Fprintf(stderr, "janus: %v.\nStop that one first, or give this one its own logging.dir in %s.\n", err, *configPath)
+		} else {
+			fmt.Fprintf(stderr, "janus: %v\n", err)
+		}
+		return 1
+	}
+	defer lock.Release()
+
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		fmt.Fprintf(stderr, "janus: could not listen on %s: %v\n", cfg.Listen, err)
+		if instance.AddrInUse(err) {
+			fmt.Fprintf(stderr, "Another program is listening there, perhaps a janus with a different log folder. Stop it, or pick another address with -listen.\n")
+		}
 		return 1
+	}
+	if err := lock.Describe(fmt.Sprintf("pid %d, listening on http://%s, started %s",
+		os.Getpid(), ln.Addr(), time.Now().Format("2006-01-02 15:04"))); err != nil {
+		fmt.Fprintf(stderr, "janus: %v\n", err)
 	}
 	printBanner(stdout, cfg, ln.Addr().String())
 

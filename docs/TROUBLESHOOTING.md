@@ -15,6 +15,14 @@ The problems here are ones met while building and testing Janus.
 already running. Otherwise another program has 8787: change `listen` in
 `janus.config.json`, and the address in `ANTHROPIC_BASE_URL` to match.
 
+**`another janus ... is already using the log folder`.** Only one Janus
+runs per log folder, so two never write the same ledger. The message
+gives the running one's pid and address: stop it, or, for a second Janus
+on purpose (a scratch one for an experiment), give it its own config with
+its own `logging.dir`. The lock is `janus.lock` in the log folder; the
+system lets go of it when Janus exits, even after a crash, so there is
+nothing to delete by hand.
+
 **Claude Code behaves as if Janus were not there.** `ANTHROPIC_BASE_URL`
 has to be set in the environment Claude Code starts from. Janus prints a
 line for every request; if it prints nothing, Claude Code is not pointed
