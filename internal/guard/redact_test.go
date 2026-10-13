@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -109,6 +112,47 @@ func TestPlaceholdersAreStableSoTheCacheHolds(t *testing.T) {
 // Once janus has seen a secret, it is removed wherever it appears later,
 // even where nothing marks it as a secret and the place it was first seen
 // is gone from the conversation.
+// A restarted proxy loads the same key, so a secret keeps its placeholder
+// and the cache written before the restart still holds.
+func TestPlaceholdersSurviveARestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs", KeyFile)
+	key, err := LoadKey(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn := body(t, "sys", user(textBlock(positives()[3].text)))
+	before := placeholderLike.Find(redact(t, NewRedactorWithKey(&Detector{}, key), turn).Body)
+
+	again, err := LoadKey(path)
+	if err != nil || !bytes.Equal(again, key) {
+		t.Fatalf("the key changed on reload: %v", err)
+	}
+	after := placeholderLike.Find(redact(t, NewRedactorWithKey(&Detector{}, again), turn).Body)
+	if before == nil || !bytes.Equal(before, after) {
+		t.Errorf("placeholder %s before the restart, %s after", before, after)
+	}
+
+	if runtime.GOOS != "windows" {
+		info, _ := os.Stat(path)
+		if info.Mode().Perm() != 0o600 {
+			t.Errorf("key file mode %v, want 0600", info.Mode().Perm())
+		}
+	}
+}
+
+// A file where the key should be that is not one is reported, never
+// replaced: a new key would change every placeholder already sent.
+func TestAKeyFileThatIsNotAKeyIsAnError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), KeyFile)
+	os.WriteFile(path, []byte("not a key"), 0o600)
+	if _, err := LoadKey(path); err == nil || !strings.Contains(err.Error(), "not a 32-byte placeholder key") {
+		t.Errorf("LoadKey = %v", err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "not a key" {
+		t.Error("the file was replaced")
+	}
+}
+
 func TestKnownSecretsAreRemovedWithoutContext(t *testing.T) {
 	r := NewRedactor(&Detector{})
 	pass := positives()[14]

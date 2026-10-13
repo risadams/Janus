@@ -113,10 +113,13 @@ upstream and three put back.
 
 How it behaves:
 
-- **The same secret always gets the same placeholder**, for as long as
-  Janus runs. That keeps a request's bytes the same from turn to turn, so
-  prompt caching still works, and lets Claude refer to "that key"
-  consistently.
+- **The same secret always gets the same placeholder**, from turn to turn
+  and across restarts. That keeps a request's bytes the same, so prompt
+  caching still works after Janus is restarted or upgraded, and lets
+  Claude refer to "that key" consistently. Placeholders come from a key
+  Janus makes once and keeps as `redact.key` in the log folder; delete it
+  and every placeholder changes, so any conversation holding a replaced
+  secret is written to the cache again on its next turn.
 - **A secret is removed everywhere once it has been seen.** If Claude
   repeats a password in a later message, with nothing around it to mark
   it as one, it is still replaced.

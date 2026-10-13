@@ -80,6 +80,7 @@ Under `logging.dir`:
 | --- | --- | --- |
 | Ledger | One line per request: sizes, tokens, timings, routes, guard counts, and the paths and markers that made content local-only. | Low. No content, no secrets. File names appear. |
 | Captures | Every request and response in full. | High. Your prompts and code, any secrets in them, and local-only content, **as Claude Code sent them, before redaction**. |
+| `redact.key`, with `guard.redact` on | The 32-byte key placeholders are made with. | Medium. With it, someone who already guesses a secret can check the guess against a placeholder. It reveals no secret by itself. |
 | Originals, with `features.compress` on | The full output of each tool result Janus digested, for `tool_output` to return. | High. Command output, which can hold secrets. Never content the local-only policy covers, since that is never digested. |
 
 - All are created private to you (`0600` in `0700` directories) on macOS
@@ -101,9 +102,12 @@ Under `logging.dir`:
 ## Redaction and placeholders
 
 - **Placeholders do not reveal the secret.** Each is an HMAC of the secret
-  under a key made at startup and kept in memory only. The same secret
-  gets the same placeholder for the life of the process, and a different
-  one after a restart.
+  under a 32-byte random key, made once and kept in `<logging.dir>/redact.key`
+  (owner-only). The same secret gets the same placeholder across restarts,
+  so the prompt cache survives one. Without the key a placeholder can't be
+  worked back to its secret, even by guessing; with it, a guess can be
+  checked. A key file that is there but not a key stops Janus at start
+  rather than being replaced.
 - **Secrets stay in memory** for the life of the process, so that they can
   be put back. They are not written anywhere by the redactor.
 - **Redaction fails closed.** A request that cannot be checked is not
