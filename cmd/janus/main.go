@@ -319,20 +319,30 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 			rec.Guard = &ledger.Guard{}
 		}
 		rec.Guard.Findings, rec.Guard.Kinds, rec.Guard.Where = report.Findings, report.Kinds, report.Where
-		guardNotes = append(guardNotes, note{warn, fmt.Sprintf("guard: %d found going upstream: %s", report.Findings, report.Summary())})
+		guardNotes = append(guardNotes, note{level: warn, text: fmt.Sprintf("guard: %d found going upstream: %s", report.Findings, report.Summary())})
 	}
 	switch {
 	case g.Blocked != "":
-		guardNotes = []note{{bad, "guard: stopped: " + g.Blocked}}
+		guardNotes = []note{{level: bad, text: "guard: stopped: " + g.Blocked}}
 	case g.Replaced > 0:
-		guardNotes = []note{{info, fmt.Sprintf("guard: %d kept from going upstream (%s), %d put back in the answer", g.Replaced, g.Report.Summary(), g.Restored)}}
+		// The same secret is replaced on every turn that carries it; that
+		// is said once per conversation. Putting one back in an answer is
+		// news each time.
+		if g.Restored > 0 {
+			guardNotes = []note{{level: info, text: fmt.Sprintf("guard: %d kept from going upstream (%s), %d put back in the answer", g.Replaced, g.Report.Summary(), g.Restored)}}
+		} else {
+			text := fmt.Sprintf("guard: %d kept from going upstream (%s)", g.Replaced, g.Report.Summary())
+			guardNotes = []note{{level: info, text: text, once: text}}
+		}
 	}
 	switch {
 	case len(g.LocalOnly) == 0 || g.Blocked != "":
 	case g.Withheld > 0:
-		guardNotes = append(guardNotes, note{info, fmt.Sprintf("local-only: %d withheld from upstream (%s)", g.Withheld, strings.Join(g.LocalOnly, "; "))})
+		text := fmt.Sprintf("local-only: %d withheld from upstream (%s)", g.Withheld, strings.Join(g.LocalOnly, "; "))
+		guardNotes = append(guardNotes, note{level: info, text: text, once: text})
 	case ex.Backend == "local":
-		guardNotes = append(guardNotes, note{info, fmt.Sprintf("local-only: kept on this machine (%s)", strings.Join(g.LocalOnly, "; "))})
+		text := fmt.Sprintf("local-only: kept on this machine (%s)", strings.Join(g.LocalOnly, "; "))
+		guardNotes = append(guardNotes, note{level: info, text: text, once: text})
 	}
 	if captures != nil {
 		name, err := captures.Write(ex)
@@ -359,30 +369,30 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 func exchangeNotes(ex proxy.Exchange) []note {
 	var notes []note
 	if ex.Backend == "none" {
-		notes = append(notes, note{bad, "refused: " + ex.Reason})
+		notes = append(notes, note{level: bad, text: "refused: " + ex.Reason})
 	}
 	if a := ex.Attempt; a != nil && !a.Accepted {
 		if a.Backend == "upstream" {
-			notes = append(notes, note{warn, "Claude could not answer (" + a.Why + "), so the local model stood in"})
+			notes = append(notes, note{level: warn, text: "Claude could not answer (" + a.Why + "), so the local model stood in"})
 		} else {
-			notes = append(notes, note{info, fmt.Sprintf("%s tried for %s first, then it went to Claude: %s", a.Backend, humanDuration(a.Duration), a.Why)})
+			notes = append(notes, note{level: info, text: fmt.Sprintf("%s tried for %s first, then it went to Claude: %s", a.Backend, humanDuration(a.Duration), a.Why)})
 		}
 	}
 	if ex.NoFallback != "" {
-		notes = append(notes, note{warn, ex.NoFallback})
+		notes = append(notes, note{level: warn, text: ex.NoFallback})
 	}
 	if ex.Fault != "" {
-		notes = append(notes, note{bad, "fault: " + ex.Fault})
+		notes = append(notes, note{level: bad, text: "fault: " + ex.Fault})
 	}
 	// Transforms are noted on the turn that decides something; later turns
 	// carry the same output without comment.
 	for _, e := range ex.Transforms {
 		if e.Rewritten+e.Revised > 0 {
-			notes = append(notes, note{info, fmt.Sprintf("%s: %d rewritten, %d revised, about %s tokens fewer", e.Name, e.Rewritten, e.Revised, humanCount(e.Tokens))})
+			notes = append(notes, note{level: info, text: fmt.Sprintf("%s: %d rewritten, %d revised, about %s tokens fewer", e.Name, e.Rewritten, e.Revised, humanCount(e.Tokens))})
 		}
 	}
 	if ex.Unread != "" {
-		notes = append(notes, note{warn, "response not read: " + ex.Unread})
+		notes = append(notes, note{level: warn, text: "response not read: " + ex.Unread})
 	}
 	return notes
 }

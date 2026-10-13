@@ -30,7 +30,19 @@ type Console struct {
 	prices ledger.Prices
 	now    func() time.Time
 	day    string
+	// said is, per conversation, the notes already printed that need not
+	// be repeated, and when the conversation was last seen.
+	said map[string]*said
 }
+
+type said struct {
+	notes map[string]bool
+	last  time.Time
+}
+
+// forgetAfter is how long a conversation can be idle before the console
+// forgets what it has said about it. One that comes back is told again.
+const forgetAfter = time.Hour
 
 // NewConsole writes to w, in color if color is set, pricing requests with
 // prices as janus stats does.
@@ -65,15 +77,56 @@ func (c *Console) print(text string) {
 	fmt.Fprintf(c.w, "%s  %s\n", c.paint(dim, now.Format("15:04:05")), text)
 }
 
-// Request prints one finished request and the notes about it.
+// Request prints one finished request and the notes about it. A note that
+// need only be said once per conversation is left out if it has been.
 func (c *Console) Request(ex proxy.Exchange, rec ledger.Record, notes []note) {
-	c.print(formatRequest(ex, rec, notes, c.prices, c.paint))
+	c.print(formatRequest(ex, rec, c.fresh(rec.Session, notes), c.prices, c.paint))
+}
+
+// fresh returns notes without those already said in session. Without a
+// session there is no conversation to remember, and every note is kept.
+func (c *Console) fresh(session string, notes []note) []note {
+	if session == "" {
+		return notes
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.now()
+	if c.said == nil {
+		c.said = map[string]*said{}
+	}
+	for id, s := range c.said {
+		if now.Sub(s.last) > forgetAfter {
+			delete(c.said, id)
+		}
+	}
+	s := c.said[session]
+	if s == nil {
+		s = &said{notes: map[string]bool{}}
+		c.said[session] = s
+	}
+	s.last = now
+	var out []note
+	for _, n := range notes {
+		if n.once != "" {
+			if s.notes[n.once] {
+				continue
+			}
+			s.notes[n.once] = true
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // note is something about a request worth a line of its own.
 type note struct {
 	level level
 	text  string
+	// once, when set, is said only the first time in a conversation: the
+	// guard replacing a secret it has replaced before, say. A note that
+	// differs in once is new.
+	once string
 }
 
 type level int

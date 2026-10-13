@@ -5,11 +5,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
+	"github.com/risadams/janus/internal/guard"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
 	"github.com/risadams/janus/internal/transform"
@@ -307,5 +309,79 @@ func TestWantColor(t *testing.T) {
 	}
 	if wantColor(f, env("FORCE_COLOR", "1", "NO_COLOR", "1")) {
 		t.Error("NO_COLOR did not win")
+	}
+}
+
+// A secret in the history is replaced on every turn; the console says so
+// the first time in a conversation, then only when something changes.
+func TestGuardNotesAreSaidOncePerConversation(t *testing.T) {
+	var out bytes.Buffer
+	c := testConsole(&out)
+	dir := t.TempDir()
+	led := ledger.Open(filepath.Join(dir, "ledger"))
+	why := []string{`Bash read /app/conf/db.yaml, which "conf/**" makes local-only`}
+	turn := func(session string, edit func(*proxy.Guard)) string {
+		out.Reset()
+		ex := exchangeCarrying("x")
+		ex.Header.Set("X-Claude-Code-Session-Id", session)
+		g := &proxy.Guard{Scanned: true, Report: guard.Report{Findings: 1, Kinds: map[string]int{"aws_access_key": 1}}, Replaced: 1,
+			LocalOnly: why, Withheld: 1}
+		if edit != nil {
+			edit(g)
+		}
+		ex.Guard = g
+		record(ex, led, nil, nil, c)
+		return out.String()
+	}
+	replaced := "↳ guard: 1 kept from going upstream (aws_access_key)\n"
+	withheld := "↳ local-only: 1 withheld from upstream"
+
+	first := turn("s1", nil)
+	if !strings.Contains(first, replaced) || !strings.Contains(first, withheld) || strings.Contains(first, "put back") {
+		t.Errorf("first turn:\n%s", first)
+	}
+	if again := turn("s1", nil); strings.Contains(again, "↳") {
+		t.Errorf("the same notes were repeated:\n%s", again)
+	}
+	// Something new in the same conversation is said.
+	more := turn("s1", func(g *proxy.Guard) {
+		g.Report.Findings, g.Report.Kinds, g.Replaced = 2, map[string]int{"aws_access_key": 1, "github_token": 1}, 2
+	})
+	if !strings.Contains(more, "↳ guard: 2 kept from going upstream") || strings.Contains(more, withheld) {
+		t.Errorf("a new secret:\n%s", more)
+	}
+	// Putting a secret back in an answer is news every time.
+	for range 2 {
+		if back := turn("s1", func(g *proxy.Guard) { g.Restored = 1 }); !strings.Contains(back, "1 put back in the answer") {
+			t.Errorf("a secret put back was not noted:\n%s", back)
+		}
+	}
+	// Another conversation is told for itself.
+	if other := turn("s2", nil); !strings.Contains(other, replaced) || !strings.Contains(other, withheld) {
+		t.Errorf("another session:\n%s", other)
+	}
+	// A conversation idle past forgetAfter is told again.
+	start := c.now()
+	c.now = func() time.Time { return start.Add(forgetAfter + time.Minute) }
+	if back := turn("s1", nil); !strings.Contains(back, replaced) {
+		t.Errorf("after an idle hour:\n%s", back)
+	}
+	if len(c.said) != 1 {
+		t.Errorf("idle conversations were kept: %d", len(c.said))
+	}
+}
+
+// A secret that went upstream, with redaction off, is said every time:
+// it was sent.
+func TestDetectOnlyFindingsAreAlwaysSaid(t *testing.T) {
+	var out bytes.Buffer
+	c := testConsole(&out)
+	led := ledger.Open(filepath.Join(t.TempDir(), "ledger"))
+	for i := range 2 {
+		out.Reset()
+		record(exchangeCarrying(fakeAWSKey), led, nil, &guard.Detector{}, c)
+		if !strings.Contains(out.String(), "↳ guard: 1 found going upstream") {
+			t.Errorf("turn %d:\n%s", i+1, out.String())
+		}
 	}
 }
