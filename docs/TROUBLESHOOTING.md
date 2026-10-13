@@ -163,9 +163,12 @@ original is in `<logging.dir>/originals` for `logging.retainDays`.
 
 ## The books
 
-**`janus stats` says there are no requests.** It reads `logs/ledger`
-under the directory in the config it was given. Run it from where Janus
-runs, or pass the same `-config`.
+**`janus stats` says there are no requests.** It reads
+`<logging.dir>/ledger` from the config it was given, which by default is
+`janus.config.json` in the current folder. The first line of the report
+is the folder it read. Run it where the config is, or pass the same
+`-config` Janus runs with; with no config file it says so and reads the
+default folder.
 
 **Costs do not match the bill.** `janus stats` prices tokens at list
 price. On a subscription there is no per-token bill; the figure is what

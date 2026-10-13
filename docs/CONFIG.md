@@ -29,7 +29,7 @@ the defaults below and carries on.
 | `features.compress` | Rewrite requests going upstream to send fewer tokens: large tool results are replaced by a digest the local model writes. Needs a local model in `local.models` and `janus mcp` added to Claude Code. See [Compression](#compression). |
 | `compress` | Optional. Settings for `features.compress`; see below. |
 | `features.escalate` | Reserved. Janus refuses to start if it is true. Local-first routing is a rule, not a feature switch. |
-| `logging.dir` | Where the ledger and captures are written. See [the ledger and captures](LEDGER.md). |
+| `logging.dir` | Where the ledger and captures are written. A relative path is relative to the folder holding the config file, so every `janus` command finds the same logs wherever it is run. See [the ledger and captures](LEDGER.md). |
 | `logging.capture` | Save every request and response in full. On by default. Captures contain your prompts and code. |
 | `logging.retainDays` | Delete captures older than this. `0` keeps them forever. |
 | `logging.maxMegabytes` | Delete the oldest captures once they exceed this. `0` means no limit. |

@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -43,6 +44,11 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 	}
 	if *dir == "" {
 		*dir = filepath.Join(cfg.Logging.Dir, "ledger")
+		// Without a config file the ledger folder is only a guess, so say so
+		// rather than report an empty ledger as if nothing had happened.
+		if _, err := os.Stat(*configPath); os.IsNotExist(err) {
+			fmt.Fprintf(stderr, "janus stats: no config file at %s, so reading the default ledger folder; pass -config with the file janus runs with\n", *configPath)
+		}
 	}
 
 	now := time.Now()

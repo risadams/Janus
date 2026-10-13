@@ -1,6 +1,7 @@
 # The ledger and captures
 
-Janus writes two kinds of record under `logging.dir` (default `logs/`).
+Janus writes two kinds of record under `logging.dir` (default `logs/`,
+next to the config file).
 
 | | Ledger | Captures |
 | --- | --- | --- |

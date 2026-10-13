@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -17,6 +18,51 @@ func TestDefaultIsValid(t *testing.T) {
 	}
 }
 
+// defaultsFor is Default as Read returns it for a config file at path: with
+// logging.dir resolved against the file's folder.
+func defaultsFor(path string) Config {
+	cfg := Default()
+	cfg.Logging.Dir = filepath.Join(filepath.Dir(path), "logs")
+	return cfg
+}
+
+// A relative logging.dir is taken from the config file's folder, not the
+// folder a command runs in, so `janus stats` run anywhere reads the ledger
+// the proxy writes.
+func TestLogDirIsRelativeToTheConfigFile(t *testing.T) {
+	home := t.TempDir()
+	elsewhere := t.TempDir()
+	path := filepath.Join(home, "janus.config.json")
+	abs := filepath.Join(t.TempDir(), "kept-here")
+	cases := map[string]struct{ file, want string }{
+		"default":  {`{}`, filepath.Join(home, "logs")},
+		"relative": {`{"logging":{"dir":"var/janus"}}`, filepath.Join(home, "var", "janus")},
+		"absolute": {`{"logging":{"dir":` + strconv.Quote(abs) + `}}`, abs},
+	}
+	t.Chdir(elsewhere)
+	for name, c := range cases {
+		os.WriteFile(path, []byte(c.file), 0o600)
+		for _, p := range []string{path, mustRel(t, elsewhere, path)} {
+			cfg, err := Read(p)
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			if cfg.Logging.Dir != c.want {
+				t.Errorf("%s: Read(%q) logging.dir = %q, want %q", name, p, cfg.Logging.Dir, c.want)
+			}
+		}
+	}
+}
+
+func mustRel(t *testing.T, base, target string) string {
+	t.Helper()
+	rel, err := filepath.Rel(base, target)
+	if err != nil {
+		t.Skipf("no relative path from %s to %s", base, target)
+	}
+	return rel
+}
+
 func TestLoadCreatesStarterFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "janus.config.json")
 
@@ -24,8 +70,12 @@ func TestLoadCreatesStarterFile(t *testing.T) {
 	if err != nil || !created {
 		t.Fatalf("Load() created=%v err=%v, want created with no error", created, err)
 	}
-	if !reflect.DeepEqual(cfg, Default()) {
+	if !reflect.DeepEqual(cfg, defaultsFor(path)) {
 		t.Errorf("starter config = %+v, want defaults", cfg)
+	}
+	// The file keeps the relative default, so it still works if moved.
+	if data, _ := os.ReadFile(path); !strings.Contains(string(data), `"dir": "logs"`) {
+		t.Errorf("starter file does not hold the relative logging.dir:\n%s", data)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -52,7 +102,7 @@ func TestLoadKeepsDefaultsForMissingFields(t *testing.T) {
 	if cfg.Local.BaseURL != "http://other.local:9000" {
 		t.Errorf("local.baseUrl = %q, want the file's value", cfg.Local.BaseURL)
 	}
-	if cfg.Upstream.BaseURL != Default().Upstream.BaseURL || cfg.Listen != Default().Listen || cfg.Logging != Default().Logging {
+	if cfg.Upstream.BaseURL != Default().Upstream.BaseURL || cfg.Listen != Default().Listen || cfg.Logging != defaultsFor(path).Logging {
 		t.Errorf("unset fields lost their defaults: %+v", cfg)
 	}
 }
@@ -262,7 +312,7 @@ func TestValidateReportsEveryProblem(t *testing.T) {
 func TestReadDoesNotCreateAFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "janus.config.json")
 	cfg, err := Read(path)
-	if err != nil || !reflect.DeepEqual(cfg, Default()) {
+	if err != nil || !reflect.DeepEqual(cfg, defaultsFor(path)) {
 		t.Errorf("Read of a missing file = %+v, %v; want the defaults", cfg, err)
 	}
 	if _, err := os.Stat(path); err == nil {

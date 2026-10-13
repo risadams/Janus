@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -242,7 +243,9 @@ type Features struct {
 // Logging controls what janus writes to disk. Everything goes under Dir:
 // the ledger, which is always kept, in Dir/ledger; captures in
 // Dir/captures; and, with features.compress on, the originals of digested
-// tool results in Dir/originals.
+// tool results in Dir/originals. A relative Dir is relative to the folder
+// holding the config file, so the proxy and every command that reads its
+// logs find the same folder wherever they are run from.
 type Logging struct {
 	Dir string `json:"dir"`
 	// Capture saves every request and response in full. Captures contain
@@ -280,7 +283,7 @@ func Load(path string) (cfg Config, created bool, err error) {
 		if err := os.WriteFile(path, append(out, '\n'), 0o600); err != nil {
 			return Config{}, false, fmt.Errorf("could not write starter config %s: %w", path, err)
 		}
-		return cfg, true, nil
+		return resolve(cfg, path), true, nil
 	}
 	cfg, err = Read(path)
 	return cfg, false, err
@@ -291,7 +294,7 @@ func Load(path string) (cfg Config, created bool, err error) {
 func Read(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return Default(), nil
+		return resolve(Default(), path), nil
 	}
 	if err != nil {
 		return Config{}, err
@@ -302,7 +305,23 @@ func Read(path string) (Config, error) {
 	if err := dec.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("%s: %w", path, err)
 	}
-	return cfg, nil
+	return resolve(cfg, path), nil
+}
+
+// resolve makes a relative logging.dir relative to the folder holding the
+// config file at path, and absolute. Taking it from the current folder
+// instead meant a command run from anywhere but where the proxy was started
+// read an empty ledger and said nothing was recorded.
+func resolve(cfg Config, path string) Config {
+	if cfg.Logging.Dir == "" || filepath.IsAbs(cfg.Logging.Dir) {
+		return cfg
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return cfg
+	}
+	cfg.Logging.Dir = filepath.Join(filepath.Dir(abs), cfg.Logging.Dir)
+	return cfg
 }
 
 // Overrides are the settings that can be changed without editing the file.
