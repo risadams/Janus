@@ -220,6 +220,6 @@ the response. It adds no identifying header to what it sends upstream.
 
 ## Reporting a problem
 
-Open an issue at <https://github.com/risadams/Janus/issues>. For something
-that should not be public, contact the maintainer privately through their
-GitHub profile first.
+Report a security problem privately, as [SECURITY.md](../SECURITY.md)
+describes. Anything else goes in an issue at
+<https://github.com/risadams/Janus/issues>.
