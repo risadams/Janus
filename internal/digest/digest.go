@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/risadams/janus/internal/anthropic"
@@ -78,8 +79,13 @@ func (d *Digest) Rewrite(at transform.Position, b anthropic.Block) (anthropic.Bl
 	if !ok || len(text) < d.MinBytes {
 		return b, false
 	}
-	tool := toolName(at.Request, at.Message, result.ToolUseID)
-	if len(d.Tools) > 0 && !contains(d.Tools, tool) {
+	tool, input := toolCall(at.Request, at.Message, result.ToolUseID)
+	if len(d.Tools) > 0 && !slices.Contains(d.Tools, tool) {
+		return b, false
+	}
+	if tool == "Bash" && printsFile(input) {
+		// Claude printed a file to read it, most likely to edit it, and
+		// needs its exact text.
 		return b, false
 	}
 	if d.Protected != nil && d.Protected(at.Request, at.Message, at.Block, result.ToolUseID) {
@@ -163,9 +169,27 @@ func plainText(content json.RawMessage) (string, bool) {
 	return strings.Join(parts, "\n"), true
 }
 
-// toolName finds the tool whose call a result answers, in the messages
-// before it.
-func toolName(req *anthropic.Request, before int, id string) string {
+// filePrinter matches a program that prints a file given by a path-like
+// argument (one with a dot or a slash): cat, sed -n, head, tail, nl, less,
+// more, or bat, as the whole command or one step of it. The same program
+// reading another command's output, as in "go test | head -40", has no
+// such argument and does not match.
+var filePrinter = regexp.MustCompile(`(?:^|[;&|(]|\bthen|\bdo)\s*(?:cat|sed\s+(?:-\w+\s+)*-n\w*|sed\s+-\w*n\w*|head|tail|nl|less|more|bat)\b(?:\s+(?:-[^\s;&|<>]+|'[^']*'|"[^"]*"|[^\s;&|<>./]+))*\s+[^\s;&|<>]*[./][^\s;&|<>]*`)
+
+// printsFile reports whether a Bash call's command prints a file.
+func printsFile(input json.RawMessage) bool {
+	var call struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal(input, &call) != nil {
+		return false
+	}
+	return filePrinter.MatchString(call.Command)
+}
+
+// toolCall finds the call a result answers, in the messages before it:
+// the tool's name and its input.
+func toolCall(req *anthropic.Request, before int, id string) (string, json.RawMessage) {
 	messages := req.Messages()
 	for i := min(before, len(messages)) - 1; i >= 0; i-- {
 		for _, b := range messages[i].Blocks() {
@@ -174,11 +198,11 @@ func toolName(req *anthropic.Request, before int, id string) string {
 			}
 			var use anthropic.ToolUseBlock
 			if b.Decode(&use) == nil && use.ID == id {
-				return use.Name
+				return use.Name, use.Input
 			}
 		}
 	}
-	return ""
+	return "", nil
 }
 
 func orTool(name string) string {
@@ -186,15 +210,6 @@ func orTool(name string) string {
 		return "tool"
 	}
 	return name
-}
-
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 func commas(n int) string {
