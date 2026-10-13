@@ -72,16 +72,18 @@ type Exchange struct {
 	// case: for example a content encoding janus cannot decode. The
 	// response was still relayed.
 	Unread string
-	// Fault is what went wrong reading the response from the backend, when
-	// it broke off part-way: the connection dropped, or the backend sent a
-	// body that did not match its own framing. Empty for a response that
-	// arrived whole, and for one the client abandoned.
+	// Fault is what went wrong getting the response from the backend: it
+	// could not be reached or did not answer in time, and there was no
+	// fallback; or its response broke off part-way, because the connection
+	// dropped or the body did not match its own framing. Empty for a
+	// response that arrived whole, and for one the client abandoned.
 	Fault string
 
 	// RequestBody is kept for Messages requests always, and for everything
 	// else only when Options.KeepBodies is set. ResponseBody is kept only
 	// with KeepBodies; it is decompressed where janus can do that, and
-	// otherwise the bytes as they arrived. Either may be cut short at
+	// otherwise the bytes as they arrived. When janus answered with an
+	// error of its own, it is that error. Either may be cut short at
 	// maxKept, which the Truncated flags report.
 	RequestBody      []byte
 	RequestTruncated bool
@@ -433,6 +435,7 @@ func New(opts Options) http.Handler {
 				}
 			}
 			state.backendFault = fault
+			state.fault = errors.New(why)
 			writeError(w, status, "api_error", "janus: "+why)
 		},
 	}
@@ -745,6 +748,12 @@ func New(opts Options) http.Handler {
 					ex.ResponseBody, ex.ResponseTruncated = o.kept.snapshot()
 				}
 			}
+			if sw.own != nil && state.keep && ex.ResponseBody == nil {
+				ex.ResponseBody = sw.own
+				if ex.ResponseHeader == nil {
+					ex.ResponseHeader = sw.Header().Clone()
+				}
+			}
 			opts.Done(ex)
 		}()
 
@@ -938,9 +947,13 @@ func (b *cappedBuffer) snapshot() (data []byte, truncated bool) {
 // for that API reports janus's own failures the way it reports upstream
 // ones.
 func writeError(w http.ResponseWriter, status int, kind, message string) {
+	body := errorBody(kind, message)
+	if sw, ok := w.(*statusWriter); ok {
+		sw.own = body
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write(errorBody(kind, message))
+	w.Write(body)
 }
 
 // errorBody is an error in the Anthropic API's shape.
@@ -952,12 +965,14 @@ func errorBody(kind, message string) []byte {
 	return append(body, '\n')
 }
 
-// statusWriter remembers the status code for the request log. Unwrap lets
-// http.ResponseController reach the real writer, which is how the reverse
-// proxy flushes.
+// statusWriter remembers the status code for the request log, and the
+// body of any error janus wrote itself, which no backend sent and so no
+// observation saw. Unwrap lets http.ResponseController reach the real
+// writer, which is how the reverse proxy flushes.
 type statusWriter struct {
 	http.ResponseWriter
 	status int
+	own    []byte
 }
 
 func (w *statusWriter) WriteHeader(code int) {

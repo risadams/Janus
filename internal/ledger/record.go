@@ -49,8 +49,9 @@ type Record struct {
 	Usage    *Usage    `json:"usage,omitempty"`
 	// Unread says why a Messages response has no usage.
 	Unread string `json:"unread,omitempty"`
-	// Fault is what went wrong reading the response from the backend when
-	// it broke off part-way.
+	// Fault is what went wrong getting the response from the backend: it
+	// could not be reached or did not answer in time, or its response
+	// broke off part-way.
 	Fault string `json:"fault,omitempty"`
 	// Capture is the capture's path under the captures directory, without
 	// extension, when one was written.

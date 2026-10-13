@@ -347,6 +347,9 @@ func formatExchange(ex proxy.Exchange) string {
 	if a := ex.Attempt; a != nil && !a.Accepted {
 		line += fmt.Sprintf(" [after %s tried for %s: %s]", a.Backend, a.Duration.Round(100*time.Millisecond), a.Why)
 	}
+	if ex.Fault != "" {
+		line += " [fault: " + ex.Fault + "]"
+	}
 	if ex.Unread != "" {
 		return line + " response not read: " + ex.Unread
 	}
