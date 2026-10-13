@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -20,7 +19,6 @@ import (
 	"github.com/risadams/janus/internal/instance"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
-	"github.com/risadams/janus/internal/transform"
 )
 
 func TestVersionLine(t *testing.T) {
@@ -129,93 +127,6 @@ func TestBannerGivesTheClaudeCodeCommand(t *testing.T) {
 	}
 }
 
-func TestFormatExchange(t *testing.T) {
-	n := func(i int) *int { return &i }
-	base := proxy.Exchange{Method: "POST", Path: "/v1/messages", Status: 200, Duration: 2065 * time.Millisecond}
-	with := func(edit func(*proxy.Exchange)) proxy.Exchange { ex := base; edit(&ex); return ex }
-
-	cases := map[string]struct {
-		ex   proxy.Exchange
-		want string
-	}{
-		"not a Messages response": {
-			proxy.Exchange{Method: "HEAD", Path: "/api/hello", Status: 200, Duration: 154 * time.Millisecond},
-			"HEAD /api/hello -> 200 (154ms)",
-		},
-		"upstream usage": {
-			with(func(ex *proxy.Exchange) {
-				ex.Summary = &anthropic.Summary{Model: "claude-opus-5-5", StopReason: "tool_use", Complete: true,
-					Usage: anthropic.Usage{Input: 2, Output: 364, CacheWrite: n(876), CacheRead: n(28730)}}
-			}),
-			"POST /v1/messages -> 200 (2.065s) claude-opus-5-5 tool_use in=2 cache_write=876 cache_read=28730 out=364",
-		},
-		"usage fields the server did not send are left out": {
-			with(func(ex *proxy.Exchange) {
-				ex.Summary = &anthropic.Summary{Model: "qwen/qwen3.8-27b", StopReason: "end_turn", Complete: true,
-					Usage: anthropic.Usage{Input: 17, Output: 3}}
-			}),
-			"POST /v1/messages -> 200 (2.065s) qwen/qwen3.8-27b end_turn in=17 out=3",
-		},
-		"cut off": {
-			with(func(ex *proxy.Exchange) {
-				ex.Summary = &anthropic.Summary{Model: "claude-opus-5-5", Usage: anthropic.Usage{Input: 2, Output: 4}}
-			}),
-			"POST /v1/messages -> 200 (2.065s) claude-opus-5-5 in=2 out=4 (incomplete)",
-		},
-		"api error": {
-			with(func(ex *proxy.Exchange) {
-				ex.Status = 429
-				ex.Summary = &anthropic.Summary{Complete: true, Error: &anthropic.APIError{Type: "rate_limit_error"}}
-			}),
-			"POST /v1/messages -> 429 (2.065s) error=rate_limit_error",
-		},
-		"answered locally": {
-			with(func(ex *proxy.Exchange) {
-				ex.Backend = "local"
-				ex.Attempt = &proxy.Attempt{Backend: "local", Accepted: true}
-				ex.Summary = &anthropic.Summary{Model: "qwen/qwen3.8-27b", StopReason: "end_turn", Complete: true, Usage: anthropic.Usage{Input: 17, Output: 3}}
-			}),
-			"POST /v1/messages -> 200 (2.065s) [local] qwen/qwen3.8-27b end_turn in=17 out=3",
-		},
-		"escalated": {
-			with(func(ex *proxy.Exchange) {
-				ex.Backend = "upstream"
-				ex.Attempt = &proxy.Attempt{Backend: "local", Why: "the local answer has no text and no tool call", Duration: 9340 * time.Millisecond}
-				ex.Summary = &anthropic.Summary{Model: "claude-opus-5-5", StopReason: "end_turn", Complete: true, Usage: anthropic.Usage{Input: 2, Output: 9}}
-			}),
-			"POST /v1/messages -> 200 (2.065s) [after local tried for 9.3s: the local answer has no text and no tool call] claude-opus-5-5 end_turn in=2 out=9",
-		},
-		"upstream unreachable": {
-			with(func(ex *proxy.Exchange) {
-				ex.Status = 502
-				ex.Fault = "could not reach upstream: dial tcp: lookup api.anthropic.com: no such host"
-			}),
-			"POST /v1/messages -> 502 (2.065s) [fault: could not reach upstream: dial tcp: lookup api.anthropic.com: no such host]",
-		},
-		"digested": {
-			with(func(ex *proxy.Exchange) {
-				ex.Transforms = []transform.Effect{{Name: "digest", Blocks: 2, Rewritten: 1, Tokens: 3373}}
-			}),
-			"POST /v1/messages -> 200 (2.065s) [digest: 1 rewritten, 0 revised, about 3373 tokens fewer]",
-		},
-		"carried, not decided": {
-			with(func(ex *proxy.Exchange) {
-				ex.Transforms = []transform.Effect{{Name: "digest", Blocks: 1, Tokens: 3000}}
-			}),
-			"POST /v1/messages -> 200 (2.065s)",
-		},
-		"unreadable encoding": {
-			with(func(ex *proxy.Exchange) { ex.Unread = "content-encoding br" }),
-			"POST /v1/messages -> 200 (2.065s) response not read: content-encoding br",
-		},
-	}
-	for name, c := range cases {
-		if got := formatExchange(c.ex); got != c.want {
-			t.Errorf("%s:\n got %s\nwant %s", name, got, c.want)
-		}
-	}
-}
-
 func messagesExchange() proxy.Exchange {
 	header := http.Header{}
 	header.Set("X-Claude-Code-Session-Id", "sess-1")
@@ -235,7 +146,7 @@ func TestRecordLinksLedgerToCapture(t *testing.T) {
 	led := ledger.Open(filepath.Join(dir, "ledger"))
 	captures := capture.New(filepath.Join(dir, "captures"), 7, 1024)
 
-	record(messagesExchange(), led, captures, nil, log.New(&console, "", 0))
+	record(messagesExchange(), led, captures, nil, testConsole(&console))
 
 	line, err := os.ReadFile(filepath.Join(dir, "ledger", "2026-10-11.jsonl"))
 	if err != nil {
@@ -251,14 +162,14 @@ func TestRecordLinksLedgerToCapture(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "captures", rec.Capture+".md")); err != nil {
 		t.Errorf("the ledger names a capture that is not there: %v", err)
 	}
-	if !strings.HasPrefix(console.String(), "POST /v1/messages -> 200") {
+	if !strings.Contains(console.String(), "main       Opus 5.5") {
 		t.Errorf("console = %q", console.String())
 	}
 }
 
 func TestRecordWithoutCaptures(t *testing.T) {
 	dir := t.TempDir()
-	record(messagesExchange(), ledger.Open(filepath.Join(dir, "ledger")), nil, nil, log.New(io.Discard, "", 0))
+	record(messagesExchange(), ledger.Open(filepath.Join(dir, "ledger")), nil, nil, testConsole(io.Discard))
 
 	line, _ := os.ReadFile(filepath.Join(dir, "ledger", "2026-10-11.jsonl"))
 	if !bytes.Contains(line, []byte(`"class":"main"`)) || bytes.Contains(line, []byte(`"capture"`)) {
@@ -277,10 +188,10 @@ func TestRecordSurvivesUnwritableDisk(t *testing.T) {
 	var console bytes.Buffer
 
 	record(messagesExchange(), ledger.Open(filepath.Join(blocker, "ledger")),
-		capture.New(filepath.Join(blocker, "captures"), 7, 1024), nil, log.New(&console, "", 0))
+		capture.New(filepath.Join(blocker, "captures"), 7, 1024), nil, testConsole(&console))
 
 	out := console.String()
-	if strings.Count(out, "janus: ") != 2 || !strings.Contains(out, "POST /v1/messages -> 200") {
+	if strings.Count(out, "janus: ") != 2 || !strings.Contains(out, "main       Opus 5.5") {
 		t.Errorf("console = %q, want two failures reported and the request line still printed", out)
 	}
 }
@@ -334,7 +245,7 @@ func TestRecordSavesARejectedLocalAnswer(t *testing.T) {
 	ex.Backend, ex.Route = "upstream", "upstream"
 	ex.Attempt = &proxy.Attempt{Backend: "local", Model: "qwen/qwen3.8-27b", Why: "empty", ResponseBody: []byte(`{"content":[]}`)}
 
-	rec := record(ex, ledger.Open(filepath.Join(dir, "ledger")), captures, nil, log.New(io.Discard, "", 0))
+	rec := record(ex, ledger.Open(filepath.Join(dir, "ledger")), captures, nil, testConsole(io.Discard))
 	if rec.Attempt == nil || rec.Attempt.Verdict != ledger.VerdictRejected {
 		t.Errorf("record attempt = %+v", rec.Attempt)
 	}
@@ -365,13 +276,13 @@ func exchangeCarrying(secret string) proxy.Exchange {
 func TestRecordNotesSecretsGoingUpstreamWithoutRepeatingThem(t *testing.T) {
 	dir := t.TempDir()
 	var console bytes.Buffer
-	rec := record(exchangeCarrying(fakeAWSKey), ledger.Open(filepath.Join(dir, "ledger")), nil, &guard.Detector{}, log.New(&console, "", 0))
+	rec := record(exchangeCarrying(fakeAWSKey), ledger.Open(filepath.Join(dir, "ledger")), nil, &guard.Detector{}, testConsole(&console))
 
 	g := rec.Guard
 	if g == nil || g.Findings != 1 || g.Kinds["aws_access_key"] != 1 || len(g.Where) != 1 || !strings.Contains(g.Where[0], "messages[1] user (tool_result)") {
 		t.Fatalf("guard = %+v", g)
 	}
-	if !strings.Contains(console.String(), "[guard: 1 found going upstream: aws_access_key]") {
+	if !strings.Contains(console.String(), "↳ guard: 1 found going upstream: aws_access_key") {
 		t.Errorf("console = %q", console.String())
 	}
 	line, _ := os.ReadFile(filepath.Join(dir, "ledger", "2026-10-11.jsonl"))
@@ -424,7 +335,7 @@ func TestGuardScansOnlyWhatWentUpstream(t *testing.T) {
 	}
 
 	// A clean request leaves no guard field at all.
-	rec := record(clean, ledger.Open(filepath.Join(t.TempDir(), "ledger")), nil, d, log.New(io.Discard, "", 0))
+	rec := record(clean, ledger.Open(filepath.Join(t.TempDir(), "ledger")), nil, d, testConsole(io.Discard))
 	if rec.Guard != nil {
 		t.Errorf("a clean request got a guard field: %+v", rec.Guard)
 	}
@@ -450,12 +361,12 @@ func TestRecordUsesTheRedactorsOwnAccount(t *testing.T) {
 
 	// A detector is passed too, to show the redactor's account takes
 	// precedence over scanning the request again.
-	rec := record(ex, ledger.Open(filepath.Join(dir, "ledger")), nil, &guard.Detector{}, log.New(&console, "", 0))
+	rec := record(ex, ledger.Open(filepath.Join(dir, "ledger")), nil, &guard.Detector{}, testConsole(&console))
 	g := rec.Guard
 	if g == nil || g.Findings != 1 || g.Redacted == nil || *g.Redacted != 1 || g.Restored != 2 || g.Blocked != "" {
 		t.Fatalf("guard = %+v", g)
 	}
-	if !strings.Contains(console.String(), "[guard: 1 kept from going upstream (aws_access_key), 2 put back in the answer]") {
+	if !strings.Contains(console.String(), "↳ guard: 1 kept from going upstream (aws_access_key), 2 put back in the answer") {
 		t.Errorf("console = %q", console.String())
 	}
 	if strings.Contains(console.String(), fakeAWSKey) {
@@ -465,15 +376,15 @@ func TestRecordUsesTheRedactorsOwnAccount(t *testing.T) {
 	blocked := exchangeCarrying("x")
 	blocked.Guard = &proxy.Guard{Blocked: "the request could not be read to check it for secrets"}
 	console.Reset()
-	rec = record(blocked, ledger.Open(filepath.Join(dir, "ledger")), nil, nil, log.New(&console, "", 0))
-	if rec.Guard == nil || rec.Guard.Blocked == "" || !strings.Contains(console.String(), "[guard: stopped: the request could not be read") {
+	rec = record(blocked, ledger.Open(filepath.Join(dir, "ledger")), nil, nil, testConsole(&console))
+	if rec.Guard == nil || rec.Guard.Blocked == "" || !strings.Contains(console.String(), "↳ guard: stopped: the request could not be read") {
 		t.Errorf("guard = %+v, console = %q", rec.Guard, console.String())
 	}
 
 	// A redactor that found nothing leaves no guard field.
 	clean := exchangeCarrying("x")
 	clean.Guard = &proxy.Guard{}
-	if rec := record(clean, ledger.Open(filepath.Join(dir, "ledger")), nil, nil, log.New(io.Discard, "", 0)); rec.Guard != nil {
+	if rec := record(clean, ledger.Open(filepath.Join(dir, "ledger")), nil, nil, testConsole(io.Discard)); rec.Guard != nil {
 		t.Errorf("a clean request got a guard field: %+v", rec.Guard)
 	}
 }

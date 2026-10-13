@@ -92,7 +92,7 @@ with. Restart Janus.
 With `local-then-escalate` the local model answers each subagent request,
 Janus checks the answer, and anything broken goes to Claude instead. The
 main conversation stays with Claude throughout. Console lines for local
-answers are marked `[local]`, and `janus stats` shows them at no upstream
+answers name the model with `(local)`, and `janus stats` shows them at no upstream
 cost.
 
 Expect subagents to be slower: seconds per turn become tens of seconds.
