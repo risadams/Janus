@@ -172,11 +172,22 @@ func TestPlanLimits(t *testing.T) {
 	if _, refusal := raised.Plan(context.Background(), http.Header{}, parse(t, big)); refusal != nil {
 		t.Errorf("refused under a raised limit: %s", refusal.Message)
 	}
-	// A model that is not loaded has no context to check against yet; the
-	// request goes, and LM Studio loads the model.
+	// A model that is not loaded has no context to check against yet. A
+	// small request goes, and LM Studio loads the model; a large one is not
+	// worth a load that would then fail.
 	unloaded := router(local, map[string]LocalModel{"janus-local": {ID: "gemma-4-e4b"}})
-	if _, refusal := unloaded.Plan(context.Background(), http.Header{}, parse(t, big)); refusal != nil {
-		t.Errorf("refused for a model with no loaded context: %s", refusal.Message)
+	small := `{"model":"janus-local","messages":[{"role":"user","content":"hi"}]}`
+	if _, refusal := unloaded.Plan(context.Background(), http.Header{}, parse(t, small)); refusal != nil {
+		t.Errorf("a small request was refused for a model that is not loaded: %s", refusal.Message)
+	}
+	_, refusal := unloaded.Plan(context.Background(), http.Header{}, parse(t, big))
+	if refusal == nil || !strings.Contains(refusal.Message, `"gemma-4-e4b" is not loaded`) || !strings.Contains(refusal.Message, "contextTokens") {
+		t.Errorf("a large request for a model that is not loaded: %+v", refusal)
+	}
+	// Saying what LM Studio loads it with lifts that.
+	told := router(local, map[string]LocalModel{"janus-local": {ID: "gemma-4-e4b", ContextTokens: 100000}})
+	if _, refusal := told.Plan(context.Background(), http.Header{}, parse(t, big)); refusal != nil {
+		t.Errorf("refused with contextTokens set: %s", refusal.Message)
 	}
 }
 
@@ -1217,11 +1228,18 @@ func TestOverrideRefusals(t *testing.T) {
 // sends it upstream and names a local model for when Claude is down.
 func claudeDown(t *testing.T, upstream http.HandlerFunc, lms http.HandlerFunc, body string) (status int, respHeader http.Header, respBody string, ex proxy.Exchange, modelLookups *int) {
 	t.Helper()
+	return claudeDownWith(t, modelList, upstream, lms, body)
+}
+
+// claudeDownWith is claudeDown with LM Studio reporting models as its
+// model list.
+func claudeDownWith(t *testing.T, models string, upstream http.HandlerFunc, lms http.HandlerFunc, body string) (status int, respHeader http.Header, respBody string, ex proxy.Exchange, modelLookups *int) {
+	t.Helper()
 	modelLookups = new(int)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v0/models" {
 			*modelLookups++
-			io.WriteString(w, modelList)
+			io.WriteString(w, models)
 			return
 		}
 		if r.Header.Get("Authorization") != "" || r.Header.Get("X-Janus-Route") != "" {
@@ -1348,6 +1366,39 @@ func TestClaudesErrorStandsWhenLocalCannotHelp(t *testing.T) {
 	}
 	if ex.Backend != "upstream" || ex.Attempt != nil || ex.Summary == nil || ex.Summary.Error == nil || ex.Summary.Error.Type != "overloaded_error" {
 		t.Errorf("too large: exchange = backend %q attempt %+v summary %+v", ex.Backend, ex.Attempt, ex.Summary)
+	}
+}
+
+// A model LM Studio has not loaded would be loaded for the request, at a
+// context Janus cannot see. A request too large for a modest load is not
+// worth the load: Claude's error stands, and LM Studio is never asked.
+func TestAColdStartIsOnlyForARequestThatFits(t *testing.T) {
+	notLoaded := `{"data":[{"id":"qwen/qwen3.8-27b","state":"not-loaded","max_context_length":262144}]}`
+	errBody := `{"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your account's rate limit. Please try again later."}}`
+	big := `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"` + strings.Repeat("word ", 40000) + `"}]}`
+
+	status, _, body, ex, _ := claudeDownWith(t, notLoaded, upstreamSays(429, errBody), func(w http.ResponseWriter, r *http.Request) {
+		t.Error("LM Studio was asked to load a model for a request too large for it")
+	}, big)
+	if status != 429 || body != errBody || ex.Backend != "upstream" {
+		t.Errorf("too large: client got %d %q from %q", status, body, ex.Backend)
+	}
+
+	// A small request is worth the load.
+	status, header, _, ex, _ := claudeDownWith(t, notLoaded, upstreamSays(429, errBody), nil, opusRequest)
+	if status != 200 || ex.Backend != "local" || header.Get("X-Janus-Fallback") == "" {
+		t.Errorf("small: status %d, backend %q", status, ex.Backend)
+	}
+
+	// A model whose largest context is under the cold-start limit is held
+	// to that instead.
+	small := `{"data":[{"id":"qwen/qwen3.8-27b","state":"not-loaded","max_context_length":4096}]}`
+	medium := `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"` + strings.Repeat("word ", 8000) + `"}]}`
+	status, _, _, ex, _ = claudeDownWith(t, small, upstreamSays(429, errBody), func(w http.ResponseWriter, r *http.Request) {
+		t.Error("LM Studio was sent a request larger than the model can take")
+	}, medium)
+	if status != 429 || ex.Backend != "upstream" {
+		t.Errorf("over the model's maximum: status %d, backend %q", status, ex.Backend)
 	}
 }
 

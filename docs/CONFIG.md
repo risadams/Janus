@@ -73,7 +73,7 @@ With `features.route` on, a request for that name is answered locally.
 | --- | --- |
 | the key | The name to answer for. Usually a made-up alias; see the [Claude Code recipe](recipes/claude-code.md). |
 | `model` | The model's id in LM Studio. Required. |
-| `contextTokens` | Largest prompt to send. `0`, the default, uses the context LM Studio has the model loaded with. |
+| `contextTokens` | Largest prompt to send. `0`, the default, uses the context LM Studio has the model loaded with; if it isn't loaded, at most 32,768 tokens, since LM Studio would load it for the request at a context Janus can't see. Set it to the context LM Studio loads the model with to lift that. |
 | `timeoutSeconds` | Longest one request may take. `0` means 900. |
 | `maxConcurrent` | How many requests routing rules may have in flight to this model at once; past it, a rule sends the request to Claude, and the ledger says why. `0` means 1. A local model runs requests side by side in your machine's memory: on a 36 GB Mac, two parallel subagents took a 27B model past 31 GB within four minutes. Raise it only with memory to spare. Model aliases and the local-only policy are not limited, since they have nowhere else to send a request. |
 

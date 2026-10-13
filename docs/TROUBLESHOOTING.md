@@ -75,6 +75,15 @@ whichever one is loaded. `janus doctor` lists the ids it has.
 loaded, and LM Studio loaded it on demand. Load it beforehand; `doctor`
 warns when none is.
 
+**`... local model "..." is not loaded; Janus has LM Studio load a model
+for at most 32768 tokens`.** Janus can't see the context LM Studio will
+load a model with until it is loaded, and a request too big for it would
+cost the load, most of a small machine's memory, and then fail. So a
+model that isn't loaded is only sent requests up to 32,768 tokens; larger
+ones go to Claude, or keep Claude's error when the local model was
+standing in. Load the model first, or set `contextTokens` on its entry to
+the context LM Studio loads it with.
+
 ## Local answers
 
 **`this request is about N tokens, more than the N-token context of local
