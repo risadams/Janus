@@ -336,3 +336,23 @@ func TestLeavesAPrintedFileAlone(t *testing.T) {
 		t.Error("the output of sed -n on a source file was digested")
 	}
 }
+
+func TestReadResultsAreDigestedOnlyWhenAsked(t *testing.T) {
+	for _, c := range []struct {
+		tools []string
+		want  bool
+	}{
+		{nil, false},
+		{[]string{"Bash"}, false},
+		{[]string{"Read"}, true},
+		{[]string{"Bash", "Read"}, true},
+	} {
+		m := &model{answer: "short"}
+		d, _ := digester(t, m)
+		d.Tools = c.tools
+		req := request(t, "Read", bigOutput, fetchTool)
+		if _, ok := d.Rewrite(at(req), resultBlock(req)); ok != c.want {
+			t.Errorf("tools %v: digested %v, want %v", c.tools, ok, c.want)
+		}
+	}
+}

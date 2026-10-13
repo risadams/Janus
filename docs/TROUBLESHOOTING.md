@@ -143,7 +143,8 @@ page. If you reach Janus through a name of your own, use `127.0.0.1` or
 
 **Nothing is digested.** Only tool results over
 `compress.digest.minBytes` (4,000 bytes by default) qualify, from the tools
-in `compress.digest.tools` if it is set. Errors, files printed with Bash to
+in `compress.digest.tools` if it is set. Errors, Read results (unless that
+list names Read), files printed with Bash to
 read, and protected content are left alone, and Claude Code already cuts
 very large output down to a preview. When a result that
 qualified is not digested, the console says why. The usual reason is

@@ -403,7 +403,7 @@ digest tells Claude how to get it back with the `tool_output` tool of
 | --- | --- |
 | `compress.digest.local` | The `local.models` entry that writes digests. May be left out when there is only one. |
 | `compress.digest.minBytes` | The smallest tool result digested. Default 4,000 bytes, about 1,300 tokens. |
-| `compress.digest.tools` | Digest only the results of these tools, such as `["Bash"]`. Default: any tool. |
+| `compress.digest.tools` | Digest only the results of these tools, such as `["Bash"]`. Default: any tool except Read, whose results are files Claude usually means to edit; name `Read` here to digest those too. |
 | `compress.digest.maxSeconds` | How long the local model gets per digest. The turn waits meanwhile; past it the result goes as it is. Default 30. |
 
 What it will and will not do:
@@ -418,10 +418,11 @@ What it will and will not do:
 - **Not errors, images, or protected content.** A result marked as an error
   is what the next turn is about. Content the local-only policy covers is
   never digested, because a paraphrase could slip past the policy.
-- **Not a file Claude printed to read.** When a Bash command prints a file
-  (`cat`, `sed -n`, `head`, `tail`, `nl`, `less`, `more`, or `bat` with a
-  path), Claude usually means to edit it and needs its exact text, so the
-  output goes as it is. The same programs trimming another command's
+- **Not a file Claude read.** A Read result, or a Bash command that prints
+  a file (`cat`, `sed -n`, `head`, `tail`, `nl`, `less`, `more`, or `bat`
+  with a path), is usually a file Claude means to edit, and it needs the
+  exact text, so the output goes as it is. Name `Read` in
+  `compress.digest.tools` to digest Read results anyway. The same programs trimming another command's
   output, as in `go test | head -40`, do not count.
 - **Originals hold tool output in full.** They are readable by their owner
   only, kept whether or not `logging.capture` is on, and deleted after

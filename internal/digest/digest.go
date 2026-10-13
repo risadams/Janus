@@ -37,7 +37,8 @@ type Digest struct {
 	Store *Store
 	// MinBytes is the smallest result digested.
 	MinBytes int
-	// Tools, if set, limits digests to the results of these tools.
+	// Tools, if set, limits digests to the results of these tools. Read
+	// results are digested only when it names Read.
 	Tools []string
 	// Protected reports whether the local-only policy covers a block. A
 	// digest could put protected content in words the policy no longer
@@ -86,9 +87,10 @@ func (d *Digest) Rewrite(at transform.Position, b anthropic.Block) (anthropic.Bl
 	if len(d.Tools) > 0 && !slices.Contains(d.Tools, tool) {
 		return b, false
 	}
-	if tool == "Bash" && printsFile(input) {
-		// Claude printed a file to read it, most likely to edit it, and
-		// needs its exact text.
+	// A file Claude read, with Read or by printing it in Bash, is most
+	// likely one it means to edit, and it needs the exact text. Read is
+	// digested only when Tools names it.
+	if (tool == "Read" && !slices.Contains(d.Tools, "Read")) || (tool == "Bash" && printsFile(input)) {
 		return b, false
 	}
 	if d.Protected != nil && d.Protected(at.Request, at.Message, at.Block, result.ToolUseID) {
