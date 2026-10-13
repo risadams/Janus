@@ -35,6 +35,12 @@ const (
 	// TokenCount is a request to count a prompt's tokens without running
 	// it. It is free, and only Claude can answer it.
 	TokenCount Class = "token_count"
+	// Safety is Claude Code's auto-mode safety classifier grading an
+	// action before Claude Code runs it. It decides whether the agent may
+	// act, so it is answered by a local model only if a rule names this
+	// class: rules without a class, and stand-ins for other classes, never
+	// touch it.
+	Safety Class = "safety"
 	// Unknown is everything else. Unknown requests are always passed
 	// through untouched.
 	Unknown Class = "unknown"
@@ -71,6 +77,9 @@ func ClassifyRequest(header http.Header, req *anthropic.Request) Class {
 	class := Classify(http.MethodPost, "/v1/messages", header)
 	switch {
 	case class == Subagent || class == Main:
+		if safetyCheck(req) {
+			return Safety
+		}
 		if statusSummary(req) {
 			return Status
 		}
@@ -101,6 +110,23 @@ func compaction(req *anthropic.Request) bool {
 	m := messages[len(messages)-1]
 	blocks := m.Blocks()
 	return m.Role == "user" && len(blocks) > 0 && strings.Contains(blocks[len(blocks)-1].Text(), compactionAsk)
+}
+
+// safetyRole begins the system prompt of Claude Code's auto-mode safety
+// classifier (2.1.296). It is prompt text, so a new release could word it
+// differently; the class would then fall back to the turn's own.
+const safetyRole = "You are a security monitor for autonomous AI coding agents"
+
+// safetyCheck reports whether req is a safety classifier request: a system
+// block begins with the classifier's role. Only the system prompt counts,
+// so the sentence quoted in a message or tool result does not.
+func safetyCheck(req *anthropic.Request) bool {
+	for _, b := range req.System() {
+		if strings.HasPrefix(strings.TrimSpace(b.Text()), safetyRole) {
+			return true
+		}
+	}
+	return false
 }
 
 // statusAsk begins Claude Code's request for a status line (2.1.296). It is

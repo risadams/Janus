@@ -95,6 +95,8 @@ func (rule Rule) mismatch(f Facts) string {
 	switch {
 	case rule.Class != "" && rule.Class != f.Class:
 		return fmt.Sprintf("class is %s, not %s", f.Class, rule.Class)
+	case rule.Class == "" && f.Class == Safety:
+		return "a safety check is only routed by a rule that names class safety"
 	case rule.Model != "" && rule.Model != f.Model:
 		return fmt.Sprintf("model is %s, not %s", f.Model, rule.Model)
 	case rule.MaxTokens > 0 && f.Tokens > rule.MaxTokens:

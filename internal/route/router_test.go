@@ -1451,6 +1451,37 @@ func TestAColdStartIsOnlyForARequestThatFits(t *testing.T) {
 	}
 }
 
+// A safety check decides whether the agent may act. Rules without a class
+// and stand-ins for the main loop never send it to a local model; only a
+// rule that names the class does.
+func TestSafetyChecksStayWithClaudeUnlessARuleNamesThem(t *testing.T) {
+	check := `{"model":"claude-sonnet-5","max_tokens":64,"system":[{"type":"text","text":"You are a security monitor for autonomous AI coding agents."}],"messages":[{"role":"user","content":"Respond with <severity>N</severity> ONLY."}]}`
+	header := http.Header{"X-Claude-Code-Session-Id": {"s1"}}
+	model := LocalModel{ID: "qwen/qwen3.8-27b", Timeout: time.Second}
+	local, _ := lmStudio(t, nil)
+
+	everything := router(local, nil)
+	everything.Rules = []Rule{{Name: "all", Route: RouteLocal, Local: model}}
+	plan, refusal := everything.Plan(context.Background(), header, parse(t, check))
+	if refusal != nil || plan.Route != RouteUpstream || !strings.Contains(plan.Reason, "passthrough") {
+		t.Errorf("a class-less local rule: plan route %q reason %q, refusal %+v", plan.Route, plan.Reason, refusal)
+	}
+
+	mainDown := router(local, nil)
+	mainDown.Rules = []Rule{{Name: "main", Class: Main, Route: RouteUpstream, IfDown: &model}, {Name: "any", Route: RouteUpstream, IfDown: &model}}
+	plan, _ = mainDown.Plan(context.Background(), header, parse(t, check))
+	if plan.Fallback != nil || plan.Else != nil {
+		t.Errorf("a safety check got a local stand-in: reason %q", plan.Reason)
+	}
+
+	named := router(local, nil)
+	named.Rules = []Rule{{Name: "checks", Class: Safety, Route: RouteLocal, Local: model}}
+	plan, refusal = named.Plan(context.Background(), header, parse(t, check))
+	if refusal != nil || plan.Route != RouteLocal {
+		t.Errorf("a rule naming class safety: plan route %q, refusal %+v", plan.Route, refusal)
+	}
+}
+
 func TestBothDownGivesTheClientAnError(t *testing.T) {
 	// Claude drops the connection and LM Studio fails too: there is
 	// nothing to relay, so janus says what happened.
