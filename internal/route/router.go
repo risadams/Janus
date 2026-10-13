@@ -214,7 +214,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	// conversation that only ever went to Claude this finds nothing and
 	// the request goes exactly as it arrived. Then the transforms, if
 	// any, rewrite it to send fewer tokens.
-	upstreamPlan := func(reason string) (plan proxy.Plan, repaired bool, transformed []string) {
+	upstreamPlan := func(req *anthropic.Request, reason string) (plan proxy.Plan, repaired bool, transformed []string) {
 		plan = proxy.Plan{Backend: r.Upstream, Route: RouteUpstream, Reason: reason}
 		if backend.RepairForUpstream(req) {
 			plan.Stages = []string{backend.StageDropThinking}
@@ -230,7 +230,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	}
 	const repairNote = "removed the unsigned thinking a local answer left in the history, which the API would reject"
 	upstream := func(reason string) proxy.Plan {
-		plan, repaired, transformed := upstreamPlan(reason)
+		plan, repaired, transformed := upstreamPlan(req, reason)
 		if repaired {
 			trace = append(trace, repairNote)
 		}
@@ -346,10 +346,18 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				return upstream(reason), nil, trace
 			}
 
-			// The fallback is planned now, from the request as it arrived,
-			// in case the local attempt fails once it is under way.
-			fallback, _, _ := upstreamPlan(label)
-			plan.Else = &fallback
+			// The fallback is worked out only if the local attempt fails,
+			// from the request as it arrived. An accepted local answer
+			// then costs no transform work, and leaves the transforms'
+			// record of what each conversation has sent upstream as it was.
+			plan.Fallback = func(context.Context) (proxy.Plan, bool) {
+				copy, err := anthropic.ParseRequest(arrived)
+				if err != nil {
+					return proxy.Plan{}, false
+				}
+				fallback, _, _ := upstreamPlan(copy, label)
+				return fallback, true
+			}
 			if rule.Route == RouteEscalate {
 				if rule.TrialTimeout > 0 && (plan.Timeout == 0 || rule.TrialTimeout < plan.Timeout) {
 					plan.Timeout = rule.TrialTimeout

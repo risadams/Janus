@@ -538,12 +538,12 @@ func TestEscalateRulePlansATrialWithAFallback(t *testing.T) {
 	if refusal != nil || plan.Backend.Name() != "local" || plan.Reason != "rule careful" || plan.ResponseModel != "claude-opus-5-5" {
 		t.Fatalf("plan = %+v, refusal = %+v", plan, refusal)
 	}
-	if plan.Accept == nil || plan.Else == nil {
-		t.Fatalf("an escalate plan needs both a check and a fallback: accept %v, else %v", plan.Accept != nil, plan.Else != nil)
+	if plan.Accept == nil || plan.Fallback == nil {
+		t.Fatalf("an escalate plan needs both a check and a fallback: accept %v, fallback %v", plan.Accept != nil, plan.Fallback != nil)
 	}
 	// The fallback is the request as it arrived, to the model it asked for.
-	if e := plan.Else; e.Backend.Name() != "upstream" || e.Body != nil || e.ResponseModel != "" || e.Else != nil || e.Accept != nil || req.Modified() {
-		t.Errorf("fallback = %+v", *e)
+	if e := fallbackOf(t, plan); e.Backend.Name() != "upstream" || e.Body != nil || e.ResponseModel != "" || e.Fallback != nil || e.Accept != nil || req.Modified() {
+		t.Errorf("fallback = %+v", e)
 	}
 	if !strings.Contains(trace[0], "rule careful: local first, on qwen/qwen3.8-27b") {
 		t.Errorf("trace = %q", trace)
@@ -586,11 +586,11 @@ func TestLocalRuleHasAFallbackAndAliasDoesNot(t *testing.T) {
 	r.Rules = []Rule{{Name: "subagents", Class: Subagent, Route: RouteLocal, Local: qwen["janus-local"]}}
 
 	plan, _, _ := r.Explain(context.Background(), subagentHeader(), parse(t, opusRequest))
-	if plan.Else == nil || plan.Else.Backend.Name() != "upstream" || plan.Accept != nil {
+	if plan.Fallback == nil || fallbackOf(t, plan).Backend.Name() != "upstream" || plan.Accept != nil {
 		t.Errorf("a local rule should fall back upstream and not put the answer on trial: %+v", plan)
 	}
 	alias, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, `{"model":"janus-local","messages":[{"role":"user","content":"hi"}]}`))
-	if alias.Else != nil || alias.Accept != nil {
+	if alias.Else != nil || alias.Fallback != nil || alias.Accept != nil {
 		t.Errorf("an alias has no upstream model to fall back to: %+v", alias)
 	}
 }
@@ -607,7 +607,7 @@ func TestFallbackPlanIsRepaired(t *testing.T) {
 		if plan.Backend.Name() != "local" || !strings.Contains(string(plan.Body), "local scratch work") {
 			t.Errorf("%s: the local attempt should keep the local thinking", routeName)
 		}
-		if e := plan.Else; e == nil || e.Body == nil || strings.Contains(string(e.Body), "local scratch work") || strings.Join(e.Stages, ",") != "drop_unsigned_thinking" {
+		if e := fallbackOf(t, plan); e.Body == nil || strings.Contains(string(e.Body), "local scratch work") || strings.Join(e.Stages, ",") != "drop_unsigned_thinking" {
 			t.Errorf("%s: the fallback was not repaired: %+v", routeName, e)
 		}
 	}
@@ -1492,7 +1492,46 @@ func TestTransformsLeaveTheLocalAttemptAlone(t *testing.T) {
 	if plan.Backend.Name() != "local" || strings.Contains(string(plan.Body), "(hushed)") {
 		t.Errorf("the local attempt was rewritten: %s", plan.Body)
 	}
-	if e := plan.Else; e == nil || !strings.Contains(string(e.Body), "(hushed)") || strings.Join(e.Stages, ",") != "hush" {
+	if e := fallbackOf(t, plan); !strings.Contains(string(e.Body), "(hushed)") || strings.Join(e.Stages, ",") != "hush" {
 		t.Errorf("the upstream fallback was not rewritten: %+v", e)
+	}
+}
+
+// fallbackOf works out a plan's fallback, as the proxy does when the first
+// attempt fails.
+func fallbackOf(t *testing.T, plan proxy.Plan) proxy.Plan {
+	t.Helper()
+	if plan.Fallback == nil {
+		t.Fatal("the plan has no fallback")
+	}
+	fallback, ok := plan.Fallback(context.Background())
+	if !ok {
+		t.Fatal("the fallback could not be planned")
+	}
+	return fallback
+}
+
+// counted counts how often it is asked to rewrite anything.
+type counted struct{ calls int }
+
+func (c *counted) Name() string { return "counted" }
+func (c *counted) Rewrite(at transform.Position, b anthropic.Block) (anthropic.Block, bool) {
+	c.calls++
+	return b, false
+}
+
+func TestTransformsRunOnlyWhenTheFallbackIsUsed(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	c := &counted{}
+	r.Transforms = transform.New(c)
+	r.Rules = []Rule{{Route: RouteEscalate, Local: qwen["janus-local"]}}
+	plan, _, _ := r.Explain(context.Background(), subagentHeader(), parse(t, longRequest))
+	if c.calls != 0 {
+		t.Fatalf("the transforms ran %d times while planning a local attempt", c.calls)
+	}
+	fallbackOf(t, plan)
+	if c.calls == 0 {
+		t.Error("the transforms did not run on the fallback once it was used")
 	}
 }

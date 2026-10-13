@@ -232,7 +232,7 @@ type Plan struct {
 	// Accept, when set, makes this plan a trial. The backend's whole
 	// answer is held back and shown to Accept; the client gets it only if
 	// Accept passes it, and otherwise gets Else's answer, never knowing
-	// there were two. A trial needs Else.
+	// there were two. A trial needs Else or Fallback.
 	Accept func(Fetched) (ok bool, why string)
 }
 
@@ -783,7 +783,7 @@ func New(opts Options) http.Handler {
 			}
 		}
 
-		if state.fallBack != nil && state.plan.Accept != nil && state.plan.Else != nil {
+		if state.fallBack != nil && state.plan.Accept != nil {
 			// A trial: get the whole answer, judge it, and only then
 			// decide what the client receives.
 			tried := state.plan
