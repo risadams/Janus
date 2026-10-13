@@ -406,6 +406,9 @@ digest tells Claude how to get it back with the `tool_output` tool of
 | `compress.digest.tools` | Digest only the results of these tools, such as `["Bash"]`. Default: any tool. |
 | `compress.digest.maxSeconds` | How long the local model gets per digest. The turn waits meanwhile; past it the result goes as it is. Default 30. |
 
+`janus doctor` checks that LM Studio has the digest model, and whether it
+is loaded.
+
 What it will and will not do:
 
 - **Only a result Claude can get back is digested.** The request must offer
