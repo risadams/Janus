@@ -378,6 +378,10 @@ Code puts at the top of the system prompt; `-class` overrides it.
 
 ## Compression
 
+Off by default, and best left off for now: on a day of ordinary use it
+would have saved about 1.5% and added minutes of waiting. See
+[the evaluation](research/digest.md).
+
 With `features.compress` on, a tool result going upstream that is larger
 than a threshold is replaced by a digest the local model writes: errors,
 paths, identifiers, numbers, and the outcome kept, repetition and progress
