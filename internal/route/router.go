@@ -12,6 +12,7 @@ import (
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/proxy"
+	"github.com/risadams/janus/internal/transform"
 	"github.com/risadams/janus/internal/validate"
 )
 
@@ -122,6 +123,9 @@ type Router struct {
 	// Aliases maps a requested model name to a local model.
 	Aliases map[string]LocalModel
 	Rules   []Rule
+	// Transforms rewrites requests going upstream, to send fewer tokens.
+	// Nil sends them as they arrived.
+	Transforms *transform.Pipeline
 
 	health breaker
 }
@@ -208,21 +212,29 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	// Whatever sends a request upstream, a history that a local model had a
 	// turn in is repaired first, or the API would reject it. For a
 	// conversation that only ever went to Claude this finds nothing and
-	// the request goes exactly as it arrived.
-	upstreamPlan := func(reason string) (plan proxy.Plan, repaired bool) {
+	// the request goes exactly as it arrived. Then the transforms, if
+	// any, rewrite it to send fewer tokens.
+	upstreamPlan := func(reason string) (plan proxy.Plan, repaired bool, transformed []string) {
 		plan = proxy.Plan{Backend: r.Upstream, Route: RouteUpstream, Reason: reason}
 		if backend.RepairForUpstream(req) {
-			plan.Body = req.Bytes()
 			plan.Stages = []string{backend.StageDropThinking}
-			return plan, true
+			repaired = true
 		}
-		return plan, false
+		transformed = r.Transforms.Apply(header, req)
+		plan.Stages = append(plan.Stages, transformed...)
+		if len(plan.Stages) > 0 {
+			plan.Body = req.Bytes()
+		}
+		return plan, repaired, transformed
 	}
 	const repairNote = "removed the unsigned thinking a local answer left in the history, which the API would reject"
 	upstream := func(reason string) proxy.Plan {
-		plan, repaired := upstreamPlan(reason)
+		plan, repaired, transformed := upstreamPlan(reason)
 		if repaired {
 			trace = append(trace, repairNote)
+		}
+		if len(transformed) > 0 {
+			trace = append(trace, "rewritten to send fewer tokens, by "+strings.Join(transformed, ", "))
 		}
 		return plan
 	}
@@ -335,7 +347,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 
 			// The fallback is planned now, from the request as it arrived,
 			// in case the local attempt fails once it is under way.
-			fallback, _ := upstreamPlan(label)
+			fallback, _, _ := upstreamPlan(label)
 			plan.Else = &fallback
 			if rule.Route == RouteEscalate {
 				if rule.TrialTimeout > 0 && (plan.Timeout == 0 || rule.TrialTimeout < plan.Timeout) {
