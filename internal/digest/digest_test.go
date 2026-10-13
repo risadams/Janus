@@ -292,3 +292,47 @@ func TestToolOutput(t *testing.T) {
 		t.Errorf("a 200 kB original came back as %d bytes, failed %v; want it cut short with a way to read on", len(got), failed)
 	}
 }
+
+// The command shapes are from the 2026-10-12 captures, where 28 of the 41
+// Bash results over 4 KB were files printed for reading.
+func TestPrintsFile(t *testing.T) {
+	cases := map[string]bool{
+		"cat docs/ROADMAP.md":                                                                      true,
+		"cd /p && sed -n 150,300p internal/guard/redact.go":                                        true,
+		"cd /p && sed -n '/## Decision/,$p' docs/research/models.md":                               true,
+		"cd /p && wc -l internal/proxy/*.go && sed -n 1,370p proxy.go":                             true,
+		"go test ./internal/guard/ 2>&1 | grep FAIL; sed -n 205,250p internal/proxy/guard_test.go": true,
+		"head -n 40 main.go":       true,
+		"tail -5 /tmp/run/output":  true,
+		"nl -ba cmd/janus/main.go": true,
+		"sed -E -n 1,20p a.go":     true,
+		// Reading another command's output is not printing a file.
+		"cd ~ && janus stats 2>&1 | head -40; echo ---; jq -c '{id}' logs/ledger/2026-10-12.jsonl": false,
+		"git branch -D old | tail -1; gh project item-edit --project-id PVT_x":                     false,
+		"wc -l internal/route/*.go | sort -n | tail -20; grep -n '^func' internal/x.go":            false,
+		"cat * | python3 -c 'import sys'":                                                          false,
+		"go test -v ./... 2>&1 | head -n 40":                                                       false,
+		"git log --stat -40":                                                                       false,
+		"sed -i '' 's/a/b/' x.go && go test ./...":                                                 false,
+		"gh issue view 42 --json body":                                                             false,
+	}
+	for command, want := range cases {
+		input, _ := json.Marshal(map[string]string{"command": command})
+		if got := printsFile(input); got != want {
+			t.Errorf("printsFile(%q) = %v, want %v", command, got, want)
+		}
+	}
+}
+
+func TestLeavesAPrintedFileAlone(t *testing.T) {
+	m := &model{answer: "short"}
+	d, _ := digester(t, m)
+	req := request(t, "Bash", bigOutput, fetchTool)
+	b := req.Messages()[1].Blocks()[0].With("input", json.RawMessage(`{"command":"sed -n 1,400p internal/route/router.go"}`))
+	msgs := req.Messages()
+	msgs[1] = msgs[1].WithBlocks([]anthropic.Block{b})
+	req.SetMessages(msgs)
+	if _, ok := d.Rewrite(at(req), resultBlock(req)); ok || len(m.asked) != 0 {
+		t.Error("the output of sed -n on a source file was digested")
+	}
+}

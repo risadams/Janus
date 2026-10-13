@@ -414,6 +414,11 @@ What it will and will not do:
 - **Not errors, images, or protected content.** A result marked as an error
   is what the next turn is about. Content the local-only policy covers is
   never digested, because a paraphrase could slip past the policy.
+- **Not a file Claude printed to read.** When a Bash command prints a file
+  (`cat`, `sed -n`, `head`, `tail`, `nl`, `less`, `more`, or `bat` with a
+  path), Claude usually means to edit it and needs its exact text, so the
+  output goes as it is. The same programs trimming another command's
+  output, as in `go test | head -40`, do not count.
 - **Originals hold tool output in full.** They are readable by their owner
   only, kept whether or not `logging.capture` is on, and deleted after
   `logging.retainDays`.

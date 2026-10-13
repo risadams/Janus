@@ -61,8 +61,8 @@ Thinking that Anthropic signed is never touched.
 | `digest` | A tool result over the size threshold is replaced by a digest the local model wrote, headed `[janus: a local model digested this ... output ...]` with the id that fetches the original | The result is sent again on every later turn of the conversation; the digest is far smaller |
 
 The same result is sent in the same form on every turn, so prompt caching
-is unaffected. Errors, images, and content the local-only policy covers
-are never digested. The ledger's `transforms` field records each digest
+is unaffected. Errors, images, files Claude printed to read, and content
+the local-only policy covers are never digested. The ledger's `transforms` field records each digest
 and what it saved.
 
 ## With the guard on
