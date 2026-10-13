@@ -1,0 +1,86 @@
+# AGENTS.md
+
+Janus is a Go proxy that sits between Claude Code and the Anthropic API,
+and can hand some work to a local model in LM Studio. What it is for, and
+what it must never do, is in [docs/CHARTER.md](docs/CHARTER.md); where it
+is going is in [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Checks
+
+CI runs `gofmt -l .` (must print nothing), `go vet ./...`, and
+`go test ./...` on Linux, macOS, and Windows. Run `go test -race ./...`
+locally. The suite is offline: fake upstreams and a fake LM Studio are
+`httptest` servers.
+
+Some tests run only when pointed at real traffic or asked for:
+
+| Variable | Runs |
+| --- | --- |
+| `JANUS_CAPTURES=~/logs/captures` | Parsing, classification, and prompt-cache stability over every captured request |
+| `JANUS_PERF=1` | Overhead benchmarks and the soak test in `internal/route` |
+| `JANUS_DIGEST_EVAL` and friends | The digest evaluation; see `internal/digest/eval_test.go` |
+
+## Rules that keep Janus safe to change
+
+- **Pass-through is byte-for-byte.** With every feature off, what reaches
+  the API and what comes back must match a direct connection.
+  `internal/proxy/fidelity_test.go` holds the line; the one sanctioned
+  exception is narrowing `Accept-Encoding` on Messages requests.
+- **A block once sent upstream is sent in the same bytes on every later
+  turn.** Claude Code's turns read nearly everything from the prompt cache,
+  and changing anything already sent makes the rest of the conversation a
+  fresh cache write at many times the price. Rewrite requests only through
+  `internal/transform`, whose memo and net-savings guard enforce this.
+  Thinking blocks are never changed: their signatures are checked.
+- **Credentials pass through untouched** and are never logged, captured, or
+  stored.
+- **The guard fails closed.** A request that cannot be checked for secrets
+  or local-only content is refused, not sent.
+- **Captured traffic, configs, and logs stay out of git.** They hold
+  prompts, code, account identifiers, and secrets. Test fixtures are built
+  by hand in the shape of real requests.
+- **Standard library first.** A third-party module needs an ADR
+  ([docs/adr/001-dependencies.md](docs/adr/001-dependencies.md)).
+
+## Experiments
+
+- **Upstream:** there is no API key. Run headless Claude Code
+  (`claude -p`) with `ANTHROPIC_BASE_URL` pointed at a scratch Janus with
+  its own config and log directory. It spends the owner's Pro usage, so
+  keep sessions few and short, and say what they will cost first.
+- **Local models:** LM Studio answers at `http://studio.local:1234`, on the
+  owner's working Mac (36 GB). Load and unload over its REST API
+  (`/api/v1/models/load`, `/api/v1/models/unload`), with the smallest
+  context the job needs, and watch wired memory (`vm_stat`): a model
+  reported as loaded may be running on another machine, and a 27B model
+  can take most of this one. Unload what you loaded.
+- **Findings go in `docs/research/`**, as a note that ends in a decision
+  and says what it does not show.
+
+## Code and docs
+
+- Comments say what code is for and why it is so, in plain full sentences.
+  Every package and exported identifier has a doc comment. A choice that
+  rests on a measurement cites the research note it came from.
+- Errors Janus returns to a client are in the Anthropic API's error shape,
+  with messages that begin `janus:` and say what to do.
+- Tests are named for the behaviour they pin down
+  (`TestUpstreamUnreachableIsExplained`). A fix comes with a test that
+  fails without it; check that it does.
+- The user docs are in `docs/`: CONFIG, LEDGER, GUARD,
+  WHAT-JANUS-CHANGES, TROUBLESHOOTING, and `recipes/`. A change in
+  behaviour updates the doc that describes it, in the same PR.
+
+## Tracking work
+
+- **Every piece of work has a GitHub issue** in the repo's format (Goal,
+  Done when, Traces to, Depends on), a type label (`bug`, `enhancement`,
+  `chore`, `spike`, `documentation`) and an `area:` label, a milestone,
+  and a card on the Janus project board (owner `risadams`, number 3) moved
+  from Todo to In Progress to Done. Large issues get sub-issues.
+- **One branch and one PR per issue.** The PR body says `Closes #N`, what
+  changed and why, and how it was checked. The owner merges, squashing.
+- **Commit titles are plain sentences** saying what the change does
+  ("Plan a local attempt's upstream fallback only when it is needed"); the
+  body says why. Commits are SSH-signed; if signing asks for a passphrase,
+  the key is not in the agent, and the owner has to load it.
