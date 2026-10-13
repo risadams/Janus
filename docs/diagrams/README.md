@@ -15,6 +15,11 @@ refuses it rather than following the "no / down" arrow.
 
 The HTML files are the source. They were made with the
 [diagram-design](https://github.com/cathrynlavery/diagram-design) skill in
-its default style. Each SVG is exported from its HTML with that skill's
+the **Ris Ink** style: warm paper, ink, a single rose accent, teal for
+traffic to Anthropic, set in Fraunces and JetBrains Mono. The repo's
+`.diagram-design` file (`profile: ris-ink`) makes the skill use that style
+for every diagram drawn here; the profile itself lives in
+`~/.diagram-design/profiles/ris-ink.md`, copied from the Ris-Ink design
+system on claude.ai. Each SVG is exported from its HTML with that skill's
 `export_svg.py --system-fonts`, so it loads no web fonts and makes no
 network request. Edit the HTML, then export again.
