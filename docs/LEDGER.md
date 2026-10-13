@@ -48,6 +48,13 @@ for Claude or a local answer sent on to Claude, and why; a refusal; a
 fault in Janus or the connection; what the guard or the local-only policy
 did; a transform's decision.
 
+A secret or a local-only file in the conversation is in every request
+after it, and Janus deals with it every time; the ledger records each.
+The console says so once per conversation, and again only when something
+changes: another secret, another file, or a secret put back in an answer.
+A secret that went to Claude because redaction is off is noted every
+time. A conversation idle for an hour is forgotten, and told afresh.
+
 In a terminal, color marks what matters: the main conversation in bold,
 subagents in cyan and Claude Code's background requests dimmed; local
 answers in magenta; failures in red. The cache share is green on a large
