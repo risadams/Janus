@@ -62,6 +62,13 @@ tar -xzf "${url##*/}"
 cd janus_*_darwin_arm64
 ```
 
+Each archive also carries a signed record of the workflow and commit that
+built it. With the GitHub CLI, check it before you run the binary:
+
+```bash
+gh attestation verify "${url##*/}" --repo risadams/Janus
+```
+
 For another machine, put its build in place of `darwin_arm64`:
 `darwin_amd64`, `linux_amd64`, or `linux_arm64`. Windows builds are `.zip`
 files on the releases page. The binaries are not signed: a copy downloaded
