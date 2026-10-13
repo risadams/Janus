@@ -1,6 +1,9 @@
 // Package worker holds the tools janus offers Claude for handing work to
 // the local model: reading that would otherwise fill Claude's context, done
 // locally, with only a short answer going back.
+//
+// Model, the way to put one question to the local model, is also what the
+// digest transform uses to write its digests.
 package worker
 
 import (

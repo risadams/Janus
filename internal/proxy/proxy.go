@@ -58,8 +58,9 @@ type Exchange struct {
 	// for comparison. The proxy only carries it; whoever receives the
 	// Exchange does the running.
 	Shadow *Shadow
-	// Guard is set when the redactor examined this request: what it
-	// found, and what it did about it.
+	// Guard is set when the guard examined this request, through the
+	// redactor, the local-only policy, or both: what it found, and what it
+	// did about it.
 	Guard *Guard
 	// Attempt is set when a plan with a fallback was tried: either its
 	// answer was put on trial, or it failed and the fallback answered.
@@ -92,8 +93,9 @@ type Exchange struct {
 	RequestBody      []byte
 	RequestTruncated bool
 	// SentBody is the request as it was actually sent to the backend,
-	// when that differs from RequestBody: after redaction, repair, or
-	// adaptation for the local model. Nil means it was sent as received.
+	// when that differs from RequestBody: after redaction, withholding,
+	// repair, a transform, or adaptation for the local model. Nil means it
+	// was sent as received.
 	// Kept only with KeepBodies.
 	SentBody          []byte
 	ResponseHeader    http.Header
@@ -101,7 +103,8 @@ type Exchange struct {
 	ResponseTruncated bool
 }
 
-// Guard is what the redactor did with one request.
+// Guard is what the redactor and the local-only policy did with one
+// request.
 type Guard struct {
 	// Report is what was found, without the values.
 	Report guard.Report
@@ -231,8 +234,8 @@ type Plan struct {
 	FallBackOn func(status int) bool
 	// Accept, when set, makes this plan a trial. The backend's whole
 	// answer is held back and shown to Accept; the client gets it only if
-	// Accept passes it, and otherwise gets Else's answer, never knowing
-	// there were two. A trial needs Else or Fallback.
+	// Accept passes it, and otherwise gets the fallback's answer, never
+	// knowing there were two. A trial needs Else or Fallback.
 	Accept func(Fetched) (ok bool, why string)
 }
 
@@ -319,12 +322,13 @@ const trialLimit = 8 << 20
 
 type stateKey struct{}
 
-// New returns a handler that forwards every request to the upstream and
-// relays the response as it arrives. Nothing in either direction is altered
-// beyond what HTTP requires of a proxy (hop-by-hop headers are dropped and
-// Host is set to the upstream's), apart from what the chosen backend's
-// Prepare does. For the upstream that is one header on Messages requests;
-// credentials pass through as the client sent them.
+// New returns a handler that sends each request where its plan says, the
+// upstream unless Options.Plan decides otherwise, and relays the response
+// as it arrives. With no planner, redactor, or policy, nothing in either
+// direction is altered beyond what HTTP requires of a proxy (hop-by-hop
+// headers are dropped and Host is set to the upstream's) and what the
+// backend's Prepare does, which for the upstream is one header on Messages
+// requests. Credentials pass through as the client sent them.
 //
 // Traffic is also read on its way past, without being delayed or changed,
 // so that Done can be told what happened.

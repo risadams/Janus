@@ -60,8 +60,9 @@ type Record struct {
 	// answered: the local model first with Claude as the fallback, or
 	// Claude first with the local model standing in when Claude was down.
 	Attempt *Attempt `json:"attempt,omitempty"`
-	// Guard is present when secrets were found in a request that went
-	// upstream. It says how many and of what kinds, never what they were.
+	// Guard is present when the guard found secrets or local-only content
+	// in a request, or stopped it. It says how many and of what kinds,
+	// never what they were.
 	Guard *Guard `json:"guard,omitempty"`
 	// Worker is present on a record of delegated work: a tool Claude called
 	// that the local model carried out. Such a record is not a proxied
@@ -138,10 +139,9 @@ type Worker struct {
 	ModelCalls int `json:"model_calls"`
 	// AnswerBytes is what went back to Claude.
 	AnswerBytes int `json:"answer_bytes"`
-	// AvoidedTokens is the input Claude would have spent reading every
-	// file in full, less what the answer cost it. It is a ceiling on the
-	// saving, not a measurement: Claude often would not have read the
-	// files in full. See docs/LEDGER.md.
+	// AvoidedTokens is the most the call could have saved Claude; see the
+	// AvoidedTokens function for how it is worked out and why it is a
+	// ceiling.
 	AvoidedTokens int `json:"avoided_tokens"`
 }
 

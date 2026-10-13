@@ -6,6 +6,9 @@
 // Large tool results are few, but each is sent again on every later turn
 // of its conversation: in the 2026-10-12 captures, the results over 2 KB
 // were a fifth of the results and seven tenths of what tool results cost.
+// Most of those turned out to be files printed to read, which are left
+// alone, and the rest saved little, so the transform is off by default
+// (docs/research/digest.md).
 package digest
 
 import (

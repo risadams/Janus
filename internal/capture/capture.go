@@ -13,7 +13,7 @@ import (
 	"github.com/risadams/janus/internal/proxy"
 )
 
-// Writer saves each exchange as three files under
+// Writer saves each exchange as three or four files under
 // <dir>/<day>/<id>_<path>:
 //
 //	.md            the readable render; start here
@@ -193,8 +193,8 @@ func (w *Writer) Prune(now time.Time) error {
 		sort.Slice(files, func(i, j int) bool { return files[i].path < files[j].path })
 		removing := ""
 		for _, f := range files {
-			// Finish removing a capture once started, so that no capture is
-			// left with only some of its three files.
+			// Finish removing a capture once started, so that none is left
+			// with only some of its files.
 			if total <= w.maxBytes && stem(f.path) != removing {
 				break
 			}
@@ -210,8 +210,8 @@ func (w *Writer) Prune(now time.Time) error {
 	return nil
 }
 
-// stem is a capture file's path without its extension, which the three
-// files of one capture share.
+// stem is a capture file's path without its extension, which every file of
+// one capture shares, its shadow, replay, and attempt files included.
 func stem(path string) string {
 	for _, ext := range []string{
 		".shadow.request.txt", ".shadow.response.txt", ".shadow.md",

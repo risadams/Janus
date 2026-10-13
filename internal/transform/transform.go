@@ -42,6 +42,11 @@ type Transform interface {
 // That breaks the cache from the block on, so the proposal is taken only
 // when the guard expects it to pay for that. Revise is asked about every
 // block sent before, on every request, so it must be cheap.
+//
+// No transform revises yet. Measured on real traffic, pruning superseded
+// reads almost never pays for the cache it breaks
+// (docs/research/pruning.md); the guard would have allowed two prunes in
+// two days.
 type Reviser interface {
 	Transform
 	Revise(at Position, sent anthropic.Block) (out anthropic.Block, ok bool)
