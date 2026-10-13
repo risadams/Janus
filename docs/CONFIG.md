@@ -429,8 +429,9 @@ What it will and will not do:
   `compress.digest.tools` to digest Read results anyway. The same programs trimming another command's
   output, as in `go test | head -40`, do not count.
 - **Originals hold tool output in full.** They are readable by their owner
-  only, kept whether or not `logging.capture` is on, and deleted after
-  `logging.retainDays`.
+  only, kept whether or not `logging.capture` is on, and deleted once
+  unused for `logging.retainDays`, checked at most hourly while Janus runs.
+  They don't count towards `logging.maxMegabytes`.
 - **It costs time.** Each digest holds its turn up while the local model
   writes it; `maxSeconds` bounds that.
 
