@@ -179,7 +179,7 @@ func className(class string) (string, style) {
 		return "count", dim
 	case "connectivity":
 		return "ping", dim
-	case "status", "quota":
+	case "status", "quota", "safety":
 		return class, dim
 	}
 	return "other", dim

@@ -107,7 +107,7 @@ matches everything.
 
 | Field | Matches when |
 | --- | --- |
-| `class` | The request is `main` (Claude Code's main conversation), `subagent`, `status`, or `unknown`. `status` is Claude Code asking for a few words on what a subagent is doing, for the line it shows while it runs; it carries the whole conversation for a five-word answer, so leave it upstream. Claude Code's start-up quota check and its compaction requests are not `main`: only a rule without `class` matches them |
+| `class` | The request is `main` (Claude Code's main conversation), `subagent`, `status`, `safety`, or `unknown`. `status` is Claude Code asking for a few words on what a subagent is doing, for the line it shows while it runs; it carries the whole conversation for a five-word answer, so leave it upstream. `safety` is Claude Code's auto-mode safety classifier grading an action before it runs; it decides whether the agent may act, so **only a rule that names `class: "safety"` matches it**: rules without `class`, and `ifDown` on other rules, leave it with Claude. Claude Code's start-up quota check and its compaction requests are not `main`: only a rule without `class` matches them |
 | `model` | The client asked for exactly this model |
 | `maxTokens` | The request is estimated at no more than this many tokens |
 | `tools` | `true`: the request offers tools. `false`: it offers none. |

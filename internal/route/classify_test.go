@@ -216,3 +216,36 @@ func TestClassifyRequestFindsStatusSummaries(t *testing.T) {
 		}
 	}
 }
+
+func TestClassifyRequestFindsSafetyChecks(t *testing.T) {
+	main := http.Header{"X-Claude-Code-Session-Id": {"s1"}}
+	sub := http.Header{"X-Claude-Code-Session-Id": {"s1"}, "X-Claude-Code-Agent-Id": {"a1"}}
+	role := "You are a security monitor for autonomous AI coding agents.\\n\\n## Context"
+	// As Claude Code 2.1.296 sends it: a billing block, then the
+	// classifier's role, no tools, a short answer cut at </severity>.
+	check := `{"model":"claude-sonnet-5","max_tokens":64,"stop_sequences":["</severity>"],"system":[` +
+		`{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.296.b99;"},{"type":"text","text":"` + role + `"}],` +
+		`"messages":[{"role":"user","content":"<transcript>...</transcript> Respond with <severity>N</severity> ONLY."}]}`
+	quoted := `{"model":"m","max_tokens":1000,"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"` + role + `"}]}]}`
+	cases := []struct {
+		name   string
+		header http.Header
+		body   string
+		want   Class
+	}{
+		{"from the main loop", main, check, Safety},
+		{"from a subagent", sub, check, Safety},
+		{"quoted in a tool result", main, quoted, Main},
+		{"another system prompt", main, `{"model":"m","max_tokens":64,"system":"You are a helpful assistant","messages":[{"role":"user","content":"hi"}]}`, Main},
+		{"not Claude Code", http.Header{}, check, Unknown},
+	}
+	for _, c := range cases {
+		req, err := anthropic.ParseRequest([]byte(c.body))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got := ClassifyRequest(c.header, req); got != c.want {
+			t.Errorf("%s: got %s, want %s", c.name, got, c.want)
+		}
+	}
+}

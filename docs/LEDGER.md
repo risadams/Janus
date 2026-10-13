@@ -35,7 +35,7 @@ and each line starts with the time:
 
 | Column | Says |
 | --- | --- |
-| Kind | `main` for Claude Code's conversation, `subagent`, and its background requests: `status` (the one-line summary of what it is doing), `quota`, `compact`, `count` (token counts), `ping` (connectivity checks), `other` |
+| Kind | `main` for Claude Code's conversation, `subagent`, and its background requests: `status` (the one-line summary of what it is doing), `safety` (auto mode's safety classifier grading an action), `quota`, `compact`, `count` (token counts), `ping` (connectivity checks), `other` |
 | Answered by | The model, `(local)` if LM Studio answered. Requests that are not Messages show their method and path instead |
 | Outcome | `✓` and how long it took, or `✗` with the status and what the error means, or `✗ refused` |
 | Stop | Why the model stopped: `answered`, `tool call`, `stopped` (a stop sequence), `max tokens`, `refused`, or `cut off` if the response ended early |
@@ -70,7 +70,7 @@ ignore fields they do not know.
 | `session` | string | Claude Code's session id, from `X-Claude-Code-Session-Id`. Omitted if absent. |
 | `agent` | string | Claude Code's subagent id, from `X-Claude-Code-Agent-Id`. Omitted for the main loop. |
 | `method`, `path` | string | The request line |
-| `class` | string | `main`, `subagent`, `connectivity`, `quota` (Claude Code reading its rate limits at start-up with a one-token request; a `429` answer to it is normal), `compaction` (Claude Code asking for a summary of the conversation to replace it, as `/compact` does), `status` (Claude Code asking for a few words on what a subagent is doing, for its progress line), `token_count` (`POST /v1/messages/count_tokens`), or `unknown` |
+| `class` | string | `main`, `subagent`, `connectivity`, `quota` (Claude Code reading its rate limits at start-up with a one-token request; a `429` answer to it is normal), `compaction` (Claude Code asking for a summary of the conversation to replace it, as `/compact` does), `status` (Claude Code asking for a few words on what a subagent is doing, for its progress line), `safety` (Claude Code's auto-mode safety classifier grading an action before it runs; recognised by its system prompt), `token_count` (`POST /v1/messages/count_tokens`), or `unknown` |
 | `route` | string | Where the request was sent: `upstream`, `local`, or `shadow` for a shadow run |
 | `reason` | string | What decided it: `passthrough` (nothing matched), `model alias <name>`, `rule <name>`, or `override <value>` for a request that chose its own route. When a rule's local route could not be used, the reason says why and ends `; sent upstream`. When Claude could not answer and a rule's `ifDown` stand-in did not answer either, it says what Claude did and why the local model did not stand in, e.g. `rule main: upstream answered HTTP 429; no local stand-in: this request is about 281000 tokens, …`. For a refused request, why. |
 | `stages` | string[] | Changes made to the request on the way: `set_model`, `lift_tool_additions`, `drop_deferred_tools` for a local request; `drop_unsigned_thinking` for an upstream one whose history a local model had a turn in |
