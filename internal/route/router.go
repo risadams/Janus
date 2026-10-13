@@ -499,6 +499,14 @@ func (r *Router) named(name string) (LocalModel, string) {
 	return LocalModel{}, "several local models are configured; name one, as local=<name>"
 }
 
+// ColdStartContextTokens is the largest request sent to a local model that
+// LM Studio has not loaded, when its entry sets no contextTokens. Loading
+// a 27B model takes most of a 36 GB Mac's memory, and the context LM Studio
+// loads it with is not reported until it is loaded; a request larger than
+// that would pay for the load and then fail. Every subagent request in the
+// first two days of real use was under 29k tokens.
+const ColdStartContextTokens = 32768
+
 // problem is why a request cannot go to the local model.
 type problem struct {
 	status  int
@@ -513,7 +521,7 @@ type problem struct {
 // request which turns out not to fit can still go upstream exactly as it
 // arrived.
 func (r *Router) local(ctx context.Context, req *anthropic.Request, local LocalModel, reportAs, reason string) (proxy.Plan, *anthropic.Request, *problem) {
-	limit := local.ContextTokens
+	limit, cold := local.ContextTokens, false
 	info, found, err := r.Local.Model(ctx, local.ID)
 	switch {
 	case err != nil:
@@ -524,8 +532,19 @@ func (r *Router) local(ctx context.Context, req *anthropic.Request, local LocalM
 		// model happens to be loaded.
 		return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error",
 			fmt.Sprintf("LM Studio does not have local model %q", local.ID)}
+	case limit == 0 && info.LoadedContext > 0:
+		limit = info.LoadedContext
 	case limit == 0:
-		limit = info.LoadedContext // zero if not loaded: nothing to check against yet
+		// Not loaded: LM Studio would load it for this request, at a
+		// context Janus cannot see, and a request too large for that
+		// would cost the load (most of this machine's memory, for a 27B
+		// model) and then fail. So a cold start is kept to requests that
+		// fit any sensible load.
+		limit = ColdStartContextTokens
+		if info.MaxContext > 0 && info.MaxContext < limit {
+			limit = info.MaxContext
+		}
+		cold = true
 	}
 
 	adapted, err := anthropic.ParseRequest(req.Bytes())
@@ -539,6 +558,10 @@ func (r *Router) local(ctx context.Context, req *anthropic.Request, local LocalM
 	body := adapted.Bytes()
 
 	if estimate := EstimateTokens(body); limit > 0 && estimate > limit {
+		if cold {
+			return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error",
+				fmt.Sprintf("this request is about %d tokens, and local model %q is not loaded; Janus has LM Studio load a model for at most %d tokens (set contextTokens to the context it loads with to change that)", estimate, local.ID, limit)}
+		}
 		return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error",
 			fmt.Sprintf("this request is about %d tokens, more than the %d-token context of local model %q", estimate, limit, local.ID)}
 	}
