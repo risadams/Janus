@@ -57,7 +57,7 @@ cd janus_0.9.0-rc.4_darwin_arm64
 Other builds are `darwin_amd64`, `linux_amd64`, `linux_arm64`, and, as
 `.zip`, `windows_amd64` and `windows_arm64`. The binaries are not signed: a
 copy downloaded in a browser on macOS is quarantined, which
-`xattr -d com.apple.quarantine janus` clears. Or build it with Go 1.25 or
+`xattr -d com.apple.quarantine janus` clears. Or build it with Go 1.27 or
 later:
 
 ```bash

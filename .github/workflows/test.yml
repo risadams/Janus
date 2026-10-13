@@ -11,10 +11,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # go.mod's floor (1.25), the toolchain this repo is developed on
-        # (1.27), and the release in between so a break introduced by a
-        # specific minor release doesn't slip through silently.
-        go-version: ["1.25", "1.26", "1.27"]
+        # go.mod's floor, 1.27, which is also the toolchain this repo is
+        # developed on. When a newer Go release ships, add it here, so a
+        # break it introduces shows up before anyone builds with it.
+        go-version: ["1.27"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
