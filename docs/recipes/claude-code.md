@@ -80,6 +80,11 @@ Claude Code sets, and sends them to the local model. Claude Code still
 believes it is talking to the model it asked for, so there is no warning
 and nothing to configure on its side.
 
+Claude Code runs subagents in parallel, and a local model shares your
+machine's memory. Janus sends a model one request at a time by default
+(`maxConcurrent` in [`local.models`](../CONFIG.md#local-models)); while it
+is busy, other subagent turns go to Claude.
+
 If the local model cannot take a request (too large, LM Studio down), it
 goes to Claude instead. Add `"maxTokens"` to the rule to keep large
 subagent turns upstream on purpose.
