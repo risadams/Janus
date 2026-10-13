@@ -130,6 +130,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer lock.Release()
 
+	// The placeholder key is kept with the logs, so a secret keeps its
+	// placeholder across restarts and the prompt cache stays valid.
+	var redactKey []byte
+	if cfg.Features.Guard && cfg.Guard.Redact {
+		if redactKey, err = guard.LoadKey(filepath.Join(cfg.Logging.Dir, guard.KeyFile)); err != nil {
+			fmt.Fprintf(stderr, "janus: %v\n", err)
+			return 1
+		}
+	}
+
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		fmt.Fprintf(stderr, "janus: could not listen on %s: %v\n", cfg.Listen, err)
@@ -171,7 +181,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if cfg.Features.Guard {
 		detector = newDetector(cfg)
 		if cfg.Guard.Redact {
-			redactor = guard.NewRedactor(detector)
+			redactor = guard.NewRedactorWithKey(detector, redactKey)
 		}
 		policy = newPolicy(cfg)
 		if policy != nil && cfg.Guard.LocalOnly.Action == "local" {

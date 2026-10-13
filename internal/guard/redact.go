@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -32,10 +34,13 @@ var placeholderLike = regexp.MustCompile(placeholderPrefix + `[0-9a-f]{` + fmt.S
 // Redactor replaces secrets with placeholders in requests going upstream,
 // and puts them back in what comes down.
 //
-// A secret always gets the same placeholder for as long as janus runs.
-// That keeps the request's bytes the same from turn to turn, which the
-// prompt cache needs, and lets the model refer back to "that key" by a
-// name that does not change.
+// A secret always gets the same placeholder for as long as its key is the
+// same. That keeps the request's bytes the same from turn to turn, which
+// the prompt cache needs, and lets the model refer back to "that key" by a
+// name that does not change. The proxy keeps its key on disk (LoadKey), so
+// that holds across restarts too: a new key would change every placeholder
+// already sent, and the whole conversation after the first one would be
+// written to the cache again.
 type Redactor struct {
 	Detector *Detector
 
@@ -49,11 +54,66 @@ type Redactor struct {
 	known map[string]string // value -> kind
 }
 
-// NewRedactor returns a Redactor using d to find secrets.
+// NewRedactor returns a Redactor using d to find secrets, with a key of
+// its own that lasts as long as it does.
 func NewRedactor(d *Detector) *Redactor {
-	key := make([]byte, 32)
+	key := make([]byte, keySize)
 	rand.Read(key)
+	return NewRedactorWithKey(d, key)
+}
+
+// NewRedactorWithKey returns a Redactor using d to find secrets and key to
+// name them. Two redactors with the same key give a secret the same
+// placeholder.
+func NewRedactorWithKey(d *Detector, key []byte) *Redactor {
 	return &Redactor{Detector: d, key: key, known: map[string]string{}}
+}
+
+// KeyFile is where the proxy keeps its placeholder key, in its log folder.
+const KeyFile = "redact.key"
+
+// keySize is the length of a placeholder key, in bytes.
+const keySize = 32
+
+// LoadKey returns the placeholder key kept at path, creating it if there
+// is none. The file is readable by its owner only. A file that is there
+// but is not a key is an error, not replaced: replacing it would change
+// every placeholder already sent.
+func LoadKey(path string) ([]byte, error) {
+	key, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		key = make([]byte, keySize)
+		if _, err := rand.Read(key); err != nil {
+			return nil, err
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return nil, err
+		}
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if os.IsExist(err) {
+			return LoadKey(path) // made since we looked
+		}
+		if err != nil {
+			return nil, err
+		}
+		if _, err := f.Write(key); err != nil {
+			f.Close()
+			os.Remove(path)
+			return nil, err
+		}
+		if err := f.Close(); err != nil {
+			os.Remove(path)
+			return nil, err
+		}
+		return key, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(key) != keySize {
+		return nil, fmt.Errorf("%s is %d bytes, not a %d-byte placeholder key. Delete it and a new key is made, at the cost of every conversation holding a replaced secret being written to the prompt cache again", path, len(key), keySize)
+	}
+	return key, nil
 }
 
 func (r *Redactor) placeholder(value string) string {
