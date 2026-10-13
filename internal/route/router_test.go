@@ -1535,3 +1535,86 @@ func TestTransformsRunOnlyWhenTheFallbackIsUsed(t *testing.T) {
 		t.Error("the transforms did not run on the fallback once it was used")
 	}
 }
+
+func TestRulesKeepWithinTheLocalModelsLimit(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	one := qwen["janus-local"]
+	one.MaxConcurrent = 1
+	r.Rules = []Rule{{Name: "subagents", Class: Subagent, Route: RouteEscalate, Local: one}}
+	plan := func() (proxy.Plan, []string) {
+		p, _, trace := r.Explain(context.Background(), subagentHeader(), parse(t, opusRequest))
+		return p, trace
+	}
+
+	first, _ := plan()
+	if first.Backend.Name() != "local" || first.Release == nil {
+		t.Fatalf("first request: backend %s, release set %v; want local, holding a place", first.Backend.Name(), first.Release != nil)
+	}
+	second, trace := plan()
+	if second.Backend.Name() != "upstream" || !strings.Contains(second.Reason, "qwen/qwen3.8-27b already has 1 requests in flight, its limit; sent upstream") {
+		t.Errorf("second request while the first is in flight: %s, %q", second.Backend.Name(), second.Reason)
+	}
+	if !strings.Contains(strings.Join(trace, "\n"), "its limit") {
+		t.Errorf("trace does not say why: %q", trace)
+	}
+
+	first.Release()
+	first.Release() // a second call must not free a second place
+	third, _ := plan()
+	if third.Backend.Name() != "local" {
+		t.Fatalf("after the first finished: %s, want local", third.Backend.Name())
+	}
+	if fourth, _ := plan(); fourth.Backend.Name() != "upstream" {
+		t.Errorf("releasing twice freed two places: fourth request went %s", fourth.Backend.Name())
+	}
+	third.Release()
+}
+
+func TestAPlanThatCannotGoLocalGivesItsPlaceBack(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	tiny := qwen["janus-local"]
+	tiny.MaxConcurrent, tiny.ContextTokens = 1, 10 // nothing fits
+	r.Rules = []Rule{{Route: RouteEscalate, Local: tiny}}
+	for range 3 {
+		p, _, _ := r.Explain(context.Background(), subagentHeader(), parse(t, opusRequest))
+		if !strings.Contains(p.Reason, "more than the 10-token context") {
+			t.Fatalf("reason = %q, want the request too large, not the model full", p.Reason)
+		}
+	}
+}
+
+func TestNoLimitMeansNoLimit(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	r.Rules = []Rule{{Route: RouteEscalate, Local: qwen["janus-local"]}}
+	for i := range 5 {
+		if p, _, _ := r.Explain(context.Background(), subagentHeader(), parse(t, opusRequest)); p.Backend.Name() != "local" {
+			t.Fatalf("request %d went %s with no limit set", i, p.Backend.Name())
+		}
+	}
+}
+
+func TestAFullLocalModelCannotStandIn(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	one := qwen["janus-local"]
+	one.MaxConcurrent = 1
+	r.Rules = []Rule{{Route: RouteUpstream, IfDown: &one}}
+	a, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
+	b, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
+	standIn, ok := a.Fallback(context.Background())
+	if !ok || standIn.Release == nil {
+		t.Fatalf("the first stand-in was refused, or holds no place")
+	}
+	if _, ok := b.Fallback(context.Background()); ok {
+		t.Error("a second stand-in was allowed while the first holds the only place")
+	}
+	standIn.Release()
+	if again, ok := b.Fallback(context.Background()); !ok {
+		t.Error("the stand-in was refused after the place was freed")
+	} else {
+		again.Release()
+	}
+}

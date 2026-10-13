@@ -90,6 +90,12 @@ If the local model cannot take a request (too large, LM Studio down), it
 goes to Claude instead. Add `"maxTokens"` to the rule to keep large
 subagent turns upstream on purpose.
 
+The same happens while the local model is busy. Claude Code runs
+subagents in parallel, and a local model shares your machine's memory, so
+Janus sends a model one request at a time by default (`maxConcurrent` in
+[`local.models`](../CONFIG.md#local-models)); the other subagent turns go
+to Claude meanwhile.
+
 ### With the alias
 
 This makes Claude Code itself ask for the local model, which is useful to

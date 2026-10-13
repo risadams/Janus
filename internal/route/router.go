@@ -25,6 +25,11 @@ type LocalModel struct {
 	ContextTokens int
 	// Timeout bounds one request. Zero means no limit.
 	Timeout time.Duration
+	// MaxConcurrent is how many requests a rule may have in flight to this
+	// model at once; past it, a rule sends the request upstream. Zero means
+	// no limit. Aliases and the local-only policy, which have nowhere else
+	// to send a request, are not limited.
+	MaxConcurrent int
 }
 
 // Routes a rule can choose.
@@ -128,6 +133,43 @@ type Router struct {
 	Transforms *transform.Pipeline
 
 	health breaker
+	busy   slots
+}
+
+// slots counts the requests in flight to each local model, so that rules
+// keep within its MaxConcurrent. A local model runs requests side by side
+// in one machine's memory: on 2026-10-13 two subagents at once took
+// qwen/qwen3.8-27b past 31 GB wired on a 36 GB Mac within four minutes
+// (#128).
+type slots struct {
+	mu       sync.Mutex
+	inFlight map[string]int
+}
+
+// take reserves a place for one request to local, and returns the
+// function that gives it back, which is safe to call more than once. ok is
+// false, and nothing is reserved, when the model is already at its limit.
+func (s *slots) take(local LocalModel) (release func(), ok bool) {
+	if local.MaxConcurrent <= 0 {
+		return func() {}, true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.inFlight == nil {
+		s.inFlight = map[string]int{}
+	}
+	if s.inFlight[local.ID] >= local.MaxConcurrent {
+		return nil, false
+	}
+	s.inFlight[local.ID]++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			s.inFlight[local.ID]--
+		})
+	}, true
 }
 
 // A breaker stops rules from sending requests to a local backend that is
@@ -291,13 +333,19 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			if err != nil {
 				return proxy.Plan{}, false
 			}
+			release, ok := r.busy.take(local)
+			if !ok {
+				return proxy.Plan{}, false // the local model is full: Claude's failure stands
+			}
 			fallback, _, problem := r.local(ctx, copy, local, facts.Model, label)
 			if problem != nil {
+				release()
 				if problem.status == http.StatusBadGateway {
 					r.health.record(false)
 				}
 				return proxy.Plan{}, false
 			}
+			fallback.Release = release
 			return fallback, true
 		}
 		return plan
@@ -336,8 +384,16 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				trace = append(trace, reason)
 				return upstream(reason), nil, trace
 			}
+			release, ok := r.busy.take(rule.Local)
+			if !ok {
+				reason := fmt.Sprintf("%s: %s already has %d requests in flight, its limit; sent upstream",
+					label, rule.Local.ID, rule.Local.MaxConcurrent)
+				trace = append(trace, reason)
+				return upstream(reason), nil, trace
+			}
 			plan, adapted, problem := r.local(ctx, req, rule.Local, facts.Model, label)
 			if problem != nil {
+				release()
 				if problem.status == http.StatusBadGateway {
 					r.health.record(false) // LM Studio could not be reached
 				}
@@ -345,6 +401,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				trace = append(trace, reason)
 				return upstream(reason), nil, trace
 			}
+			plan.Release = release
 
 			// The fallback is worked out only if the local attempt fails,
 			// from the request as it arrived. An accepted local answer

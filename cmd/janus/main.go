@@ -221,7 +221,11 @@ func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local
 		if seconds == 0 {
 			seconds = config.DefaultLocalTimeoutSeconds
 		}
-		models[name] = route.LocalModel{ID: m.Model, ContextTokens: m.ContextTokens, Timeout: time.Duration(seconds) * time.Second}
+		concurrent := m.MaxConcurrent
+		if concurrent == 0 {
+			concurrent = config.DefaultMaxConcurrent
+		}
+		models[name] = route.LocalModel{ID: m.Model, ContextTokens: m.ContextTokens, Timeout: time.Duration(seconds) * time.Second, MaxConcurrent: concurrent}
 	}
 	rules := make([]route.Rule, len(cfg.Routing))
 	for i, r := range cfg.Routing {
