@@ -1454,6 +1454,9 @@ func TestRedactionAppliesToUpstreamOnly(t *testing.T) {
 	}
 }
 
+// longRequest has a text block long enough for hush to shorten.
+var longRequest = `{"model":"claude-opus-5-5","tools":[{"name":"Read"}],"messages":[{"role":"user","content":"` + strings.Repeat("please ", 50) + `"}]}`
+
 // hush rewrites every text block, so a test can see where transforms ran.
 type hush struct{}
 
@@ -1469,7 +1472,7 @@ func (hush) Rewrite(at transform.Position, b anthropic.Block) (anthropic.Block, 
 func TestTransformsRewriteWhatGoesUpstream(t *testing.T) {
 	r := router(nil, nil)
 	r.Transforms = transform.New(hush{})
-	plan, _, trace := r.Explain(context.Background(), subagentHeader(), parse(t, opusRequest))
+	plan, _, trace := r.Explain(context.Background(), subagentHeader(), parse(t, longRequest))
 
 	if plan.Backend.Name() != "upstream" || !strings.Contains(string(plan.Body), "(hushed)") || strings.Join(plan.Stages, ",") != "hush" {
 		t.Errorf("plan = %s %v %s, want upstream, rewritten by hush", plan.Backend.Name(), plan.Stages, plan.Body)
@@ -1484,7 +1487,7 @@ func TestTransformsLeaveTheLocalAttemptAlone(t *testing.T) {
 	r := router(local, nil)
 	r.Transforms = transform.New(hush{})
 	r.Rules = []Rule{{Route: RouteEscalate, Local: qwen["janus-local"]}}
-	plan, _, _ := r.Explain(context.Background(), subagentHeader(), parse(t, opusRequest))
+	plan, _, _ := r.Explain(context.Background(), subagentHeader(), parse(t, longRequest))
 
 	if plan.Backend.Name() != "local" || strings.Contains(string(plan.Body), "(hushed)") {
 		t.Errorf("the local attempt was rewritten: %s", plan.Body)

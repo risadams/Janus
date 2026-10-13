@@ -147,6 +147,9 @@ type Report struct {
 	LocalFirst []LocalFirstRow `json:"local_first,omitempty"`
 	// Shadow summarises shadow runs by class. They are in no other figure.
 	Shadow []ShadowRow `json:"shadow,omitempty"`
+	// Transforms is what each transform saved, set beside what the guard
+	// expected when it decided.
+	Transforms []TransformRow `json:"transforms,omitempty"`
 	// Unread counts Messages responses janus relayed but could not read.
 	// Their tokens are missing from every figure in the report.
 	Unread int `json:"unread,omitempty"`
@@ -177,6 +180,7 @@ func Summarise(records []Record, prices Prices) Report {
 	shadows := map[string]*shadowTally{}
 	attempts := map[string]*attemptTally{}
 	delegated := map[string]*delegatedTally{}
+	transforms := map[string]*TransformRow{}
 	first := true
 	for _, rec := range records {
 		if rec.Worker != nil {
@@ -228,6 +232,14 @@ func Summarise(records []Record, prices Prices) Report {
 				rep.Guard.Kinds[kind] += n
 			}
 		}
+		for _, t := range rec.Transforms {
+			row := transforms[t.Name]
+			if row == nil {
+				row = &TransformRow{Name: t.Name}
+				transforms[t.Name] = row
+			}
+			row.add(t)
+		}
 		rep.Outcomes[rec.Outcome]++
 		if rec.Unread != "" {
 			rep.Unread++
@@ -260,7 +272,48 @@ func Summarise(records []Record, prices Prices) Report {
 		rep.Delegated = append(rep.Delegated, row)
 	}
 	sort.Slice(rep.Delegated, func(i, j int) bool { return rep.Delegated[i].Tool < rep.Delegated[j].Tool })
+	for _, row := range transforms {
+		rep.Transforms = append(rep.Transforms, *row)
+	}
+	sort.Slice(rep.Transforms, func(i, j int) bool { return rep.Transforms[i].Name < rep.Transforms[j].Name })
 	return rep
+}
+
+// TransformRow is one transform's totals over the requests it touched.
+//
+// ExpectedUSD is what the guard expected its decisions to save, over the
+// conversations' remaining turns, net of the cost of revising. SavedUSD
+// less CostUSD is what was saved in fact on the requests in the range.
+// The two are measured differently, so they converge only over whole
+// conversations: a decision is expected all at once, on the request that
+// makes it, and saves a little on each request after.
+type TransformRow struct {
+	Name        string  `json:"name"`
+	Requests    int     `json:"requests"`
+	Rewritten   int     `json:"rewritten"`
+	Revised     int     `json:"revised"`
+	Declined    int     `json:"declined"`
+	Tokens      int     `json:"tokens"`
+	SavedUSD    float64 `json:"saved_usd"`
+	CostUSD     float64 `json:"cost_usd"`
+	ExpectedUSD float64 `json:"expected_usd"`
+	// Unpriced counts requests whose model had no price, which are in no
+	// dollar figure.
+	Unpriced int `json:"unpriced"`
+}
+
+func (r *TransformRow) add(t Transform) {
+	r.Requests++
+	r.Rewritten += t.Rewritten
+	r.Revised += t.Revised
+	r.Declined += t.Declined
+	r.Tokens += t.Tokens
+	r.SavedUSD += t.SavedUSD
+	r.CostUSD += t.CostUSD
+	r.ExpectedUSD += t.ExpectedUSD
+	if t.Unpriced {
+		r.Unpriced++
+	}
 }
 
 // sorted orders rows by cost, then by size, so the expensive groups lead.

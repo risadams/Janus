@@ -19,6 +19,7 @@ import (
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/guard"
+	"github.com/risadams/janus/internal/transform"
 )
 
 // Exchange describes one request janus handled, reported when it is over.
@@ -50,6 +51,9 @@ type Exchange struct {
 	Reason       string
 	Stages       []string
 	BackendModel string
+	// Transforms is what each transform did to the request on its way
+	// upstream, or declined to do.
+	Transforms []transform.Effect
 	// Shadow is set when the request should also be run on a local model
 	// for comparison. The proxy only carries it; whoever receives the
 	// Exchange does the running.
@@ -195,6 +199,9 @@ type Plan struct {
 	Reason string
 	// Stages names the changes made to the request, in order.
 	Stages []string
+	// Transforms is what the transforms did to the request, and what the
+	// net-savings guard made of it.
+	Transforms []transform.Effect
 	// Body replaces the request body. Nil sends the body as received.
 	Body []byte
 	// BackendModel is the model the backend was asked for, and
@@ -693,6 +700,7 @@ func New(opts Options) http.Handler {
 				Reason:         state.plan.Reason,
 				Stages:         state.plan.Stages,
 				BackendModel:   state.plan.BackendModel,
+				Transforms:     state.plan.Transforms,
 				Shadow:         state.plan.Shadow,
 				Attempt:        state.attempt,
 				BackendFault:   state.backendFault,

@@ -44,10 +44,11 @@ ignore fields they do not know.
 | `response` | object | Messages responses only: `model`, `stop_reason`, `blocks` (content block types in order), `tools` (names of the tools called, in order) |
 | `usage` | object | Messages responses only; see below |
 | `unread` | string | Why a Messages response has no `usage`, e.g. `content-encoding br` |
-| `fault` | string | What went wrong reading the response from the backend when it broke off part-way, e.g. a dropped connection. Absent for a response that arrived whole, and for one the client abandoned. |
+| `fault` | string | What went wrong getting the response from the backend: it could not be reached or did not answer in time, with no fallback (Janus then answered with an error of its own), or its response broke off part-way, e.g. a dropped connection. Absent for a response that arrived whole, and for one the client abandoned. |
 | `capture` | string | The capture's path under `captures/`, without extension |
 | `attempt` | object | Present when one backend was tried and another may have answered: `backend`, `model`, `verdict`, `why`, `duration_ms`, and for a rejected attempt its `usage`. See below. |
 | `guard` | object | Present when secrets or local-only content were found in a request: `findings` (a count), `kinds` (count by kind), `where` (which parts of the request). When redacting, also `redacted` (distinct secrets replaced before sending; absent means the request went with its secrets in it), `restored` (placeholders put back in the answer), and `blocked` (why the exchange was stopped). Under a local-only policy, `local_only` (why the request held protected content, naming paths and markers) and `withheld` (pieces replaced by a notice in what was sent upstream; `local_only` without it means the request did not go upstream). It never holds a secret or protected content. See [the guard](GUARD.md). |
+| `transforms` | array | Present when a transform rewrote the request on its way upstream, or declined to. One entry per transform: `name`; `blocks` carrying its output, of which `rewritten` were rewritten for the first time and `revised` were already sent and changed; `declined` (answers not used); `tokens` (about how many fewer tokens were sent); `saved_usd` (what those would have cost on this request); `cost_usd` (cache written again because of a revision); `expected_usd` (the net-savings guard's estimate, when it decided, of what this request's decisions will save over the rest of the conversation); and `unpriced` when the model had no price. See below. |
 | `worker` | object | Present on a record of delegated work, where Claude called a tool that the local model carried out: `tool`, `files`, `read_bytes`, `model_calls`, `answer_bytes`, `avoided_tokens`. Such a record has `class` `worker` and `method` `TOOL`, is not a proxied request, and is left out of the request totals. |
 | `shadow_of` | string | Present on a shadow run: the id of the real request it repeated on the local model. Shadow records have `route` `shadow` and an id ending `-shadow`, and are left out of every total. |
 | `compare` | object | On a shadow run that came back whole: `upstream_stop`, `local_stop`, `upstream_tools`, `local_tools`, `stop_match`, `tools_match`, and `upstream_ms` (how long the real answer took) |
@@ -81,6 +82,31 @@ model's answer, and `reason` ends `; sent local`.
 `attempt.duration_ms` is how long the local model was given before the
 decision. For a rejected or failed attempt, that time was spent before
 Claude was asked, and is included in the record's own `duration_ms`.
+
+### `transforms`
+
+A transform rewrites requests going upstream to send fewer tokens. A block
+sent once is part of the cached prefix, so from then on it is sent in the
+same form on every turn; the net-savings guard is what decides anything
+else.
+
+- **A block new to the cache** is rewritten only when that makes it smaller.
+  It saves the tokens cut at the cache write rate now, then at the read
+  rate on every later turn.
+- **A block already sent** can be changed (`revised`) only when the guard
+  expects it to pay: the cache is broken from that block on, and everything
+  after it is written again. With cache reads at a tenth to a fortieth of a
+  write, that takes many later turns, so most proposals are `declined`.
+- **The guard estimates later turns** as half the turns so far. On the
+  2026-10-12 ledger the full count was right on average but often far out
+  for one conversation, and an overestimate costs more than an
+  underestimate.
+- **A transform whose revisions lose money stops revising.** A revision is
+  settled when its conversation has gone an hour without a request. Once a
+  transform has five settled revisions, if its last twenty (or all of them,
+  if fewer) add up to a loss, it may no longer revise, and Janus says so.
+
+`janus stats` totals these per transform, as below.
 
 ### `worker.avoided_tokens`
 
@@ -158,6 +184,15 @@ outcomes.
 - A cost marked `*` leaves out requests that could not be priced, and the
   report lists how many and why. An unpriced request is never counted as
   free.
+
+When transforms ran, a table follows of what each did: requests touched,
+blocks rewritten, revised, and declined, tokens cut, what was **saved** (the
+tokens cut, priced at what they would have cost on those requests, less the
+cache revisions broke), and what the guard **expected** its decisions in the
+range to save. The two are measured differently: a decision's whole
+expected value is counted on the request that makes it, while it saves a
+little on each request after. Saved catches up with expected as
+conversations go on. If it stays well below, the guard is too hopeful.
 
 It reads the ledger directory from the config file, without creating one;
 `-dir` points it elsewhere.

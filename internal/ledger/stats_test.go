@@ -349,3 +349,28 @@ func TestDelegatedWorkIsSummarisedApart(t *testing.T) {
 		t.Errorf("delegated work leaked into the totals: %+v", rep.Total)
 	}
 }
+
+func TestSummariseTotalsTransforms(t *testing.T) {
+	first := rec("m1", at(10, 1), "main", nil)
+	first.Transforms = []Transform{{Name: "digest", Blocks: 1, Rewritten: 1, Tokens: 1000, SavedUSD: 0.008, ExpectedUSD: 0.0084}}
+	later := rec("m2", at(10, 2), "main", nil)
+	later.Transforms = []Transform{
+		{Name: "digest", Blocks: 1, Tokens: 1000, SavedUSD: 0.0002},
+		{Name: "prune", Blocks: 1, Revised: 1, Declined: 2, Tokens: 5000, SavedUSD: 0.001, CostUSD: 0.0004, ExpectedUSD: 0.002},
+	}
+	unpriced := rec("m3", at(10, 3), "main", nil)
+	unpriced.Transforms = []Transform{{Name: "digest", Blocks: 1, Rewritten: 1, Tokens: 300, Unpriced: true}}
+
+	rep := Summarise([]Record{first, later, unpriced}, DefaultPrices)
+	if len(rep.Transforms) != 2 {
+		t.Fatalf("transforms = %+v, want digest and prune", rep.Transforms)
+	}
+	digest, prune := rep.Transforms[0], rep.Transforms[1]
+	if digest.Name != "digest" || digest.Requests != 3 || digest.Rewritten != 2 || digest.Tokens != 2300 ||
+		!near(digest.SavedUSD, 0.0082) || !near(digest.ExpectedUSD, 0.0084) || digest.Unpriced != 1 {
+		t.Errorf("digest = %+v", digest)
+	}
+	if prune.Name != "prune" || prune.Revised != 1 || prune.Declined != 2 || !near(prune.CostUSD, 0.0004) {
+		t.Errorf("prune = %+v", prune)
+	}
+}

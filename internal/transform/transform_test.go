@@ -35,21 +35,22 @@ func (s *shorten) Rewrite(at Position, b anthropic.Block) (anthropic.Block, bool
 	return b.With("content", note), true
 }
 
-// shout upper-cases text, to show transforms running in order.
-type shout struct{}
+// clip cuts text tool results to 20 characters, to show transforms
+// running in order, each on what the one before made.
+type clip struct{}
 
-func (shout) Name() string { return "shout" }
+func (clip) Name() string { return "clip" }
 
-func (shout) Rewrite(at Position, b anthropic.Block) (anthropic.Block, bool) {
+func (clip) Rewrite(at Position, b anthropic.Block) (anthropic.Block, bool) {
 	if b.Type != "tool_result" {
 		return b, false
 	}
 	var content string
-	if raw, ok := b.Field("content"); !ok || json.Unmarshal(raw, &content) != nil {
+	if raw, ok := b.Field("content"); !ok || json.Unmarshal(raw, &content) != nil || len(content) <= 20 {
 		return b, false
 	}
-	upper, _ := json.Marshal(strings.ToUpper(content))
-	return b.With("content", upper), true
+	short, _ := json.Marshal(content[:20])
+	return b.With("content", short), true
 }
 
 func claudeCode(session, agent string) http.Header {
@@ -122,7 +123,7 @@ func TestGrowingConversationKeepsAStablePrefix(t *testing.T) {
 		rng := rand.New(rand.NewSource(seed))
 		messages := conversation(rng, 30)
 		s := &shorten{over: 300}
-		p := New(s, shout{})
+		p := New(s, clip{})
 		header := claudeCode("sess", "")
 
 		var before []string
@@ -137,7 +138,7 @@ func TestGrowingConversationKeepsAStablePrefix(t *testing.T) {
 				}
 			}
 			before = now
-			shortened = strings.Count(strings.Join(now, ""), "SHORTENED")
+			shortened = strings.Count(strings.Join(now, ""), " bytes, short")
 		}
 		if s.calls == 0 || shortened == 0 {
 			t.Fatalf("seed %d: nothing was shortened, so the test proves nothing", seed)
@@ -185,7 +186,7 @@ func TestHistoryOfAConversationFirstSeenMidwayIsLeftAlone(t *testing.T) {
 	}
 
 	req = request(t, messages, 11)
-	if stages := p.Apply(header, req); len(stages) != 1 || stages[0] != "shorten" {
+	if stages := Stages(p.Apply(header, req)); len(stages) != 1 || stages[0] != "shorten" {
 		t.Errorf("stages = %v, want [shorten] for the new tool result", stages)
 	}
 	got := bare(t, req)
@@ -204,7 +205,7 @@ func TestFirstRequestOfAConversationIsRewritten(t *testing.T) {
 	text, _ := json.Marshal(big)
 	body := fmt.Sprintf(`{"model":"m","messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":%s}]}]}`, text)
 	req, _ := anthropic.ParseRequest([]byte(body))
-	if stages := New(&shorten{over: 300}).Apply(claudeCode("new", ""), req); len(stages) != 1 {
+	if stages := Stages(New(&shorten{over: 300}).Apply(claudeCode("new", ""), req)); len(stages) != 1 {
 		t.Errorf("stages = %v, want the first request's block shortened", stages)
 	}
 }
@@ -282,16 +283,21 @@ func TestNothingToDo(t *testing.T) {
 }
 
 func TestStagesAreInPipelineOrderAndReplayedFromTheMemo(t *testing.T) {
-	messages := conversation(rand.New(rand.NewSource(11)), 4)
-	p := New(&shorten{over: 0}, shout{})
+	text, _ := json.Marshal(strings.Repeat("output\n", 100))
+	messages := []json.RawMessage{
+		json.RawMessage(`{"role":"user","content":"go"}`),
+		json.RawMessage(`{"role":"assistant","content":[{"type":"tool_use","id":"a","name":"Bash","input":{}}]}`),
+		json.RawMessage(fmt.Sprintf(`{"role":"user","content":[{"type":"tool_result","tool_use_id":"a","content":%s}]}`, text)),
+	}
+	p := New(&shorten{over: 0}, clip{})
 	header := claudeCode("sess", "")
 	p.Apply(header, request(t, messages, 1))
 	p.Apply(header, request(t, messages, 3))
 	// Nothing new in the last message would need rewriting if the memo
 	// were not replaying earlier rewrites; the stages must still say so.
-	stages := p.Apply(header, request(t, messages, 3))
-	if strings.Join(stages, ",") != "shorten,shout" {
-		t.Errorf("stages = %v, want [shorten shout]", stages)
+	stages := Stages(p.Apply(header, request(t, messages, 3)))
+	if strings.Join(stages, ",") != "shorten,clip" {
+		t.Errorf("stages = %v, want [shorten clip]", stages)
 	}
 }
 

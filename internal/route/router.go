@@ -220,7 +220,8 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			plan.Stages = []string{backend.StageDropThinking}
 			repaired = true
 		}
-		transformed = r.Transforms.Apply(header, req)
+		plan.Transforms = r.Transforms.Apply(header, req)
+		transformed = transform.Stages(plan.Transforms)
 		plan.Stages = append(plan.Stages, transformed...)
 		if len(plan.Stages) > 0 {
 			plan.Body = req.Bytes()
