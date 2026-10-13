@@ -326,3 +326,30 @@ func TestWithholdKeepsACacheBreakpointOnWhatItReplaces(t *testing.T) {
 		t.Errorf("protected content is still there:\n%s", out)
 	}
 }
+
+func TestMatchCovers(t *testing.T) {
+	p, err := NewPolicy([]string{".env"}, []string{"COMPANY CONFIDENTIAL"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := anthropic.ParseRequest([]byte(`{"model":"m","messages":[` +
+		`{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/p/.env"}},{"type":"tool_use","id":"t2","name":"Read","input":{"file_path":"/p/main.go"}}]},` +
+		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"KEY=1"},{"type":"tool_result","tool_use_id":"t2","content":"package main"},{"type":"text","text":"COMPANY CONFIDENTIAL plan"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := p.Check(req)
+	for _, c := range []struct {
+		message, block int
+		id             string
+		want           bool
+	}{
+		{1, 0, "t1", true},  // the result of reading .env
+		{1, 1, "t2", false}, // main.go
+		{1, 2, "", true},    // a marker
+	} {
+		if got := m.Covers(c.message, c.block, c.id); got != c.want {
+			t.Errorf("Covers(%d, %d, %q) = %v, want %v", c.message, c.block, c.id, got, c.want)
+		}
+	}
+}

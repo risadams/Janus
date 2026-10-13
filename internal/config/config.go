@@ -38,6 +38,9 @@ type Config struct {
 	Logging  Logging  `json:"logging"`
 	// Guard sets how secrets are looked for, when features.guard is on.
 	Guard Guard `json:"guard,omitzero"`
+	// Compress sets how requests going upstream are rewritten to send
+	// fewer tokens, when features.compress is on.
+	Compress Compress `json:"compress,omitzero"`
 	// Pricing adds to, or corrects, the prices janus ships with, keyed by
 	// model id. Left out of the starter file because the defaults are
 	// usually right; see docs/CONFIG.md.
@@ -63,6 +66,49 @@ type Guard struct {
 	// LocalOnly names content that must never be sent upstream, whatever
 	// is in it.
 	LocalOnly LocalOnly `json:"localOnly,omitzero"`
+}
+
+// Compress configures the transforms that rewrite requests going upstream.
+type Compress struct {
+	Digest Digest `json:"digest,omitzero"`
+}
+
+// Digest configures the digest of large tool results: the local model
+// summarises the result, the summary goes upstream, and Claude can fetch
+// the original through janus mcp's tool_output tool.
+type Digest struct {
+	// Local names the entry of local.models that writes the digests. It
+	// may be left out when there is only one.
+	Local string `json:"local,omitempty"`
+	// MinBytes is the smallest tool result digested. Zero means
+	// DefaultDigestMinBytes.
+	MinBytes int `json:"minBytes,omitempty"`
+	// Tools limits digests to the results of these tools, such as
+	// ["Bash"]. Empty means any tool.
+	Tools []string `json:"tools,omitempty"`
+	// MaxSeconds is how long the local model gets to write one digest.
+	// The turn waits all the while; past it the result goes as it is.
+	// Zero means DefaultDigestSeconds.
+	MaxSeconds int `json:"maxSeconds,omitempty"`
+}
+
+// DefaultDigestMinBytes leaves tool results under about 1,300 tokens
+// alone: a digest of one would save little.
+const DefaultDigestMinBytes = 4000
+
+// DefaultDigestSeconds is how long a digest may hold up a turn.
+const DefaultDigestSeconds = 30
+
+// DigestModel is the entry of local.models that writes digests.
+func (c Config) DigestModel() (name string, model LocalModel, ok bool) {
+	name = c.Compress.Digest.Local
+	if name == "" && len(c.Local.Models) == 1 {
+		for only := range c.Local.Models {
+			name = only
+		}
+	}
+	model, ok = c.Local.Models[name]
+	return name, model, ok
 }
 
 // LocalOnly is the local-only policy: content that stays on this machine.
@@ -173,9 +219,9 @@ const DefaultTrialSeconds = 120
 // prompt and slower still if they must be loaded first.
 const DefaultLocalTimeoutSeconds = 900
 
-// Features switches each mechanism on. All are off by default. Route and
-// guard are implemented; Validate rejects the others, so a config can
-// never claim a behaviour the binary does not have.
+// Features switches each mechanism on. All are off by default. Route,
+// compress, and guard are implemented; Validate rejects the other, so a
+// config can never claim a behaviour the binary does not have.
 type Features struct {
 	Route    bool `json:"route"`
 	Escalate bool `json:"escalate"`
@@ -300,10 +346,27 @@ func (c Config) Validate() error {
 		on   bool
 	}{
 		{"escalate", c.Features.Escalate},
-		{"compress", c.Features.Compress},
 	} {
 		if f.on {
 			errs = append(errs, fmt.Errorf("features.%s is not available in this version; set it to false", f.name))
+		}
+	}
+	if c.Features.Compress {
+		d := c.Compress.Digest
+		switch _, _, ok := c.DigestModel(); {
+		case ok:
+		case d.Local != "":
+			errs = append(errs, fmt.Errorf("compress.digest.local is %q, which is not an entry of local.models", d.Local))
+		default:
+			errs = append(errs, fmt.Errorf("features.compress needs a local model to write digests, and local.models has %d entries; add one, or name the one to use as compress.digest.local", len(c.Local.Models)))
+		}
+		if d.MinBytes < 0 || d.MaxSeconds < 0 {
+			errs = append(errs, errors.New("compress.digest.minBytes and maxSeconds cannot be negative"))
+		}
+		for i, tool := range d.Tools {
+			if strings.TrimSpace(tool) == "" {
+				errs = append(errs, fmt.Errorf("compress.digest.tools[%d] is empty; name a tool, such as \"Bash\"", i))
+			}
 		}
 	}
 	for i, pattern := range c.Guard.Patterns {

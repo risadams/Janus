@@ -74,9 +74,9 @@ func (p Prices) With(overrides Prices) Prices {
 	return out
 }
 
-// lookup finds the price for a model id. An id with a version suffix, such
+// Lookup finds the price for a model id. An id with a version suffix, such
 // as a dated snapshot, takes the price of the longest id it extends.
-func (p Prices) lookup(model string) (Price, bool) {
+func (p Prices) Lookup(model string) (Price, bool) {
 	if price, ok := p[model]; ok {
 		return price, true
 	}
@@ -94,7 +94,7 @@ func (p Prices) lookup(model string) (Price, bool) {
 // be worked out, unpriced says why and the cost is zero; callers must
 // report such requests as unknown rather than free.
 func (p Prices) Cost(model string, u Usage) (usd float64, unpriced string) {
-	price, ok := p.lookup(model)
+	price, ok := p.Lookup(model)
 	if !ok {
 		if model == "" {
 			return 0, "no model reported"
