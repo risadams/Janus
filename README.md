@@ -51,22 +51,27 @@ go install github.com/risadams/janus/cmd/janus@latest
 Or download a build. These commands find the newest release on the
 [releases page](https://github.com/risadams/Janus/releases), release
 candidates included, then download the build for macOS on Apple silicon,
-check it, and unpack it:
+and check its checksum:
 
 ```bash
 url=$(curl -s https://api.github.com/repos/risadams/Janus/releases | grep -m1 -o 'https://[^"]*_darwin_arm64\.tar\.gz')
 curl -LO "$url"
 curl -LO "${url%/*}/checksums.txt"
 shasum -a 256 -c checksums.txt --ignore-missing
-tar -xzf "${url##*/}"
-cd janus_*_darwin_arm64
 ```
 
 Each archive also carries a signed record of the workflow and commit that
-built it. With the GitHub CLI, check it before you run the binary:
+built it. If you have the GitHub CLI, check that too:
 
 ```bash
 gh attestation verify "${url##*/}" --repo risadams/Janus
+```
+
+Then unpack it:
+
+```bash
+tar -xzf "${url##*/}"
+cd janus_*_darwin_arm64
 ```
 
 For another machine, put its build in place of `darwin_arm64`:
