@@ -97,7 +97,7 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 	case plan.Backend.Name() == "local":
 		fmt.Fprintf(stdout, "Decision  local: %s answers, reported to the client as %s\n", plan.BackendModel, plan.ResponseModel)
 		fmt.Fprintf(stdout, "          changes on the way: %s\n", strings.Join(plan.Stages, ", "))
-		if plan.Else != nil {
+		if plan.Else != nil || plan.Fallback != nil {
 			fmt.Fprintf(stdout, "          if it cannot be reached or answers with an error, Claude answers instead\n")
 		}
 	default:
