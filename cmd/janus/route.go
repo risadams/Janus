@@ -83,6 +83,9 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 	localURL, _ := url.Parse(cfg.Local.BaseURL)
 	router := newRouter(cfg, backend.NewUpstream(upstreamURL, nil), backend.NewLocal(localURL, nil))
 	plan, refusal, trace := router.Explain(context.Background(), header, req)
+	if plan.Release != nil {
+		plan.Release() // only explaining: nothing is sent
+	}
 
 	for _, line := range trace {
 		fmt.Fprintf(stdout, "  %s\n", line)

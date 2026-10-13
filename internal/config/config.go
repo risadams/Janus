@@ -164,7 +164,17 @@ type LocalModel struct {
 	ContextTokens int `json:"contextTokens,omitempty"`
 	// TimeoutSeconds bounds one request. Zero means the default.
 	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
+	// MaxConcurrent is how many requests routing rules may have in flight
+	// to this model at once; a rule sends any more upstream. Zero means
+	// DefaultMaxConcurrent.
+	MaxConcurrent int `json:"maxConcurrent,omitempty"`
 }
+
+// DefaultMaxConcurrent is one request at a time. A local model runs
+// requests side by side in the machine's own memory, and on a 36 GB Mac two
+// parallel subagents took a 27B model past 31 GB wired within four minutes
+// (#128). A machine with room to spare can raise it.
+const DefaultMaxConcurrent = 1
 
 // Rule is one routing rule. The fields above Route are conditions, and a
 // request must meet every one that is set; a rule with none set matches
@@ -453,8 +463,8 @@ func (c Config) Validate() error {
 			errs = append(errs, errors.New("local.models has an entry with an empty name"))
 		case m.Model == "":
 			errs = append(errs, fmt.Errorf("local.models.%s.model is not set; give the id of a model in LM Studio", name))
-		case m.ContextTokens < 0 || m.TimeoutSeconds < 0:
-			errs = append(errs, fmt.Errorf("local.models.%s has a negative contextTokens or timeoutSeconds; use 0 for the default", name))
+		case m.ContextTokens < 0 || m.TimeoutSeconds < 0 || m.MaxConcurrent < 0:
+			errs = append(errs, fmt.Errorf("local.models.%s has a negative contextTokens, timeoutSeconds, or maxConcurrent; use 0 for the default", name))
 		}
 	}
 

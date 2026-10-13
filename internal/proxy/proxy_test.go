@@ -6,12 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/backend"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -648,5 +650,65 @@ func TestNarrowsAcceptEncodingOnMessagesOnly(t *testing.T) {
 		if joined := strings.Join(got, ", "); joined != c.want {
 			t.Errorf("%s: upstream saw Accept-Encoding %q, want %q", c.name, joined, c.want)
 		}
+	}
+}
+
+// A plan's Release is how a planner limits the requests in flight to a
+// backend (#128): it must run exactly once, and as soon as the backend is
+// done with the request, not when the fallback is.
+func TestPlanReleaseRunsOnceAndEarly(t *testing.T) {
+	answer := `{"type":"message","model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":1}}`
+	for _, c := range []struct {
+		name   string
+		trial  bool
+		accept bool
+	}{
+		{"relayed", false, false},
+		{"trial accepted", true, true},
+		{"trial rejected, then the fallback", true, false},
+	} {
+		var released atomic.Int32
+		var releasedWhenFallbackAsked int32 = -1
+		first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, answer)
+		}))
+		fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			releasedWhenFallbackAsked = released.Load()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, answer)
+		}))
+		firstURL, _ := url.Parse(first.URL)
+		fallbackURL, _ := url.Parse(fallback.URL)
+
+		plan := func(ctx context.Context, h http.Header, req *anthropic.Request) (Plan, *Refusal) {
+			p := Plan{Backend: backend.NewUpstream(firstURL, nil), Route: "local", Reason: "test",
+				Release: func() { released.Add(1) }}
+			if c.trial {
+				p.Else = &Plan{Backend: backend.NewUpstream(fallbackURL, nil), Route: "upstream", Reason: "fallback"}
+				p.Accept = func(Fetched) (bool, string) { return c.accept, "not good enough" }
+			}
+			return p, nil
+		}
+		reported := make(chan Exchange, 1)
+		front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(firstURL, nil), Plan: plan, Done: func(ex Exchange) { reported <- ex }}))
+
+		resp, err := plainClient.Post(front.URL+"/v1/messages", "application/json", strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		<-reported
+
+		if n := released.Load(); n != 1 {
+			t.Errorf("%s: Release ran %d times, want once", c.name, n)
+		}
+		if c.trial && !c.accept && releasedWhenFallbackAsked != 1 {
+			t.Errorf("%s: the fallback was asked before Release ran (released %d)", c.name, releasedWhenFallbackAsked)
+		}
+		front.Close()
+		first.Close()
+		fallback.Close()
 	}
 }

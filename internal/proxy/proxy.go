@@ -232,6 +232,11 @@ type Plan struct {
 	// FallBackOn says which response statuses count as this plan's backend
 	// failing. Nil means any error status, 400 and above.
 	FallBackOn func(status int) bool
+	// Release, when set, is called once when this plan's backend has
+	// finished with the request: its answer relayed, its trial judged, or
+	// the request abandoned or switched to a fallback. It is how a planner
+	// that limits the requests in flight to a backend gets its place back.
+	Release func()
 	// Accept, when set, makes this plan a trial. The backend's whole
 	// answer is held back and shown to Accept; the client gets it only if
 	// Accept passes it, and otherwise gets the fallback's answer, never
@@ -300,6 +305,23 @@ type exchangeState struct {
 	next *Plan
 	// resolve works out the plan's fallback.
 	resolve func() (Plan, bool)
+	// release frees what the current plan holds, if anything; see
+	// Plan.Release.
+	release func()
+}
+
+// hold takes on what plan holds, to be freed by releaseNow.
+func (s *exchangeState) hold(plan Plan) {
+	s.release = plan.Release
+}
+
+// releaseNow frees what the current plan holds, if it has not been freed.
+func (s *exchangeState) releaseNow() {
+	if s.release != nil {
+		release := s.release
+		s.release = nil
+		release()
+	}
 }
 
 // failed reports whether a status from a plan's backend counts as the
@@ -576,6 +598,11 @@ func New(opts Options) http.Handler {
 			r.Body = &teeBody{ReadCloser: r.Body, copy: requestBody}
 		}
 
+		// Whatever the plan holds is freed when the exchange ends at the
+		// latest; a trial and a switch to a fallback free it sooner.
+		state.hold(state.plan)
+		defer state.releaseNow()
+
 		base := context.WithValue(r.Context(), stateKey{}, state)
 		withTimeout := func(plan Plan) (context.Context, context.CancelFunc) {
 			if plan.Timeout > 0 {
@@ -655,6 +682,7 @@ func New(opts Options) http.Handler {
 			state.fallBack = func(w http.ResponseWriter, why string, fault bool) bool {
 				tried := state.plan
 				state.fallBack = nil
+				state.releaseNow() // the tried backend is done with the request
 				next := state.next
 				if next == nil {
 					resolved, ok := state.resolve()
@@ -668,6 +696,7 @@ func New(opts Options) http.Handler {
 						Why: why, Fault: fault, Duration: time.Since(start)}
 				}
 				state.plan = *next
+				state.hold(state.plan)
 				state.plan.Reason = fmt.Sprintf("%s: %s; sent %s", tried.Reason, why, state.plan.Backend.Name())
 
 				body, err := prepare(state.plan)
@@ -792,6 +821,7 @@ func New(opts Options) http.Handler {
 			// decide what the client receives.
 			tried := state.plan
 			got := Fetch(ctx, client, tried.Backend, r.Header, sending, trialLimit)
+			state.releaseNow() // the local model has given its whole answer
 			if r.Context().Err() != nil {
 				return // the client left while the local model was working
 			}
