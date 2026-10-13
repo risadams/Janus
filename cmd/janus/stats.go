@@ -62,14 +62,7 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	overrides := ledger.Prices{}
-	for model, p := range cfg.Pricing {
-		overrides[model] = ledger.Price{
-			Input: p.Input, Output: p.Output, CacheRead: p.CacheRead,
-			CacheWrite5m: p.CacheWrite5m, CacheWrite1h: p.CacheWrite1h,
-		}
-	}
-	report := ledger.Summarise(records, ledger.DefaultPrices.With(overrides))
+	report := ledger.Summarise(records, prices(cfg))
 	report.Malformed = malformed
 
 	if *asJSON {
@@ -260,6 +253,18 @@ func printDelegated(w io.Writer, rows []ledger.DelegatedRow) {
 		"  to itself Claude often searches a file and reads a little of it. Compare cost\n"+
 		"  per session with and without the tool to see what was really saved. Time is\n"+
 		"  the median per call.\n")
+}
+
+// prices is the price table janus ships with, as the config corrects it.
+func prices(cfg config.Config) ledger.Prices {
+	overrides := ledger.Prices{}
+	for model, p := range cfg.Pricing {
+		overrides[model] = ledger.Price{
+			Input: p.Input, Output: p.Output, CacheRead: p.CacheRead,
+			CacheWrite5m: p.CacheWrite5m, CacheWrite1h: p.CacheWrite1h,
+		}
+	}
+	return ledger.DefaultPrices.With(overrides)
 }
 
 // printTransforms reports what each transform saved, beside what the

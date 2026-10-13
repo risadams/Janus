@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/risadams/janus/internal/digest"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/worker"
 )
@@ -80,7 +81,7 @@ func TestMCPServesAskFilesEndToEnd(t *testing.T) {
 	if info := replies["1"]["serverInfo"].(map[string]any); info["name"] != "janus" {
 		t.Errorf("serverInfo = %+v", info)
 	}
-	if tools := replies["2"]["tools"].([]any); len(tools) != 1 || tools[0].(map[string]any)["name"] != "ask_files" {
+	if tools := replies["2"]["tools"].([]any); len(tools) != 2 || tools[0].(map[string]any)["name"] != "ask_files" || tools[1].(map[string]any)["name"] != "tool_output" {
 		t.Errorf("tools = %+v", replies["2"]["tools"])
 	}
 	text := replies["3"]["content"].([]any)[0].(map[string]any)["text"].(string)
@@ -109,6 +110,36 @@ func TestMCPServesAskFilesEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "serving tools on qwen/qwen3.8-27b (janus-local)") {
 		t.Errorf("stderr = %q", stderr.String())
+	}
+}
+
+// The proxy stores originals under logging.dir; janus mcp, started by
+// Claude Code in a project directory, must find them there.
+func TestMCPFetchesADigestedOriginal(t *testing.T) {
+	cfgPath, project := mcpFixture(t)
+	store := digest.NewStore(filepath.Join(filepath.Dir(cfgPath), "logs", "originals"), 7)
+	id, err := store.Put("ok  pkg/a\nFAIL pkg/b: undefined: Foo\nok  pkg/c\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tool_output","arguments":{"id":"` + id + `","pattern":"FAIL"}}}`,
+	}, "\n") + "\n"
+	var stdout, stderr bytes.Buffer
+	if code := runMCP([]string{"-config", cfgPath, "-root", project}, strings.NewReader(in), &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d\n%s", code, stderr.String())
+	}
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	var reply struct {
+		Result struct {
+			Content []struct{ Text string }
+			IsError bool
+		}
+	}
+	json.Unmarshal([]byte(lines[len(lines)-1]), &reply)
+	if reply.Result.IsError || len(reply.Result.Content) != 1 || reply.Result.Content[0].Text != "     2\tFAIL pkg/b: undefined: Foo\n" {
+		t.Errorf("reply = %+v", reply.Result)
 	}
 }
 

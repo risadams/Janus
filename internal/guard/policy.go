@@ -118,6 +118,14 @@ type textRef struct{ message, block int }
 // Protected reports whether the request holds local-only content.
 func (m Match) Protected() bool { return len(m.results) > 0 || len(m.texts) > 0 }
 
+// Covers reports whether one block of the request holds content the policy
+// protects: the result of a call that named a protected path, a text with
+// a marker, or a tool result quoting a protected file.
+func (m Match) Covers(message, block int, toolUseID string) bool {
+	ref := textRef{message, block}
+	return (toolUseID != "" && m.results[toolUseID] != "") || m.texts[ref] != "" || m.lines[ref]
+}
+
 // Any reports whether there is anything at all to keep from the upstream.
 func (m Match) Any() bool { return m.Protected() || len(m.lines) > 0 }
 

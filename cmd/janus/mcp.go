@@ -19,6 +19,7 @@ import (
 
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/config"
+	"github.com/risadams/janus/internal/digest"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/mcp"
 	"github.com/risadams/janus/internal/worker"
@@ -107,7 +108,10 @@ func runMCP(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// janus too, and a read from standard input cannot be interrupted, so
 	// the wait is for whichever comes first.
 	served := make(chan error, 1)
-	go func() { served <- mcp.Serve(ctx, stdin, stdout, "janus", version, w.Tools()) }()
+	// tool_output fetches the originals of tool results the proxy
+	// digested; it reads them from where the proxy keeps them.
+	tools := append(w.Tools(), digest.Tool(digest.NewStore(filepath.Join(logDir, "originals"), cfg.Logging.RetainDays)))
+	go func() { served <- mcp.Serve(ctx, stdin, stdout, "janus", version, tools) }()
 	select {
 	case err := <-served:
 		if err != nil {

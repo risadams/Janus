@@ -51,6 +51,20 @@ Also:
 
 Thinking that Anthropic signed is never touched.
 
+## With compression on
+
+`features.compress` changes requests going upstream. See
+[Compression](CONFIG.md#compression).
+
+| Stage | What changes | Why |
+| --- | --- | --- |
+| `digest` | A tool result over the size threshold is replaced by a digest the local model wrote, headed `[janus: a local model digested this ... output ...]` with the id that fetches the original | The result is sent again on every later turn of the conversation; the digest is far smaller |
+
+The same result is sent in the same form on every turn, so prompt caching
+is unaffected. Errors, images, and content the local-only policy covers
+are never digested. The ledger's `transforms` field records each digest
+and what it saved.
+
 ## With the guard on
 
 `features.guard` alone changes nothing: it looks, and records what it

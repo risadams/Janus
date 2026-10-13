@@ -108,7 +108,26 @@ func TestValidate(t *testing.T) {
 		{"listen without port", func(c *Config) { c.Listen = "127.0.0.1" }, "host:port"},
 		{"upstream missing", func(c *Config) { c.Upstream.BaseURL = "" }, "upstream.baseUrl is not set"},
 		{"local not a url", func(c *Config) { c.Local.BaseURL = "studio.local:1234" }, "local.baseUrl"},
-		{"unbuilt feature switched on", func(c *Config) { c.Features.Compress = true }, "features.compress is not available"},
+		{"unbuilt feature switched on", func(c *Config) { c.Features.Escalate = true }, "features.escalate is not available"},
+		{"compress with no local model", func(c *Config) { c.Features.Compress = true }, "features.compress needs a local model"},
+		{"compress with the only local model", func(c *Config) {
+			c.Features.Compress = true
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "qwen/qwen3.8-27b"}}
+		}, ""},
+		{"compress naming a model that is not there", func(c *Config) {
+			c.Features.Compress = true
+			c.Local.Models = map[string]LocalModel{"a": {Model: "x"}, "b": {Model: "y"}}
+			c.Compress.Digest.Local = "c"
+		}, `compress.digest.local is "c"`},
+		{"compress with several models and none named", func(c *Config) {
+			c.Features.Compress = true
+			c.Local.Models = map[string]LocalModel{"a": {Model: "x"}, "b": {Model: "y"}}
+		}, "local.models has 2 entries"},
+		{"compress with an empty tool name", func(c *Config) {
+			c.Features.Compress = true
+			c.Local.Models = map[string]LocalModel{"a": {Model: "x"}}
+			c.Compress.Digest.Tools = []string{"Bash", " "}
+		}, "compress.digest.tools[1] is empty"},
 		{"guard on", func(c *Config) { c.Features.Guard = true }, ""},
 		{"guard with patterns", func(c *Config) {
 			c.Features.Guard = true

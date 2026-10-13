@@ -30,11 +30,14 @@ import (
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/capture"
 	"github.com/risadams/janus/internal/config"
+	"github.com/risadams/janus/internal/digest"
 	"github.com/risadams/janus/internal/guard"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
 	"github.com/risadams/janus/internal/route"
 	"github.com/risadams/janus/internal/shadow"
+	"github.com/risadams/janus/internal/transform"
+	"github.com/risadams/janus/internal/worker"
 )
 
 // version is overridden at build time with
@@ -150,6 +153,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 			}
 			keepLocal = planner.LocalOnly(cfg.Guard.LocalOnly.Local)
 		}
+	}
+
+	if cfg.Features.Compress {
+		if router == nil {
+			// Compressing without routing: everything goes upstream, as
+			// it would with no router, and only the transforms apply.
+			router = &route.Router{Upstream: upstream, Local: local}
+			plan = router.Plan
+		}
+		router.Transforms = newPipeline(cfg, local, policy, logger)
 	}
 
 	handler := proxy.New(proxy.Options{
@@ -312,6 +325,44 @@ func scanForSecrets(detector *guard.Detector, ex proxy.Exchange) (guard.Report, 
 	return detector.ScanRequest(req), true
 }
 
+// newPipeline builds the transforms for features.compress: for now, the
+// digest of large tool results. Validate has already established that
+// there is a local model to write them.
+func newPipeline(cfg config.Config, local *backend.Local, policy *guard.Policy, logger *log.Logger) *transform.Pipeline {
+	d := cfg.Compress.Digest
+	_, model, _ := cfg.DigestModel()
+	seconds, minBytes := d.MaxSeconds, d.MinBytes
+	if seconds == 0 {
+		seconds = config.DefaultDigestSeconds
+	}
+	if minBytes == 0 {
+		minBytes = config.DefaultDigestMinBytes
+	}
+	digester := &digest.Digest{
+		Model:    &worker.Model{Local: local, ID: model.Model, Timeout: time.Duration(seconds) * time.Second},
+		Store:    digest.NewStore(filepath.Join(cfg.Logging.Dir, "originals"), cfg.Logging.RetainDays),
+		MinBytes: minBytes,
+		Tools:    d.Tools,
+		Logf:     logger.Printf,
+	}
+	if policy != nil {
+		digester.Protected = func(req *anthropic.Request, message, block int, toolUseID string) bool {
+			return policy.Check(req).Covers(message, block, toolUseID)
+		}
+	}
+
+	pipeline := transform.New(digester)
+	table := prices(cfg)
+	pipeline.Pricing = func(model string) (transform.Rates, bool) {
+		p, ok := table.Lookup(model)
+		return transform.Rates{Read: p.CacheRead, Write5m: p.CacheWrite5m, Write1h: p.CacheWrite1h}, ok
+	}
+	pipeline.Notify = func(name, why string) {
+		logger.Printf("transform %s may no longer change what was already sent: %s", name, why)
+	}
+	return pipeline
+}
+
 // newPolicy builds the local-only policy from the config, or nil if it
 // protects nothing. Validate has already established that it compiles.
 func newPolicy(cfg config.Config) *guard.Policy {
@@ -349,6 +400,13 @@ func formatExchange(ex proxy.Exchange) string {
 	}
 	if ex.Fault != "" {
 		line += " [fault: " + ex.Fault + "]"
+	}
+	// Transforms are noted on the turn that decides something; later turns
+	// carry the same output without comment.
+	for _, e := range ex.Transforms {
+		if e.Rewritten+e.Revised > 0 {
+			line += fmt.Sprintf(" [%s: %d rewritten, %d revised, about %d tokens fewer]", e.Name, e.Rewritten, e.Revised, e.Tokens)
+		}
 	}
 	if ex.Unread != "" {
 		return line + " response not read: " + ex.Unread
@@ -496,6 +554,20 @@ func printBanner(w io.Writer, cfg config.Config, addr string) {
 		} else {
 			fmt.Fprintf(w, "  Local-only  %s: withheld from anything sent upstream\n", what)
 		}
+	}
+	if cfg.Features.Compress {
+		d := cfg.Compress.Digest
+		minBytes := d.MinBytes
+		if minBytes == 0 {
+			minBytes = config.DefaultDigestMinBytes
+		}
+		which := "tool results"
+		if len(d.Tools) > 0 {
+			which = strings.Join(d.Tools, ", ") + " results"
+		}
+		_, model, _ := cfg.DigestModel()
+		fmt.Fprintf(w, "  Compress    %s over %d bytes are digested by %s; originals kept in %s for janus mcp's tool_output\n",
+			which, minBytes, model.Model, filepath.Join(cfg.Logging.Dir, "originals"))
 	}
 	fmt.Fprintf(w, "  Ledger      %s\n", filepath.Join(cfg.Logging.Dir, "ledger"))
 	if cfg.Logging.Capture {

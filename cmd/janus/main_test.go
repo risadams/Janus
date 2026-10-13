@@ -18,6 +18,7 @@ import (
 	"github.com/risadams/janus/internal/guard"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
+	"github.com/risadams/janus/internal/transform"
 )
 
 func TestVersionLine(t *testing.T) {
@@ -143,6 +144,18 @@ func TestFormatExchange(t *testing.T) {
 				ex.Fault = "could not reach upstream: dial tcp: lookup api.anthropic.com: no such host"
 			}),
 			"POST /v1/messages -> 502 (2.065s) [fault: could not reach upstream: dial tcp: lookup api.anthropic.com: no such host]",
+		},
+		"digested": {
+			with(func(ex *proxy.Exchange) {
+				ex.Transforms = []transform.Effect{{Name: "digest", Blocks: 2, Rewritten: 1, Tokens: 3373}}
+			}),
+			"POST /v1/messages -> 200 (2.065s) [digest: 1 rewritten, 0 revised, about 3373 tokens fewer]",
+		},
+		"carried, not decided": {
+			with(func(ex *proxy.Exchange) {
+				ex.Transforms = []transform.Effect{{Name: "digest", Blocks: 1, Tokens: 3000}}
+			}),
+			"POST /v1/messages -> 200 (2.065s)",
 		},
 		"unreadable encoding": {
 			with(func(ex *proxy.Exchange) { ex.Unread = "content-encoding br" }),

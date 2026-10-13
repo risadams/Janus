@@ -26,7 +26,9 @@ the defaults below and carries on.
 | `features.route` | Switch routing on: aliases in `local.models` and the rules in `routing`. Off by default. |
 | `features.guard` | Look for secrets in requests going upstream, and record what is found. See [the guard](GUARD.md). |
 | `guard` | Optional. `redact` to replace secrets before they leave; your own patterns, an allow list, and the entropy search; and `localOnly`, which keeps named files, directories, and marked content from going upstream at all. See [the guard](GUARD.md). |
-| `features.escalate`, `features.compress` | Reserved. Janus refuses to start if either is true. Local-first routing is a rule, not a feature switch. |
+| `features.compress` | Rewrite requests going upstream to send fewer tokens: large tool results are replaced by a digest the local model writes. Needs a local model in `local.models` and `janus mcp` added to Claude Code. See [Compression](#compression). |
+| `compress` | Optional. Settings for `features.compress`; see below. |
+| `features.escalate` | Reserved. Janus refuses to start if it is true. Local-first routing is a rule, not a feature switch. |
 | `logging.dir` | Where the ledger and captures are written. See [the ledger and captures](LEDGER.md). |
 | `logging.capture` | Save every request and response in full. On by default. Captures contain your prompts and code. |
 | `logging.retainDays` | Delete captures older than this. `0` keeps them forever. |
@@ -373,6 +375,53 @@ did not match, and the decision. It asks LM Studio about the model, as a
 live request would, and sends nothing else anywhere. A request body does
 not carry its headers, so the class is read from the billing line Claude
 Code puts at the top of the system prompt; `-class` overrides it.
+
+## Compression
+
+With `features.compress` on, a tool result going upstream that is larger
+than a threshold is replaced by a digest the local model writes: errors,
+paths, identifiers, numbers, and the outcome kept, repetition and progress
+noise dropped. The original is kept in `<logging.dir>/originals`, and the
+digest tells Claude how to get it back with the `tool_output` tool of
+`janus mcp`.
+
+```json
+{
+  "features": { "compress": true },
+  "local": { "models": { "janus-local": { "model": "qwen/qwen3.8-27b" } } },
+  "compress": {
+    "digest": { "local": "janus-local", "minBytes": 4000, "tools": ["Bash"], "maxSeconds": 30 }
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `compress.digest.local` | The `local.models` entry that writes digests. May be left out when there is only one. |
+| `compress.digest.minBytes` | The smallest tool result digested. Default 4,000 bytes, about 1,300 tokens. |
+| `compress.digest.tools` | Digest only the results of these tools, such as `["Bash"]`. Default: any tool. |
+| `compress.digest.maxSeconds` | How long the local model gets per digest. The turn waits meanwhile; past it the result goes as it is. Default 30. |
+
+What it will and will not do:
+
+- **Only a result Claude can get back is digested.** The request must offer
+  a tool named `mcp__<server>__tool_output`, which it does once `janus mcp`
+  is added to Claude Code, as in [the workers recipe](recipes/workers.md).
+  Without it, results go as they are and the console says why.
+- **Only new results.** A result is digested the first time it is sent, and
+  sent in the same form on every later turn, so the prompt cache holds. See
+  [the ledger](LEDGER.md#transforms) for how the savings are counted.
+- **Not errors, images, or protected content.** A result marked as an error
+  is what the next turn is about. Content the local-only policy covers is
+  never digested, because a paraphrase could slip past the policy.
+- **Originals hold tool output in full.** They are readable by their owner
+  only, kept whether or not `logging.capture` is on, and deleted after
+  `logging.retainDays`.
+- **It costs time.** Each digest holds its turn up while the local model
+  writes it; `maxSeconds` bounds that.
+
+Without `features.route`, compression still works: every request goes
+upstream, and only the digest applies.
 
 ## Pricing
 
