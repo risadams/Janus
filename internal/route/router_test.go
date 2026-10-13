@@ -16,6 +16,7 @@ import (
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/guard"
 	"github.com/risadams/janus/internal/proxy"
+	"github.com/risadams/janus/internal/transform"
 )
 
 const modelList = `{"data":[
@@ -1450,5 +1451,45 @@ func TestRedactionAppliesToUpstreamOnly(t *testing.T) {
 	localSaw, upstreamSaw, ex = run(map[string]string{"X-Claude-Code-Session-Id": "s"})
 	if localSaw != "" || strings.Contains(upstreamSaw, key) || !strings.Contains(upstreamSaw, "JANUS_REDACTED_") || ex.Guard == nil || ex.Guard.Replaced != 1 {
 		t.Errorf("upstream route: upstream saw key=%v, guard=%+v", strings.Contains(upstreamSaw, key), ex.Guard)
+	}
+}
+
+// hush rewrites every text block, so a test can see where transforms ran.
+type hush struct{}
+
+func (hush) Name() string { return "hush" }
+
+func (hush) Rewrite(at transform.Position, b anthropic.Block) (anthropic.Block, bool) {
+	if b.Type != "text" {
+		return b, false
+	}
+	return b.With("text", json.RawMessage(`"(hushed)"`)), true
+}
+
+func TestTransformsRewriteWhatGoesUpstream(t *testing.T) {
+	r := router(nil, nil)
+	r.Transforms = transform.New(hush{})
+	plan, _, trace := r.Explain(context.Background(), subagentHeader(), parse(t, opusRequest))
+
+	if plan.Backend.Name() != "upstream" || !strings.Contains(string(plan.Body), "(hushed)") || strings.Join(plan.Stages, ",") != "hush" {
+		t.Errorf("plan = %s %v %s, want upstream, rewritten by hush", plan.Backend.Name(), plan.Stages, plan.Body)
+	}
+	if !strings.Contains(strings.Join(trace, "\n"), "rewritten to send fewer tokens, by hush") {
+		t.Errorf("trace does not say the request was rewritten:\n%s", strings.Join(trace, "\n"))
+	}
+}
+
+func TestTransformsLeaveTheLocalAttemptAlone(t *testing.T) {
+	local, _ := lmStudio(t, nil)
+	r := router(local, nil)
+	r.Transforms = transform.New(hush{})
+	r.Rules = []Rule{{Route: RouteEscalate, Local: qwen["janus-local"]}}
+	plan, _, _ := r.Explain(context.Background(), subagentHeader(), parse(t, opusRequest))
+
+	if plan.Backend.Name() != "local" || strings.Contains(string(plan.Body), "(hushed)") {
+		t.Errorf("the local attempt was rewritten: %s", plan.Body)
+	}
+	if e := plan.Else; e == nil || !strings.Contains(string(e.Body), "(hushed)") || strings.Join(e.Stages, ",") != "hush" {
+		t.Errorf("the upstream fallback was not rewritten: %+v", e)
 	}
 }

@@ -299,3 +299,27 @@ func TestRealCaptures(t *testing.T) {
 	}
 	t.Logf("checked %d real requests", len(files))
 }
+
+func TestBlockWithAndWithout(t *testing.T) {
+	b, err := NewBlock([]byte(`{"type":"tool_result","tool_use_id":"t1","content":"ok","cache_control":{"type":"ephemeral"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	without := b.Without("cache_control")
+	if got, want := string(without.Raw()), `{"type":"tool_result","tool_use_id":"t1","content":"ok"}`; got != want {
+		t.Errorf("Without:\n got %s\nwant %s", got, want)
+	}
+	if without.HasCacheControl() {
+		t.Error("HasCacheControl after Without")
+	}
+	if again := without.Without("cache_control"); &again.Raw()[0] != &without.Raw()[0] {
+		t.Error("Without a field the block lacks re-encoded it")
+	}
+	cc, _ := b.Field("cache_control")
+	if got := string(without.With("cache_control", cc).Raw()); got != string(b.Raw()) {
+		t.Errorf("With restored\n got %s\nwant %s", got, b.Raw())
+	}
+	if got, want := string(b.With("content", []byte(`"short"`)).Raw()), `{"type":"tool_result","tool_use_id":"t1","content":"short","cache_control":{"type":"ephemeral"}}`; got != want {
+		t.Errorf("With in place:\n got %s\nwant %s", got, want)
+	}
+}

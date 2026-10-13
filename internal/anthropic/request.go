@@ -283,6 +283,31 @@ func (b Block) HasCacheControl() bool {
 	return ok
 }
 
+// With returns a copy of the block with one field set, in place if the
+// block already had it and at the end if not. Every other field is kept.
+func (b Block) With(key string, val json.RawMessage) Block {
+	b.members = set(b.members, key, val)
+	b.raw = encodeObject(b.members)
+	return b
+}
+
+// Without returns a copy of the block without one field. A block that did
+// not have it is returned as it was, bytes included.
+func (b Block) Without(key string) Block {
+	kept := make([]member, 0, len(b.members))
+	for _, m := range b.members {
+		if m.key != key {
+			kept = append(kept, m)
+		}
+	}
+	if len(kept) == len(b.members) {
+		return b
+	}
+	b.members = kept
+	b.raw = encodeObject(kept)
+	return b
+}
+
 // Typed views of the block types janus reads. Decode a Block into one of
 // these after checking its Type.
 type (
