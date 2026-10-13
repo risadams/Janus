@@ -267,6 +267,24 @@ func TestDoctorChecksRoutedModels(t *testing.T) {
 		}
 	}
 
+	// With compression on, the digest model is checked whether or not
+	// routing is.
+	for name, c := range map[string]struct {
+		model    string
+		wantCode int
+		want     string
+	}{
+		"loaded":           {"qwen/qwen3.8-27b", 0, `ok compress digests are written by "janus-local", qwen/qwen3.8-27b, loaded`},
+		"not loaded":       {"gemma-4-e4b", 0, `warn compress digests are written by "janus-local", gemma-4-e4b, which is not loaded`},
+		"not in LM Studio": {"no-such-model", 1, `fail compress digests are written by "janus-local", no-such-model, which LM Studio does not have`},
+	} {
+		out, code, _ := doctor(t, up.URL, lms.URL, map[string]any{"features": map[string]any{"compress": true},
+			"local": map[string]any{"baseUrl": lms.URL, "models": map[string]any{"janus-local": map[string]any{"model": c.model}}}})
+		if code != c.wantCode || !strings.Contains(strings.Join(strings.Fields(out), " "), c.want) {
+			t.Errorf("compress, %s: exit %d (want %d), output missing %q\n%s", name, code, c.wantCode, c.want, out)
+		}
+	}
+
 	// With routing off, configured models are not checked: they are not used.
 	out, _, _ := doctor(t, up.URL, lms.URL, map[string]any{"local": map[string]any{"baseUrl": lms.URL, "models": map[string]any{"x": map[string]any{"model": "no-such-model"}}}})
 	if strings.Contains(out, "route") && strings.Contains(out, "no-such-model") {

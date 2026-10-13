@@ -128,9 +128,11 @@ func checkUpstream(client *http.Client, base string) finding {
 	return finding{"ok", "upstream", fmt.Sprintf("%s answered in %s", base, time.Since(start).Round(time.Millisecond))}
 }
 
-// checkLocal looks at LM Studio, and at each model a request can be
-// routed to. An unreachable LM Studio is a warning while routing is off,
-// since janus then runs without it.
+// checkLocal looks at LM Studio, at each model a request can be routed
+// to, and, with compression on, at the model that writes digests. An
+// unreachable LM Studio is a warning while routing is off, since janus then
+// runs without it: with compression alone, results are just sent
+// undigested.
 func checkLocal(client *http.Client, cfg config.Config) []finding {
 	base := cfg.Local.BaseURL
 	u, _ := url.Parse(base) // Validate has established that this parses
@@ -163,6 +165,19 @@ func checkLocal(client *http.Client, cfg config.Config) []finding {
 		findings = append(findings, finding{"warn", "local", fmt.Sprintf("%s has %d models and none loaded; the first request to one will wait while it loads", base, len(models))})
 	} else {
 		findings = append(findings, finding{"ok", "local", fmt.Sprintf("%s, loaded: %s", base, strings.Join(loaded, ", "))})
+	}
+	if cfg.Features.Compress {
+		name, want, _ := cfg.DigestModel() // Validate has established that it exists
+		m, found := byID[want.Model]
+		what := fmt.Sprintf("digests are written by %q, %s", name, want.Model)
+		switch {
+		case !found:
+			findings = append(findings, finding{"fail", "compress", fmt.Sprintf("%s, which LM Studio does not have.\nIt has: %s", what, strings.Join(all, ", "))})
+		case !m.Loaded:
+			findings = append(findings, finding{"warn", "compress", what + ", which is not loaded; the first digest will wait while it loads"})
+		default:
+			findings = append(findings, finding{"ok", "compress", what + ", loaded"})
+		}
 	}
 	if !cfg.Features.Route {
 		return findings
