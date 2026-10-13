@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -77,6 +78,44 @@ func TestFromExchange(t *testing.T) {
 	u := rec.Usage
 	if u == nil || u.Input != 2 || u.Output != 118 || *u.CacheRead != 18327 || *u.CacheWrite != 0 || *u.Thinking != 40 || u.CacheWrite5m != nil {
 		t.Errorf("usage = %+v", u)
+	}
+}
+
+// A rate limit or a server error keeps what the API said about when it
+// would answer again, for the response and for an upstream attempt given
+// up on. Nothing else from the headers is kept.
+func TestLimitsAreKeptForRateLimitsAndServerErrors(t *testing.T) {
+	h := http.Header{}
+	h.Set("Retry-After", "17")
+	h.Set("X-Should-Retry", "true")
+	h.Set("Anthropic-Ratelimit-Unified-Status", "rejected")
+	h.Set("Anthropic-Ratelimit-Unified-Reset", "1760385600")
+	h.Set("Set-Cookie", "session=secret")
+	h.Set("Request-Id", "req_1")
+	want := map[string]string{"retry-after": "17", "x-should-retry": "true",
+		"anthropic-ratelimit-unified-status": "rejected", "anthropic-ratelimit-unified-reset": "1760385600"}
+
+	limited := exchange()
+	limited.Status, limited.ResponseHeader = 429, h
+	if got := FromExchange(limited).Limits; !reflect.DeepEqual(got, want) {
+		t.Errorf("429 limits = %v, want %v", got, want)
+	}
+	ok := exchange()
+	ok.ResponseHeader = h
+	if got := FromExchange(ok).Limits; got != nil {
+		t.Errorf("a 200 kept limits: %v", got)
+	}
+
+	stoodIn := exchange()
+	stoodIn.Backend = "local"
+	stoodIn.Attempt = &proxy.Attempt{Backend: "upstream", Why: "upstream answered HTTP 429", Fault: true, ResponseHeader: h}
+	rec := FromExchange(stoodIn)
+	if rec.Attempt == nil || !reflect.DeepEqual(rec.Attempt.Limits, want) {
+		t.Errorf("attempt = %+v", rec.Attempt)
+	}
+	line, _ := json.Marshal(rec)
+	if strings.Contains(string(line), "secret") || strings.Contains(string(line), "req_1") {
+		t.Errorf("the record kept other headers: %s", line)
 	}
 }
 

@@ -1303,6 +1303,31 @@ func TestLocalStandsInWhenClaudeIsDown(t *testing.T) {
 	}
 }
 
+// The rate limit given up on is kept on the attempt, headers and body, so
+// the record says what Claude said about when it would answer again.
+func TestTheFailedAnswerIsKeptWhenLocalStandsIn(t *testing.T) {
+	errBody := `{"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your account's rate limit. Please try again later."}}`
+	upstream := func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Retry-After", "3600")
+		w.Header().Set("Anthropic-Ratelimit-Unified-Status", "rejected")
+		w.WriteHeader(429)
+		io.WriteString(w, errBody)
+	}
+	status, _, _, ex, _ := claudeDown(t, upstream, nil, opusRequest)
+	a := ex.Attempt
+	if status != 200 || a == nil || a.Backend != "upstream" {
+		t.Fatalf("status %d, attempt %+v", status, a)
+	}
+	if a.ResponseHeader.Get("Retry-After") != "3600" || a.ResponseHeader.Get("Anthropic-Ratelimit-Unified-Status") != "rejected" {
+		t.Errorf("attempt header = %v", a.ResponseHeader)
+	}
+	if string(a.ResponseBody) != errBody {
+		t.Errorf("attempt body = %q", a.ResponseBody)
+	}
+}
+
 // Errors that mean the request was wrong, not that Claude was down, reach
 // the client untouched and the local model is never consulted.
 func TestRequestErrorsFromClaudeAreNotStoodInFor(t *testing.T) {

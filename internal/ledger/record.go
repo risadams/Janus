@@ -1,6 +1,8 @@
 package ledger
 
 import (
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
@@ -40,9 +42,13 @@ type Record struct {
 	// Outcome is one of the Outcome constants.
 	Outcome string `json:"outcome"`
 	// Error is the API's error type when Outcome is api_error.
-	Error      string `json:"error,omitempty"`
-	TTFBMs     int64  `json:"ttfb_ms"`
-	DurationMs int64  `json:"duration_ms"`
+	Error string `json:"error,omitempty"`
+	// Limits are the response's headers about rate limits and retrying,
+	// for a rate limit or a server error: what the API said about when
+	// it would answer again.
+	Limits     map[string]string `json:"limits,omitempty"`
+	TTFBMs     int64             `json:"ttfb_ms"`
+	DurationMs int64             `json:"duration_ms"`
 
 	Request  *Request  `json:"request,omitempty"`
 	Response *Response `json:"response,omitempty"`
@@ -180,6 +186,9 @@ type Attempt struct {
 	// Usage is what a rejected attempt spent on the local model. For an
 	// accepted one, see the record's own usage.
 	Usage *Usage `json:"usage,omitempty"`
+	// Limits are, for an upstream that answered with a rate limit or a
+	// server error, its headers about rate limits and retrying.
+	Limits map[string]string `json:"limits,omitempty"`
 }
 
 // Verdicts of an attempt.
@@ -250,6 +259,27 @@ type Usage struct {
 	Speed string `json:"speed,omitempty"`
 }
 
+// Limits picks out of h the headers that say when the API will answer
+// again: Retry-After, X-Should-Retry, and every Anthropic-Ratelimit-*
+// header, by lower-case name. It is nil if there are none. They are kept
+// to learn whether they tell a rate limit that passes in seconds from one
+// that lasts hours, which would decide when a local stand-in should
+// answer (issue #150).
+func Limits(h http.Header) map[string]string {
+	var out map[string]string
+	for k, v := range h {
+		name := strings.ToLower(k)
+		if name != "retry-after" && name != "x-should-retry" && !strings.HasPrefix(name, "anthropic-ratelimit-") {
+			continue
+		}
+		if out == nil {
+			out = map[string]string{}
+		}
+		out[name] = strings.Join(v, ", ")
+	}
+	return out
+}
+
 // FromExchange builds the record for one proxied request.
 func FromExchange(ex proxy.Exchange) Record {
 	rec := Record{
@@ -275,6 +305,9 @@ func FromExchange(ex proxy.Exchange) Record {
 	if rec.Stages == nil {
 		rec.Stages = []string{}
 	}
+	if ex.Status == http.StatusTooManyRequests || ex.Status >= 500 {
+		rec.Limits = Limits(ex.ResponseHeader)
+	}
 	for _, e := range ex.Transforms {
 		rec.Transforms = append(rec.Transforms, Transform{
 			Name: e.Name, Blocks: e.Blocks, Rewritten: e.Rewritten, Revised: e.Revised, Declined: e.Declined,
@@ -283,7 +316,8 @@ func FromExchange(ex proxy.Exchange) Record {
 	}
 
 	if a := ex.Attempt; a != nil {
-		rec.Attempt = &Attempt{Backend: a.Backend, Model: a.Model, Why: a.Why, DurationMs: a.Duration.Milliseconds()}
+		rec.Attempt = &Attempt{Backend: a.Backend, Model: a.Model, Why: a.Why, DurationMs: a.Duration.Milliseconds(),
+			Limits: Limits(a.ResponseHeader)}
 		switch {
 		case a.Accepted:
 			rec.Attempt.Verdict, rec.Attempt.Why = VerdictAccepted, ""
