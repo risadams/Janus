@@ -83,6 +83,10 @@ type Exchange struct {
 	// dropped or the body did not match its own framing. Empty for a
 	// response that arrived whole, and for one the client abandoned.
 	Fault string
+	// NoFallback says why a plan's fallback was not used when its backend
+	// failed, and the failure was the client's answer: for a local
+	// stand-in, why the local model did not answer instead.
+	NoFallback string
 
 	// RequestBody is kept for Messages requests always, and for everything
 	// else only when Options.KeepBodies is set. ResponseBody is kept only
@@ -230,8 +234,9 @@ type Plan struct {
 	Else *Plan
 	// Fallback is Else worked out only when it is needed, for a fallback
 	// that costs something to plan. It reports false if there is nowhere
-	// to fall back to after all, and the failure then stands. Else, if
-	// set, takes precedence.
+	// to fall back to after all, and the failure then stands; the plan it
+	// returns then may have a Reason saying why, which is recorded. Else,
+	// if set, takes precedence.
 	Fallback func(ctx context.Context) (Plan, bool)
 	// FallBackOn says which response statuses count as this plan's backend
 	// failing. Nil means any error status, 400 and above.
@@ -317,6 +322,8 @@ type exchangeState struct {
 	next *Plan
 	// resolve works out the plan's fallback.
 	resolve func() (Plan, bool)
+	// noFallback is why resolve found no fallback, if it said.
+	noFallback string
 	// release frees what the current plan holds, if anything; see
 	// Plan.Release.
 	release func()
@@ -403,6 +410,9 @@ func New(opts Options) http.Handler {
 					return errBackendStatus(resp.StatusCode)
 				}
 				state.fallBack = nil
+				if state.noFallback != "" {
+					state.plan.Reason = fmt.Sprintf("%s: %s answered HTTP %d; %s", state.plan.Reason, state.plan.Backend.Name(), resp.StatusCode, state.noFallback)
+				}
 			}
 			if a := state.attempt; a != nil && !a.Accepted {
 				// Say so on the response, for anything that looks: this
@@ -689,7 +699,11 @@ func New(opts Options) http.Handler {
 				if state.plan.Else != nil {
 					return *state.plan.Else, true
 				}
-				return state.plan.Fallback(base)
+				next, ok := state.plan.Fallback(base)
+				if !ok && next.Reason != "" {
+					state.noFallback = next.Reason
+				}
+				return next, ok
 			}
 			// The plan may have a fallback. Record the attempt, switch to
 			// the fallback, and serve that.
@@ -701,6 +715,9 @@ func New(opts Options) http.Handler {
 				if next == nil {
 					resolved, ok := state.resolve()
 					if !ok {
+						if state.noFallback != "" {
+							state.plan.Reason = fmt.Sprintf("%s: %s; %s", tried.Reason, why, state.noFallback)
+						}
 						return false
 					}
 					next = &resolved
@@ -753,6 +770,7 @@ func New(opts Options) http.Handler {
 				Attempt:        state.attempt,
 				BackendFault:   state.backendFault,
 				Unread:         state.unread,
+				NoFallback:     state.noFallback,
 				ResponseHeader: state.responseHeader,
 			}
 			if g := state.guard; g != nil {

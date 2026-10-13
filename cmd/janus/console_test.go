@@ -104,6 +104,15 @@ func TestConsoleLines(t *testing.T) {
 			"main       Opus 5.5                ✗ 502 223ms\n" +
 				"          ↳ fault: could not reach upstream: dial tcp: lookup api.anthropic.com: no such host",
 		},
+		"no stand-in": {
+			consoleExchange(func(ex *proxy.Exchange) {
+				ex.Status, ex.Duration = 429, 505*time.Millisecond
+				ex.NoFallback = `no local stand-in: this request is about 281000 tokens, more than the 32768-token context of local model "qwen/qwen3.8-27b"`
+				ex.Summary = &anthropic.Summary{Complete: true, Error: &anthropic.APIError{Type: "rate_limit_error"}}
+			}),
+			"main       Opus 5.5                ✗ 429 505ms  rate limited\n" +
+				`          ↳ no local stand-in: this request is about 281000 tokens, more than the 32768-token context of local model "qwen/qwen3.8-27b"`,
+		},
 		"refused": {
 			consoleExchange(func(ex *proxy.Exchange) {
 				ex.Backend, ex.Status, ex.Duration, ex.Reason = "none", 403, 2*time.Millisecond, "local-only content and no local model"

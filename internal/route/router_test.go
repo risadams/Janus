@@ -1392,6 +1392,30 @@ func TestClaudesErrorStandsWhenLocalCannotHelp(t *testing.T) {
 	if ex.Backend != "upstream" || ex.Attempt != nil || ex.Summary == nil || ex.Summary.Error == nil || ex.Summary.Error.Type != "overloaded_error" {
 		t.Errorf("too large: exchange = backend %q attempt %+v summary %+v", ex.Backend, ex.Attempt, ex.Summary)
 	}
+	// The record says the stand-in was considered, and why it did not
+	// answer.
+	wantReason := "rule main: upstream answered HTTP 529; no local stand-in: this request is about "
+	if !strings.HasPrefix(ex.Reason, wantReason) || !strings.Contains(ex.Reason, `more than the 61696-token context of local model "qwen/qwen3.8-27b"`) {
+		t.Errorf("reason = %q", ex.Reason)
+	}
+	if !strings.HasPrefix(ex.NoFallback, "no local stand-in: this request is about ") {
+		t.Errorf("no fallback = %q", ex.NoFallback)
+	}
+
+	// Claude unreachable, and LM Studio's local model busy: the reason
+	// names both.
+	_, _, _, ex, _ = claudeDownWith(t, `{"data":[]}`, func(w http.ResponseWriter, r *http.Request) { panic(http.ErrAbortHandler) }, nil, opusRequest)
+	if !strings.Contains(ex.Reason, "could not reach upstream") || !strings.Contains(ex.Reason, `no local stand-in: LM Studio does not have local model "qwen/qwen3.8-27b"`) {
+		t.Errorf("unreachable: reason = %q", ex.Reason)
+	}
+}
+
+// A healthy answer from Claude says nothing about a stand-in.
+func TestNoStandInNoteWhenClaudeAnswers(t *testing.T) {
+	_, _, _, ex, _ := claudeDown(t, upstreamSays(200, `{"type":"message"}`), nil, opusRequest)
+	if ex.NoFallback != "" || strings.Contains(ex.Reason, "stand-in") {
+		t.Errorf("reason %q, no fallback %q", ex.Reason, ex.NoFallback)
+	}
 }
 
 // A model LM Studio has not loaded would be loaded for the request, at a
