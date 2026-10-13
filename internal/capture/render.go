@@ -55,6 +55,9 @@ func Render(ex proxy.Exchange) string {
 	if ex.Unread != "" {
 		fmt.Fprintf(&b, "- **Response not read:** %s\n", ex.Unread)
 	}
+	if ex.Fault != "" {
+		fmt.Fprintf(&b, "- **Fault:** %s\n", ex.Fault)
+	}
 	b.WriteString("\n")
 
 	writeHeaders(&b, ex)

@@ -226,6 +226,43 @@ func TestUpstreamUnreachable(t *testing.T) {
 	}
 }
 
+// The ledger and the capture must say why janus answered 502, which no
+// backend did: on 2026-10-12 nine of them said nothing (#95).
+func TestUpstreamUnreachableIsExplained(t *testing.T) {
+	dead := httptest.NewServer(http.NotFoundHandler())
+	u, _ := url.Parse(dead.URL)
+	dead.Close()
+	reported := make(chan Exchange, 1)
+	front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: func(ex Exchange) { reported <- ex }, KeepBodies: true}))
+	defer front.Close()
+
+	resp, err := plainClient.Post(front.URL+"/v1/messages", "application/json", strings.NewReader(`{"model":"m","messages":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	var ex Exchange
+	select {
+	case ex = <-reported:
+	case <-time.After(3 * time.Second):
+		t.Fatal("no exchange was reported for the request")
+	}
+	if !strings.HasPrefix(ex.Fault, "could not reach upstream: ") {
+		t.Errorf("Fault = %q, want why upstream could not be reached", ex.Fault)
+	}
+	if !ex.BackendFault {
+		t.Error("BackendFault is not set")
+	}
+	if !bytes.Equal(ex.ResponseBody, sent) {
+		t.Errorf("kept response body = %q, want the error janus sent: %q", ex.ResponseBody, sent)
+	}
+	if ct := ex.ResponseHeader.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("kept response Content-Type = %q, want application/json", ct)
+	}
+}
+
 // serve runs janus in front of upstream, makes one request, and returns the
 // response body with the Exchange janus reported for it.
 func serve(t *testing.T, upstream http.HandlerFunc, method, path string) ([]byte, Exchange) {

@@ -137,6 +137,13 @@ func TestFormatExchange(t *testing.T) {
 			}),
 			"POST /v1/messages -> 200 (2.065s) [after local tried for 9.3s: the local answer has no text and no tool call] claude-opus-5-5 end_turn in=2 out=9",
 		},
+		"upstream unreachable": {
+			with(func(ex *proxy.Exchange) {
+				ex.Status = 502
+				ex.Fault = "could not reach upstream: dial tcp: lookup api.anthropic.com: no such host"
+			}),
+			"POST /v1/messages -> 502 (2.065s) [fault: could not reach upstream: dial tcp: lookup api.anthropic.com: no such host]",
+		},
 		"unreadable encoding": {
 			with(func(ex *proxy.Exchange) { ex.Unread = "content-encoding br" }),
 			"POST /v1/messages -> 200 (2.065s) response not read: content-encoding br",
