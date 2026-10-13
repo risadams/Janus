@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/risadams/janus/internal/capture"
 	"github.com/risadams/janus/internal/config"
 	"github.com/risadams/janus/internal/guard"
+	"github.com/risadams/janus/internal/instance"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
 	"github.com/risadams/janus/internal/transform"
@@ -62,6 +64,51 @@ func TestRunReportsInvalidConfig(t *testing.T) {
 		if !strings.Contains(errOut.String(), want) {
 			t.Errorf("stderr = %q, missing %q", errOut.String(), want)
 		}
+	}
+}
+
+// A second Janus on a log folder already in use stops before listening and
+// says which Janus holds it.
+func TestRunRefusesALogFolderInUse(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, "janus.config.json")
+	os.WriteFile(cfgPath, []byte(`{"listen":"127.0.0.1:0"}`), 0o600)
+	held, err := instance.Acquire(filepath.Join(root, "logs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+	held.Describe("pid 4242, listening on http://127.0.0.1:8787")
+
+	var out, errOut bytes.Buffer
+	if code := run([]string{"-config", cfgPath}, &out, &errOut); code != 1 {
+		t.Errorf("exit code = %d, want 1", code)
+	}
+	for _, want := range []string{"another janus (pid 4242, listening on http://127.0.0.1:8787)", filepath.Join(root, "logs"), "Stop that one first", "logging.dir"} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Errorf("stderr = %q, missing %q", errOut.String(), want)
+		}
+	}
+	if strings.Contains(out.String(), "Listening") {
+		t.Errorf("printed a banner: %q", out.String())
+	}
+}
+
+func TestRunExplainsABusyPort(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	cfgPath := filepath.Join(t.TempDir(), "janus.config.json")
+	os.WriteFile(cfgPath, []byte(`{"listen":"`+ln.Addr().String()+`"}`), 0o600)
+
+	var out, errOut bytes.Buffer
+	if code := run([]string{"-config", cfgPath}, &out, &errOut); code != 1 {
+		t.Errorf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(errOut.String(), "perhaps a janus with a different log folder") {
+		t.Errorf("stderr = %q", errOut.String())
 	}
 }
 
