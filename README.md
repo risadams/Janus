@@ -7,6 +7,8 @@
 
 [![test](https://github.com/risadams/Janus/actions/workflows/test.yml/badge.svg)](https://github.com/risadams/Janus/actions/workflows/test.yml)
 
+**Documentation: [risadams.github.io/Janus](https://risadams.github.io/Janus/)**
+
 Janus is a small proxy that sits on your machine between Claude Code and
 the Anthropic API. Out of the box it forwards every request untouched and
 writes down what each one cost. Everything else is a switch you turn on

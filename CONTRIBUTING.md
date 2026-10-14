@@ -12,7 +12,9 @@ here saves a round trip on a pull request.
 - **Run the checks** CI runs: `gofmt -l .` (prints nothing), `go vet ./...`,
   and `go test -race ./...`. The suite is offline.
 - **Update the docs** that describe any behaviour you change, in the same
-  pull request.
+  pull request. They are Markdown in `docs/`, published as the
+  [docs site](https://risadams.github.io/Janus/); to preview it,
+  `cd docs-site && npm ci && npm start`. Its build fails on a broken link.
 - **Never commit captures, logs, or a config.** They hold prompts, code, and
   credentials.
 
