@@ -1,4 +1,9 @@
-# Janus
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/janus-lockup-dark.png">
+    <img src="docs/assets/janus-lockup.png" width="480" alt="Janus">
+  </picture>
+</h1>
 
 [![test](https://github.com/risadams/Janus/actions/workflows/test.yml/badge.svg)](https://github.com/risadams/Janus/actions/workflows/test.yml)
 
