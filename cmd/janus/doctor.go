@@ -153,7 +153,7 @@ func diagnoseUpstream(u *url.URL, err error) string {
 	case errors.As(err, &cert):
 		return fmt.Sprintf("the TLS certificate for %q is invalid: %s", host, cert.Error())
 	case errors.Is(err, context.DeadlineExceeded):
-		return fmt.Sprintf("it did not answer in time. A firewall may be dropping the connection, or the upstream is overloaded")
+		return "it did not answer in time. A firewall may be dropping the connection, or the upstream is overloaded"
 	case errors.As(err, &op) && isRefused(op.Err):
 		return fmt.Sprintf("nothing is listening on %q. Check the port in upstream.baseUrl", host)
 	default:
