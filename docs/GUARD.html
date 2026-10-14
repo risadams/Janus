@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">The guard | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/GUARD"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="The guard | Janus"><meta data-rh="true" name="description" content="The guard deals with secrets in requests on their way to Anthropic. It has"><meta data-rh="true" property="og:description" content="The guard deals with secrets in requests on their way to Anthropic. It has"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/GUARD"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/GUARD" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/GUARD" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"The guard","item":"https://risadams.github.io/Janus/docs/GUARD"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.4099ca97.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.ea8309b1.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.1d915a29.js" defer="defer"></script>
 </head>
 <body>
@@ -326,7 +326,7 @@ or tool result containing it is protected.</p>
 
 
 
-<table><thead><tr><th>Content</th><th>Why</th></tr></thead><tbody><tr><td>The whole result of a tool call that named a protected path</td><td><code>Read secrets/db.yaml</code>, <code>cat .env | head</code>, an MCP tool given the path. The path is looked for anywhere in the call&#x27;s arguments.</td></tr><tr><td>Any message text or tool result carrying a marker</td><td>The whole block is protected, not only the marker.</td></tr><tr><td>A line of other tool output that quotes a protected file</td><td>A search across the tree prints <code>secrets/db.yaml:2:...</code> without the call ever naming that file. Those lines go, and the lines of context around them; the rest of the output stays.</td></tr></tbody></table>
+<table><thead><tr><th>Content</th><th>Why</th></tr></thead><tbody><tr><td>The whole result of a tool call that named a protected path</td><td><code>Read secrets/db.yaml</code>, <code>cat .env | head</code>, an MCP tool given the path. For Claude Code&#x27;s own tools the path is looked for in the path arguments and the command; for any other tool, in every argument. What Write writes, what Edit replaces, a command&#x27;s description, and a heredoc a command only copies to a file or uses as an issue or commit text are not searched: they mention a path, they don&#x27;t read it.</td></tr><tr><td>Any message text or tool result carrying a marker</td><td>The whole block is protected, not only the marker.</td></tr><tr><td>A line of other tool output that quotes a protected file</td><td>A search across the tree prints <code>secrets/db.yaml:2:...</code> without the call ever naming that file. Those lines go, and the lines of context around them; the rest of the output stays.</td></tr></tbody></table>
 <p>A line that only names a protected file, as a directory listing does, is
 left alone: Claude can know the file exists.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-happens-to-it">What happens to it<a href="#what-happens-to-it" class="hash-link" aria-label="Direct link to What happens to it" title="Direct link to What happens to it" translate="no">​</a></h3>
@@ -391,6 +391,10 @@ nothing downstream of the file ever saw it.</li>
 prints the file name on a line of its own with the matches under it is
 not caught. Claude Code&#x27;s own Grep, <code>grep -r</code>, and <code>rg</code> when piped all
 use the recognised shape.</li>
+<li class=""><strong>A heredoc that may be code is searched as part of the command.</strong> If
+the command runs a shell or an interpreter, pipes the heredoc on, or
+runs a file a heredoc wrote, Janus can&#x27;t tell a mention from a read, so
+a protected path quoted in the heredoc still withholds the result.</li>
 <li class=""><strong>Paths with spaces in them</strong> are not recognised in a shell command or
 in search output. They are in a tool argument that is only the path.</li>
 <li class=""><strong>The system prompt and tool definitions</strong> are not checked for markers.
