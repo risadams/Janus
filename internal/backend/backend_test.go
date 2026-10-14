@@ -278,6 +278,60 @@ func TestNormalizeEdgeCases(t *testing.T) {
 	}
 }
 
+// After a tool search Claude Code sends the result as tool_reference
+// blocks, which LM Studio refuses: "request.messages.8.content.0.content.0.type:
+// Invalid literal value, expected \"text\"" (#169). They go to the local
+// model as text, and the rest of the tool result stays as it was.
+func TestNormalizeTurnsToolReferencesIntoText(t *testing.T) {
+	raw := `{"model":"claude-opus-5-5","tools":[{"name":"Bash"},{"name":"ToolSearch"}],"messages":[` +
+		`{"role":"user","content":"tag a release"},` +
+		`{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"ToolSearch","input":{"query":"select:Bash,TaskCreate"}},{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"git tag"}}]},` +
+		`{"role":"user","content":[` +
+		`{"type":"tool_result","tool_use_id":"t1","content":[{"type":"tool_reference","tool_name":"Bash"},{"type":"tool_reference","tool_name":"TaskCreate"}]},` +
+		`{"type":"tool_result","tool_use_id":"t2","content":"v0.9.0-rc.7"},` +
+		`{"type":"text","text":"go on"}]}]}`
+	req, err := anthropic.ParseRequest([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := req.Messages()
+
+	stages, err := Normalize(req, "qwen/qwen3.8-27b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(stages, ","); got != "set_model,tool_references_as_text" {
+		t.Errorf("stages = %s", got)
+	}
+	if strings.Contains(string(req.Bytes()), "tool_reference") {
+		t.Fatalf("tool_reference remains: %s", req.Bytes())
+	}
+	out, err := anthropic.ParseRequest(req.Bytes())
+	if err != nil {
+		t.Fatalf("normalised request does not parse: %v", err)
+	}
+	last := out.Messages()[2].Blocks()
+	var result anthropic.ToolResultBlock
+	last[0].Decode(&result)
+	content, _ := anthropic.ParseContent(result.Content)
+	var texts []string
+	for _, c := range content {
+		texts = append(texts, c.Type+": "+c.Text())
+	}
+	want := "text: Tool Bash is loaded and can be called.|text: Tool TaskCreate was found, but it cannot be called here."
+	if got := strings.Join(texts, "|"); got != want || result.ToolUseID != "t1" {
+		t.Errorf("tool result %s = %s\nwant %s", result.ToolUseID, got, want)
+	}
+	if string(last[1].Raw()) != `{"type":"tool_result","tool_use_id":"t2","content":"v0.9.0-rc.7"}` || last[2].Text() != "go on" {
+		t.Errorf("the other blocks changed: %s %s", last[1].Raw(), last[2].Raw())
+	}
+	for i := 0; i < 2; i++ {
+		if string(out.Messages()[i].Raw()) != string(before[i].Raw()) {
+			t.Errorf("messages[%d] changed", i)
+		}
+	}
+}
+
 func rename(t *testing.T, contentType, body string, chunk int) string {
 	t.Helper()
 	var src io.Reader = strings.NewReader(body)

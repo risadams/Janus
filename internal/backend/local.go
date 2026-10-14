@@ -149,6 +149,7 @@ const (
 	StageLiftTools    = "lift_tool_additions"
 	StageDropDeferred = "drop_deferred_tools"
 	StageFoldSystem   = "fold_system_messages"
+	StageToolRefs     = "tool_references_as_text"
 	// StageDropThinking is applied on the way upstream, not to the local
 	// model; see RepairForUpstream.
 	StageDropThinking = "drop_unsigned_thinking"
@@ -157,7 +158,7 @@ const (
 // Normalize rewrites a Claude Code request into one LM Studio accepts, and
 // returns the stages it applied.
 //
-// Four things change (docs/research/traffic.md, "Replay"):
+// Five things change (docs/research/traffic.md, "Replay"):
 //   - model becomes the local model's id; LM Studio would otherwise answer
 //     with whatever happens to be loaded
 //   - tool_addition blocks, which carry tool definitions inside messages
@@ -166,6 +167,9 @@ const (
 //   - system messages in the middle of the conversation are folded into
 //     the user message before them, since many models' chat templates
 //     refuse a system message anywhere but first (docs/research/models.md)
+//   - tool_reference blocks in tool results, which the Anthropic API
+//     expands after a tool search and LM Studio rejects, become text
+//     naming the tool (#169)
 //
 // Everything else LM Studio tolerates and is left alone.
 func Normalize(req *anthropic.Request, localModel string) (stages []string, err error) {
@@ -223,7 +227,11 @@ func Normalize(req *anthropic.Request, localModel string) (stages []string, err 
 	}
 
 	messages, folded := foldSystem(messages)
-	if lifted || folded {
+	messages, referenced, err := toolReferencesAsText(messages, known)
+	if err != nil {
+		return nil, err
+	}
+	if lifted || folded || referenced {
 		req.SetMessages(messages)
 	}
 	if lifted {
@@ -232,6 +240,9 @@ func Normalize(req *anthropic.Request, localModel string) (stages []string, err 
 	if folded {
 		stages = append(stages, StageFoldSystem)
 	}
+	if referenced {
+		stages = append(stages, StageToolRefs)
+	}
 	if dropped {
 		stages = append(stages, StageDropDeferred)
 	}
@@ -239,6 +250,66 @@ func Normalize(req *anthropic.Request, localModel string) (stages []string, err 
 		req.SetTools(tools)
 	}
 	return stages, nil
+}
+
+// toolReferencesAsText replaces each tool_reference block inside a tool
+// result with a text block naming the tool. Claude Code's tool search
+// answers with such blocks, and the Anthropic API expands them; LM Studio
+// accepts only text and images there, and refuses the whole request. The
+// text says whether the tool is among those the model can call, since a
+// reference can name a tool that is no longer offered.
+func toolReferencesAsText(messages []anthropic.Message, known map[string]bool) ([]anthropic.Message, bool, error) {
+	changed := false
+	for i, m := range messages {
+		blocks := m.Blocks()
+		var out []anthropic.Block
+		for j, b := range blocks {
+			if b.Type != "tool_result" {
+				continue
+			}
+			raw, ok := b.Field("content")
+			if !ok {
+				continue
+			}
+			content, err := anthropic.ParseContent(raw)
+			if err != nil {
+				return nil, false, fmt.Errorf("messages[%d]: tool_result: %w", i, err)
+			}
+			replaced := false
+			for k, c := range content {
+				if c.Type != "tool_reference" {
+					continue
+				}
+				var ref struct {
+					ToolName string `json:"tool_name"`
+				}
+				c.Decode(&ref)
+				text := fmt.Sprintf("Tool %s is loaded and can be called.", ref.ToolName)
+				if !known[ref.ToolName] {
+					text = fmt.Sprintf("Tool %s was found, but it cannot be called here.", ref.ToolName)
+				}
+				content[k] = anthropic.NewTextBlock(text)
+				replaced = true
+			}
+			if !replaced {
+				continue
+			}
+			if out == nil {
+				out = append([]anthropic.Block(nil), blocks...)
+			}
+			items := make([]json.RawMessage, len(content))
+			for k, c := range content {
+				items[k] = c.Raw()
+			}
+			array, _ := json.Marshal(items)
+			out[j] = b.With("content", array)
+		}
+		if out != nil {
+			messages[i] = m.WithBlocks(out)
+			changed = true
+		}
+	}
+	return messages, changed, nil
 }
 
 // foldSystem moves each system message into the user message before it,
