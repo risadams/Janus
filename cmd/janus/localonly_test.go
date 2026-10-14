@@ -156,7 +156,7 @@ func TestAuditOneRequestShowsWhatWasWithheld(t *testing.T) {
 	if code := run([]string{"audit", "-config", configPath, "-dir", dir, "p1-withheld"}, &out, &errOut); code != 0 {
 		t.Fatalf("exit %d, stderr %q", code, errOut.String())
 	}
-	wantLines(t, out.String(), `Local-only 1 pieces withheld before sending: Read read /app/secrets/db.yaml, which "secrets/**" makes local-only`)
+	wantLines(t, out.String(), `Local-only 1 piece withheld before sending: Read read /app/secrets/db.yaml, which "secrets/**" makes local-only`)
 	if strings.Contains(out.String(), "NOT replaced") {
 		t.Errorf("the audit says secrets were sent:\n%s", out.String())
 	}
