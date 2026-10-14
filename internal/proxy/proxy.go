@@ -245,9 +245,13 @@ type Plan struct {
 	// returns then may have a Reason saying why, which is recorded. Else,
 	// if set, takes precedence.
 	Fallback func(ctx context.Context) (Plan, bool)
-	// FallBackOn says which response statuses count as this plan's backend
-	// failing. Nil means any error status, 400 and above.
-	FallBackOn func(status int) bool
+	// FallBackOn says whether a failed response means this plan's backend
+	// has failed for good enough reason to use the fallback, from its
+	// status and headers. A backend that gave no response at all (it could
+	// not be reached, or timed out) is asked about as status 0 with no
+	// headers. Nil means any error status, 400 and above, and any failure
+	// to respond.
+	FallBackOn func(status int, header http.Header) bool
 	// Release, when set, is called once when this plan's backend has
 	// finished with the request: its answer relayed, its trial judged, or
 	// the request abandoned or switched to a fallback. It is how a planner
@@ -359,11 +363,11 @@ func (s *exchangeState) releaseNow() {
 
 // failed reports whether a status from a plan's backend counts as the
 // backend failing, so that the plan's fallback should be used.
-func failed(plan Plan, status int) bool {
+func failed(plan Plan, status int, header http.Header) bool {
 	if plan.FallBackOn != nil {
-		return plan.FallBackOn(status)
+		return plan.FallBackOn(status, header)
 	}
-	return status >= 400
+	return status == 0 || status >= 400 // 0: no response at all
 }
 
 // errBackendStatus turns an error status from a backend with a fallback
@@ -414,7 +418,7 @@ func New(opts Options) http.Handler {
 			if state == nil {
 				return nil
 			}
-			if state.fallBack != nil && failed(state.plan, resp.StatusCode) {
+			if state.fallBack != nil && failed(state.plan, resp.StatusCode, resp.Header) {
 				// Only give up this response if there really is somewhere
 				// else to go. Otherwise it is the answer, error and all.
 				if next, ok := state.resolve(); ok {
@@ -499,7 +503,10 @@ func New(opts Options) http.Handler {
 				fault = int(bad) >= 500 || int(bad) == http.StatusTooManyRequests
 				cause = CauseServerError
 			}
-			if state.fallBack != nil {
+			// A backend that gave no response at all is asked about as
+			// status 0; one that answered with an error was asked already.
+			noResponse := !errors.As(err, &bad)
+			if state.fallBack != nil && (!noResponse || failed(state.plan, 0, nil)) {
 				// Nothing has been written yet: the error handler runs
 				// before any of the response is relayed.
 				if state.fallBack(w, why, fault, cause) {

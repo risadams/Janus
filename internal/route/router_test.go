@@ -1303,6 +1303,10 @@ func claudeDownWith(t *testing.T, models string, upstream http.HandlerFunc, lms 
 	model := LocalModel{ID: "qwen/qwen3.8-27b", Timeout: time.Second}
 	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: backend.NewLocal(localURL, nil),
 		Rules: []Rule{{Name: "main", Class: Main, Route: RouteUpstream, IfDown: &model}}}
+	// Claude has already failed twice in the last two minutes, so the
+	// failure under test makes it an outage and the stand-in answers. When
+	// that is decided, and when not, is TestAStandInWaitsForClaudeToBeDown.
+	r.down.failures = []time.Time{time.Now(), time.Now()}
 	reported := make(chan proxy.Exchange, 1)
 	janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: r.Upstream, Plan: r.Plan, Done: func(ex proxy.Exchange) { reported <- ex }}))
 	t.Cleanup(janus.Close)

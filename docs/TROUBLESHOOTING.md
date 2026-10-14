@@ -165,8 +165,12 @@ Janus skips it for 30 seconds.
 Another request held the model for the whole of `timeoutSeconds`. Stand-ins
 wait their turn, but not forever.
 
-**Claude Code shows the rate-limit error even though the rule has
-`ifDown`.** The request's class wasn't covered: `ifDown` on a `main` rule
+**Claude Code shows an overloaded or rate-limit error and retries, though
+the rule has `ifDown`.** That is on purpose when the failure looks brief:
+Janus hands it to Claude Code to retry, and stands in only for a usage
+limit, or after three failures within two minutes. If it keeps happening
+and the local model never answers, the request's class may not be
+covered: `ifDown` on a `main` rule
 doesn't cover subagents, and Claude Code's background requests (`quota`,
 `status`, `safety`) have classes of their own. The ledger's `class`
 says which it was.
