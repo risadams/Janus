@@ -320,7 +320,7 @@ func FromExchange(ex proxy.Exchange) Record {
 	if rec.Stages == nil {
 		rec.Stages = []string{}
 	}
-	if ex.Status == http.StatusTooManyRequests || ex.Status >= 500 {
+	if route.UpstreamDown(ex.Status) {
 		rec.Limits = Limits(ex.ResponseHeader)
 	}
 	for _, e := range ex.Transforms {

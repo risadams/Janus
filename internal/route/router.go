@@ -367,7 +367,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			return plan
 		}
 		local := *rule.IfDown
-		plan.FallBackOn = upstreamDown
+		plan.FallBackOn = UpstreamDown
 		// When there is no stand-in after all, the returned plan's Reason
 		// says why, for the record: Claude's failure is the answer.
 		noStandIn := func(cause, why string) (proxy.Plan, bool) {
@@ -513,10 +513,11 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	return upstream("passthrough"), nil, trace
 }
 
-// upstreamDown reports whether a status from the upstream means Claude
+// UpstreamDown reports whether a status from the upstream means Claude
 // could not answer, as opposed to the request being wrong. A rate limit
 // counts: on a subscription it is what running out of usage looks like.
-func upstreamDown(status int) bool {
+// It is what decides whether an ifDown stand-in is tried.
+func UpstreamDown(status int) bool {
 	return status == http.StatusTooManyRequests || status >= 500
 }
 

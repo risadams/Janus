@@ -160,9 +160,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 		color = wantColor(f, os.Getenv)
 	}
 	console := NewConsole(stderr, color, prices(cfg))
-	for _, r := range cfg.Routing {
-		console.standIns = console.standIns || (cfg.Features.Route && r.IfDown != "")
-	}
 	logger := console.Logger()
 	led := ledger.Open(filepath.Join(cfg.Logging.Dir, "ledger"))
 	var captures *capture.Writer
@@ -348,15 +345,7 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 		text := fmt.Sprintf("local-only: kept on this machine (%s)", strings.Join(g.LocalOnly, "; "))
 		guardNotes = append(guardNotes, note{level: info, text: text, once: text})
 	}
-	if console.standIns && rec.Class == string(route.Safety) && ex.Backend == "upstream" &&
-		(ex.Status == http.StatusTooManyRequests || ex.Status >= 500 || (ex.Status == 0 && ex.Fault != "")) {
-		// Auto mode asks Claude whether each tool call is safe, and those
-		// checks stay with Claude (#162). While the local model stands in
-		// for the conversation, Claude Code refuses every tool call as
-		// "temporarily unavailable"; the way through is to approve them.
-		text := "auto mode's safety check could not reach Claude, so Claude Code will refuse tool calls; press Shift+Tab to leave auto mode and approve them yourself while the local model stands in"
-		guardNotes = append(guardNotes, note{level: warn, text: text, once: text})
-	}
+	outageNotes := autoModeNotes(ex, rec, console)
 	if captures != nil {
 		name, err := captures.Write(ex)
 		if err != nil {
@@ -372,8 +361,42 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 	if err := led.Append(rec); err != nil {
 		console.Printf("janus: %v", err)
 	}
-	console.Request(ex, rec, append(exchangeNotes(ex), guardNotes...))
+	console.Request(ex, rec, slices.Concat(exchangeNotes(ex), guardNotes, outageNotes))
 	return rec
+}
+
+// autoModeNotes says what to do when auto mode's safety check cannot reach
+// Claude while the local model is carrying the conversation (#173). Auto
+// mode asks Claude whether each tool call is safe, and those checks stay
+// with Claude (#162); Claude Code then refuses every tool call as
+// "temporarily unavailable", and the way through is to approve them. It
+// also notes, for later requests, when the local model stood in.
+func autoModeNotes(ex proxy.Exchange, rec ledger.Record, console *Console) []note {
+	if a := ex.Attempt; a != nil && !a.Accepted && a.Backend == "upstream" && ex.Backend == "local" {
+		console.StoodIn(rec.Session)
+		return nil
+	}
+	if rec.Class != string(route.Safety) || ex.Backend != "upstream" || !claudeCouldNotAnswer(ex) || !console.StandingIn(rec.Session) {
+		return nil
+	}
+	text := "auto mode's safety check could not reach Claude, so Claude Code will refuse tool calls; press Shift+Tab to leave auto mode and approve them yourself while the local model stands in"
+	return []note{{level: warn, text: text, once: text}}
+}
+
+// claudeCouldNotAnswer reports whether Claude's response says it could not
+// answer: a status that would have brought in a stand-in, or the same
+// errors arriving inside a 200 stream.
+func claudeCouldNotAnswer(ex proxy.Exchange) bool {
+	if route.UpstreamDown(ex.Status) {
+		return true
+	}
+	if s := ex.Summary; s != nil && s.Error != nil {
+		switch s.Error.Type {
+		case "rate_limit_error", "overloaded_error", "api_error":
+			return true
+		}
+	}
+	return false
 }
 
 // exchangeNotes are what is worth saying about a request beyond who

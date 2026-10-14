@@ -33,14 +33,14 @@ type Console struct {
 	// said is, per conversation, the notes already printed that need not
 	// be repeated, and when the conversation was last seen.
 	said map[string]*said
-	// standIns is whether a routing rule has an ifDown stand-in, so that
-	// the local model may be carrying a conversation while Claude is out.
-	standIns bool
 }
 
 type said struct {
 	notes map[string]bool
 	last  time.Time
+	// standIn is when the local model last answered for Claude in this
+	// conversation.
+	standIn time.Time
 }
 
 // forgetAfter is how long a conversation can be idle before the console
@@ -94,6 +94,29 @@ func (c *Console) fresh(session string, notes []note) []note {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	s := c.conversation(session)
+	var out []note
+	for _, n := range notes {
+		if n.once != "" {
+			if s.notes[n.once] {
+				continue
+			}
+			s.notes[n.once] = true
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+// standingInFor is how long after a stand-in the console takes the local
+// model to be carrying a conversation. In a stand-in session, each turn is
+// a minute or two; a conversation with no stand-in for longer has either
+// gone back to Claude or stopped.
+const standingInFor = 10 * time.Minute
+
+// conversation returns what the console remembers of session, forgetting
+// conversations idle past forgetAfter. Call it with c.mu held.
+func (c *Console) conversation(session string) *said {
 	now := c.now()
 	if c.said == nil {
 		c.said = map[string]*said{}
@@ -109,17 +132,29 @@ func (c *Console) fresh(session string, notes []note) []note {
 		c.said[session] = s
 	}
 	s.last = now
-	var out []note
-	for _, n := range notes {
-		if n.once != "" {
-			if s.notes[n.once] {
-				continue
-			}
-			s.notes[n.once] = true
-		}
-		out = append(out, n)
+	return s
+}
+
+// StoodIn records that the local model answered for Claude in session.
+func (c *Console) StoodIn(session string) {
+	if session == "" {
+		return
 	}
-	return out
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.conversation(session).standIn = c.now()
+}
+
+// StandingIn reports whether the local model has recently answered for
+// Claude in session.
+func (c *Console) StandingIn(session string) bool {
+	if session == "" {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	s := c.conversation(session)
+	return !s.standIn.IsZero() && c.now().Sub(s.standIn) <= standingInFor
 }
 
 // note is something about a request worth a line of its own.
