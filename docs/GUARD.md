@@ -323,7 +323,7 @@ What counts as protected content:
 
 | Content | Why |
 | --- | --- |
-| The whole result of a tool call that named a protected path | `Read secrets/db.yaml`, `cat .env \| head`, an MCP tool given the path. The path is looked for anywhere in the call's arguments. |
+| The whole result of a tool call that named a protected path | `Read secrets/db.yaml`, `cat .env \| head`, an MCP tool given the path. For Claude Code's own tools the path is looked for in the path arguments and the command; for any other tool, in every argument. What Write writes, what Edit replaces, a command's description, and a heredoc a command only copies to a file or uses as an issue or commit text are not searched: they mention a path, they don't read it. |
 | Any message text or tool result carrying a marker | The whole block is protected, not only the marker. |
 | A line of other tool output that quotes a protected file | A search across the tree prints `secrets/db.yaml:2:...` without the call ever naming that file. Those lines go, and the lines of context around them; the rest of the output stays. |
 
@@ -410,6 +410,10 @@ Be clear about these before relying on it.
   prints the file name on a line of its own with the matches under it is
   not caught. Claude Code's own Grep, `grep -r`, and `rg` when piped all
   use the recognised shape.
+- **A heredoc that may be code is searched as part of the command.** If
+  the command runs a shell or an interpreter, pipes the heredoc on, or
+  runs a file a heredoc wrote, Janus can't tell a mention from a read, so
+  a protected path quoted in the heredoc still withholds the result.
 - **Paths with spaces in them** are not recognised in a shell command or
   in search output. They are in a tool argument that is only the path.
 - **The system prompt and tool definitions** are not checked for markers.
