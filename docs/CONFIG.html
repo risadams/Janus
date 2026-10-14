@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Configuration | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/CONFIG"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Configuration | Janus"><meta data-rh="true" name="description" content="Janus reads janus.config.json from the directory it is run in, or the"><meta data-rh="true" property="og:description" content="Janus reads janus.config.json from the directory it is run in, or the"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/CONFIG"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/CONFIG" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/CONFIG" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Configuration","item":"https://risadams.github.io/Janus/docs/CONFIG"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.07a24f7e.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.077dc7ad.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.1d915a29.js" defer="defer"></script>
 </head>
 <body>
@@ -335,10 +335,23 @@ sees it, because Claude rejects thinking it did not produce.</p>
 <p>A rule that sends requests upstream can name a local model to stand in when
 Claude cannot answer:</p>
 <div class="language-json codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#ebdbb2;--prism-background-color:#292828"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-json codeBlock_bY9V thin-scrollbar" style="color:#ebdbb2;background-color:#292828"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#ebdbb2"><span class="token punctuation">{</span><span class="token plain"> </span><span class="token property" style="color:#ea6962">&quot;name&quot;</span><span class="token operator" style="color:#a89984">:</span><span class="token plain"> </span><span class="token string" style="color:#89b482">&quot;main&quot;</span><span class="token punctuation">,</span><span class="token plain"> </span><span class="token property" style="color:#ea6962">&quot;class&quot;</span><span class="token operator" style="color:#a89984">:</span><span class="token plain"> </span><span class="token string" style="color:#89b482">&quot;main&quot;</span><span class="token punctuation">,</span><span class="token plain"> </span><span class="token property" style="color:#ea6962">&quot;route&quot;</span><span class="token operator" style="color:#a89984">:</span><span class="token plain"> </span><span class="token string" style="color:#89b482">&quot;upstream&quot;</span><span class="token punctuation">,</span><span class="token plain"> </span><span class="token property" style="color:#ea6962">&quot;ifDown&quot;</span><span class="token operator" style="color:#a89984">:</span><span class="token plain"> </span><span class="token string" style="color:#89b482">&quot;janus-local&quot;</span><span class="token plain"> </span><span class="token punctuation">}</span><br></div></code></pre></div></div>
-<p>The local model answers when Claude is unreachable, or responds with a rate
-limit (429) or a server error (500 and above, which includes
-&quot;overloaded&quot;). On a subscription, a rate limit is what running out of usage
-looks like, so this also covers that.</p>
+<p>The local model answers when Claude is down for a while, not on every
+failure:</p>
+<ul>
+<li class=""><strong>A usage limit, at once.</strong> On a subscription, running out of usage is a
+rate limit (429) whose headers say it resets in an hour or more. When a
+429 says Claude won&#x27;t answer for a minute or more, the local model
+answers straight away.</li>
+<li class=""><strong>An outage, on the third failure.</strong> Anything else that means Claude
+can&#x27;t answer (a short rate limit, a server error such as &quot;overloaded&quot;,
+no connection) is first passed to Claude Code, which retries with
+backoff and usually gets through a few seconds later. If Claude fails
+three times within two minutes without answering in between, it is
+down, and the local model answers. The next answer from Claude resets
+the count.</li>
+</ul>
+<p>That way a passing blip doesn&#x27;t put a local model&#x27;s turn into the
+conversation, where it would stay (docs/research/standin.md).</p>
 <p>Any other error, such as a bad request or an expired login, is about the
 request and not about Claude being down. It reaches the client untouched
 and the local model is not consulted.</p>

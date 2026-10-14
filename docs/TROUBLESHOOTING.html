@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Troubleshooting | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/TROUBLESHOOTING"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Troubleshooting | Janus"><meta data-rh="true" name="description" content="First steps"><meta data-rh="true" property="og:description" content="First steps"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/TROUBLESHOOTING"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/TROUBLESHOOTING" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/TROUBLESHOOTING" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"User guide","item":"https://risadams.github.io/Janus/docs/guide/"},{"@type":"ListItem","position":2,"name":"Troubleshooting","item":"https://risadams.github.io/Janus/docs/TROUBLESHOOTING"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.07a24f7e.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.077dc7ad.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.1d915a29.js" defer="defer"></script>
 </head>
 <body>
@@ -178,8 +178,12 @@ Janus skips it for 30 seconds.</p>
 <p><strong><code>no local stand-in: ... had 1 requests in flight, its limit, for ...</code>.</strong>
 Another request held the model for the whole of <code>timeoutSeconds</code>. Stand-ins
 wait their turn, but not forever.</p>
-<p><strong>Claude Code shows the rate-limit error even though the rule has
-<code>ifDown</code>.</strong> The request&#x27;s class wasn&#x27;t covered: <code>ifDown</code> on a <code>main</code> rule
+<p><strong>Claude Code shows an overloaded or rate-limit error and retries, though
+the rule has <code>ifDown</code>.</strong> That is on purpose when the failure looks brief:
+Janus hands it to Claude Code to retry, and stands in only for a usage
+limit, or after three failures within two minutes. If it keeps happening
+and the local model never answers, the request&#x27;s class may not be
+covered: <code>ifDown</code> on a <code>main</code> rule
 doesn&#x27;t cover subagents, and Claude Code&#x27;s background requests (<code>quota</code>,
 <code>status</code>, <code>safety</code>) have classes of their own. The ledger&#x27;s <code>class</code>
 says which it was.</p>
