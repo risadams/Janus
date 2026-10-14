@@ -1,13 +1,65 @@
 # Troubleshooting
 
-Start with `janus doctor`. It checks the config, the port, Anthropic, LM
-Studio, and the log directory, and most of what is below shows up there
-with what to do about it.
+## First steps
 
-Errors that Janus itself returns start with `janus:` in Claude Code.
-Anything else came from Anthropic or LM Studio and was passed through.
+When something is wrong, these five things find most problems:
 
-The problems here are ones met while building and testing Janus.
+1. **`janus doctor`.** It checks the config, the port, Anthropic, LM
+   Studio, and the log folder, and says what to fix.
+2. **The console.** Janus prints a line for every request. No lines at
+   all means Claude Code is not using Janus. A `↳` note under a line says
+   what happened to that request and why.
+3. **Who wrote the error.** Errors from Janus itself start with `janus:`
+   in Claude Code, and say what to do. Anything else came from Anthropic
+   or LM Studio and was passed through as it was.
+4. **`janus audit <id>`** for one request: where it went, why, and what
+   was changed. The id is in the ledger and the capture's file name; see
+   [using Janus](guide/use.md#what-left-your-machine-janus-audit).
+5. **`janus route <capture>`** to see which rule a request matched, and
+   why.
+
+The problems below are ones met while building and testing Janus.
+
+## By symptom
+
+| Symptom | Where to look |
+| --- | --- |
+| `janus: command not found`, or the binary won't run | [Installing](#installing) |
+| Janus won't start | [Getting started](#getting-started) |
+| Janus prints nothing when Claude Code runs | [Getting started](#getting-started) |
+| Claude Code can't connect at all | [Installing](#installing) |
+| `could not reach LM Studio`, or a model is missing | [Reaching LM Studio](#reaching-lm-studio) |
+| Hit the usage limit and the local model didn't take over | [When Claude is down](#when-claude-is-down) |
+| Every tool call refused as "temporarily unavailable" | [When Claude is down](#when-claude-is-down) |
+| Local answers are empty, wrong, or slow | [Local answers](#local-answers) |
+| A `403` or `500` from Janus, or something withheld | [The guard](#the-guard) |
+| `janus stats` is empty or costs look wrong | [The books](#the-books) |
+
+## Installing
+
+**`janus: command not found`.** The binary is not in a folder on your
+`PATH`. With `go install` it is in `$(go env GOPATH)/bin`, usually
+`~/go/bin`; from a release, wherever you moved it. Run it by its full
+path, or add the folder to `PATH` in your shell's profile.
+
+**macOS refuses to run the binary.** A copy downloaded with a browser is
+quarantined, and the binaries are not signed. Clear it with
+`xattr -d com.apple.quarantine janus`, or download with `curl`.
+
+**Windows says it protected your PC.** SmartScreen warns about any
+program without a known publisher, and the binaries are not signed.
+Choose "More info", then "Run anyway".
+
+**Claude Code can't connect at all.** `ANTHROPIC_BASE_URL` points at
+Janus, and Janus isn't running. If you set it in
+`~/.claude/settings.json`, every session needs Janus: start it, run it as
+a service ([installing](guide/install.md#6-run-janus-in-the-background-optional)),
+or remove the setting to go straight to Anthropic.
+
+**The service doesn't start.** Run the same command it runs, with the
+same `-config`, in a terminal; Janus prints why it stopped. A relative
+`-config` path is the usual cause, since a service doesn't start in your
+Janus folder.
 
 ## Getting started
 
@@ -33,13 +85,12 @@ at it.
 Claude Code sends every tool definition with every request when its base
 URL is not Anthropic's.
 
-**macOS refuses to run the binary.** A copy downloaded with a browser is
-quarantined, and the binaries are not signed. Clear it with
-`xattr -d com.apple.quarantine janus`, or download with `curl`.
-
-**The config file has a problem.** Janus names the field and what is
-wrong with it, and reports every problem at once. An unknown field is an
-error, so a misspelt setting is caught and not ignored.
+**The config file has a problem.** Janus names the file and what is
+wrong. A JSON mistake or an unknown field is reported on its own, since
+the rest can't be read until it is fixed; after that, Janus reports every
+remaining problem at once. An unknown field is an error, so a misspelt
+setting is caught and not ignored. `janus doctor` reports the same
+problems without starting anything.
 
 ## Reaching LM Studio
 
@@ -87,17 +138,44 @@ was standing in. Raise `contextTokens` if the machine has the memory.
 load, often for want of memory; its reason follows. Unload another model,
 or lower `contextTokens`.
 
+## When Claude is down
+
+With an `ifDown` rule, the local model answers when Claude can't. When it
+didn't, the console line has a note saying why, starting `no local
+stand-in:`. The usual reasons are below.
+
+**`no local stand-in: ... more than the N-token context of local model
+...`.** The model is loaded with a context too small for the request, and
+Janus doesn't reload a loaded model. Reload it in LM Studio with a larger
+context, or unload it and let Janus load it at `contextTokens`.
+
 **`... even its first and latest turns are more than the N tokens local
 model ... has room for`.** A stand-in leaves out the middle of a long
 conversation to fit, but the first message and the latest turn together
 are still too big, usually because of one very large tool result. Claude's
 error stands. Load the model with a larger `contextTokens`.
 
+**`no local stand-in: could not reach LM Studio`, or `the local backend
+has failed N times in a row`.** LM Studio is down or unreachable; see
+[Reaching LM Studio](#reaching-lm-studio). After three failures in a row
+Janus skips it for 30 seconds.
+
+**`no local stand-in: ... had 1 requests in flight, its limit, for ...`.**
+Another request held the model for the whole of `timeoutSeconds`. Stand-ins
+wait their turn, but not forever.
+
+**Claude Code shows the rate-limit error even though the rule has
+`ifDown`.** The request's class wasn't covered: `ifDown` on a `main` rule
+doesn't cover subagents, and Claude Code's background requests (`quota`,
+`status`, `safety`) have classes of their own. The ledger's `class`
+says which it was.
+
 **At a session limit, every tool call is refused as "temporarily
 unavailable", though the local model is answering.** That is auto mode:
 Claude Code checks each tool call with Claude, and those checks stay with
 Claude. Press Shift+Tab to leave auto mode and approve tool calls
 yourself; see CONFIG, "Auto mode while Claude is out".
+
 
 ## Local answers
 
