@@ -9,8 +9,11 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/iotest"
+	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
 )
@@ -503,5 +506,80 @@ func TestFoldSystem(t *testing.T) {
 		if string(a[i].Raw()) != string(b[i].Raw()) {
 			t.Errorf("messages[%d] folds differently once the conversation grows", i)
 		}
+	}
+}
+
+// Requests that find the model unloaded together share one load: a second
+// load would start a second instance of the model in the same memory
+// (#170). The load asks for the context Janus chose, and what LM Studio
+// reports back is what the caller gets.
+func TestLoadIsSharedByRequestsArrivingTogether(t *testing.T) {
+	var loads atomic.Int32
+	var asked string
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/models/load" || r.Method != http.MethodPost {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			return
+		}
+		loads.Add(1)
+		body, _ := io.ReadAll(r.Body)
+		asked = string(body)
+		<-release
+		io.WriteString(w, `{"type":"llm","instance_id":"qwen/qwen3.8-27b","load_time_seconds":9.1,"status":"loaded","load_config":{"context_length":65536,"flash_attention":true}}`)
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	local := NewLocal(u, nil)
+
+	var wg sync.WaitGroup
+	results := make(chan Model, 3)
+	for range 3 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			m, err := local.Load(context.Background(), "qwen/qwen3.8-27b", 65536)
+			if err != nil {
+				t.Error(err)
+			}
+			results <- m
+		}()
+	}
+	// A caller that gives up returns at once, and does not stop the load
+	// for the others.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := local.Load(ctx, "qwen/qwen3.8-27b", 65536); err == nil {
+		t.Error("a caller that gave up was not told so")
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	close(results)
+
+	if n := loads.Load(); n != 1 {
+		t.Errorf("%d loads, want 1", n)
+	}
+	if asked != `{"context_length":65536,"echo_load_config":true,"model":"qwen/qwen3.8-27b"}` {
+		t.Errorf("load asked for %s", asked)
+	}
+	for m := range results {
+		if !m.Loaded || m.LoadedContext != 65536 || m.ID != "qwen/qwen3.8-27b" {
+			t.Errorf("loaded model = %+v", m)
+		}
+	}
+}
+
+// A load LM Studio refuses is explained with what it said.
+func TestLoadFailureIsExplained(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"error":{"message":"Not enough memory to load the model"}}`)
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	_, err := NewLocal(u, nil).Load(context.Background(), "qwen/qwen3.8-27b", 65536)
+	if err == nil || !strings.Contains(err.Error(), "HTTP 500") || !strings.Contains(err.Error(), "Not enough memory") {
+		t.Errorf("err = %v", err)
 	}
 }

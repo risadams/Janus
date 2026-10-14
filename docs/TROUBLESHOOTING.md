@@ -72,17 +72,20 @@ because LM Studio does not: asked for a model it lacks, it answers with
 whichever one is loaded. `janus doctor` lists the ids it has.
 
 **The first local request takes a very long time.** The model was not
-loaded, and LM Studio loaded it on demand. Load it beforehand; `doctor`
-warns when none is.
+loaded, so Janus had LM Studio load it first (the ledger's `stages` has
+`load_model`). A 27B model takes ten seconds or more. Load it beforehand
+to avoid the wait; `doctor` warns when none is.
 
-**`... local model "..." is not loaded; Janus has LM Studio load a model
-for at most 32768 tokens`.** Janus can't see the context LM Studio will
-load a model with until it is loaded, and a request too big for it would
-cost the load, most of a small machine's memory, and then fail. So a
-model that isn't loaded is only sent requests up to 32,768 tokens; larger
-ones go to Claude, or keep Claude's error when the local model was
-standing in. Load the model first, or set `contextTokens` on its entry to
-the context LM Studio loads it with.
+**`... more than the N-token context Janus loads local model "..."
+with`.** The model isn't loaded, and the request is bigger than the
+context Janus would load it with: `contextTokens` on its entry, or 65,536
+if that is unset. Janus doesn't load it, since the request would fail
+anyway; it goes to Claude, or keeps Claude's error when the local model
+was standing in. Raise `contextTokens` if the machine has the memory.
+
+**`LM Studio could not load local model ...`.** LM Studio refused the
+load, often for want of memory; its reason follows. Unload another model,
+or lower `contextTokens`.
 
 ## Local answers
 
