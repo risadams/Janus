@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Threat model | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/THREAT-MODEL"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Threat model | Janus"><meta data-rh="true" name="description" content="What Janus protects, against whom, and what it does not. Written for 1.0"><meta data-rh="true" property="og:description" content="What Janus protects, against whom, and what it does not. Written for 1.0"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/THREAT-MODEL"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/THREAT-MODEL" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/THREAT-MODEL" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Threat model","item":"https://risadams.github.io/Janus/docs/THREAT-MODEL"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.2f4f872d.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.2b687a7b.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.2537d55c.js" defer="defer"></script>
 </head>
 <body>
@@ -200,8 +200,10 @@ other way is not recognised; and under the <code>local</code> action the local
 model&#x27;s answer is ordinary text that can outlive the tool call that made
 the conversation local.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-local-models-connection">The local model&#x27;s connection<a href="#the-local-models-connection" class="hash-link" aria-label="Direct link to The local model&#x27;s connection" title="Direct link to The local model&#x27;s connection" translate="no">​</a></h2>
-<p>Requests to LM Studio go over plain HTTP to <code>local.baseUrl</code>, by default
-<code>http://studio.local:1234</code>.</p>
+<p>Requests to LM Studio go over plain HTTP to <code>local.baseUrl</code>. Its default,
+<code>http://studio.local:1234</code>, is a placeholder for the developer&#x27;s own
+machine; set it to yours, ideally <code>http://127.0.0.1:1234</code>, LM Studio on
+the same machine.</p>
 <ul>
 <li class="">If LM Studio is on another machine, <strong>everything routed to it crosses
 your network unencrypted</strong>, including content the local-only policy
