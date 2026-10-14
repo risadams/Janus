@@ -1,6 +1,7 @@
 # Janus has no third-party Go modules (docs/adr/001-dependencies.md), so the
-# only dependencies to keep current are the GitHub Actions the workflows
-# use. They are pinned to commit SHAs; Dependabot proposes new ones.
+# dependencies to keep current are the GitHub Actions the workflows use,
+# pinned to commit SHAs, and the docs site's npm packages (ADR-002), pinned
+# by its package-lock.json. Dependabot proposes new ones.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -8,3 +9,11 @@ updates:
     schedule:
       interval: weekly
     labels: [chore]
+  - package-ecosystem: npm
+    directory: /docs-site
+    schedule:
+      interval: weekly
+    labels: [chore]
+    groups:
+      docusaurus:
+        patterns: ["@docusaurus/*", "react", "react-dom", "@mdx-js/react", "prism-react-renderer", "clsx"]

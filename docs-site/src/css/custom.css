@@ -1,0 +1,1051 @@
+/**
+ * Janus — Docusaurus Theme (shared with risadams/docker-registry.helm)
+ * "Ink & Agency" — Fraunces + Crimson Pro + Caveat + JetBrains Mono
+ *
+ * Drop this file into docs-site/src/css/custom.css
+ * and add the Google Fonts import below to docusaurus.config.js:
+ *
+ *   headTags: [{
+ *     tagName: 'link',
+ *     attributes: {
+ *       rel: 'stylesheet',
+ *       href: 'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Caveat:wght@400;600;700&family=JetBrains+Mono:wght@400;500&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap'
+ *     }
+ *   }]
+ */
+
+/* ─── Ink & Agency Palette ──────────────────────────── */
+:root {
+  --dr-rose:    #CB0162;
+  --dr-navy:    #1a5b6e;
+  --dr-plum:    #6b3a6e;
+  --dr-amber:   #c48a1e;
+  --dr-ink:     #1a1614;
+  --dr-paper:   #faf6ef;
+  --dr-vellum:  #f4ecdd;
+  --dr-parchment: #ede3cf;
+  --dr-muted:   #6b625a;
+  --dr-faint:   #9a9088;
+}
+
+/* ─── Docusaurus overrides ──────────────────────────── */
+:root {
+  /* Primary (rose crimson) */
+  --ifm-color-primary:          #CB0162;
+  --ifm-color-primary-dark:     #b50157;
+  --ifm-color-primary-darker:   #ab014f;
+  --ifm-color-primary-darkest:  #8c0141;
+  --ifm-color-primary-light:    #e00169;
+  --ifm-color-primary-lighter:  #e8006f;
+  --ifm-color-primary-lightest: #f00172;
+
+  /* Background & surfaces */
+  --ifm-background-color:         var(--dr-paper);
+  --ifm-background-surface-color: var(--dr-vellum);
+
+  /* Typography */
+  --ifm-font-family-base:     'Crimson Pro', Georgia, 'Times New Roman', serif;
+  --ifm-heading-font-family:  'Fraunces', Georgia, 'Times New Roman', serif;
+  --ifm-font-color-base:      var(--dr-ink);
+  --ifm-font-color-secondary: var(--dr-muted);
+  --ifm-font-size-base:       17px;
+  --ifm-line-height-base:     1.7;
+
+  /* Code */
+  --ifm-font-family-monospace:  'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --ifm-code-font-size:         13px;
+  --ifm-code-background:        var(--dr-parchment);
+  --ifm-code-color:             var(--dr-plum);
+  --ifm-code-border-radius:     2px;
+  --ifm-code-padding-horizontal: 5px;
+  --ifm-code-padding-vertical:   2px;
+
+  /* Links */
+  --ifm-link-color:         var(--dr-rose);
+  --ifm-link-hover-color:   #a8014f;
+
+  /* Navbar */
+  --ifm-navbar-background-color: rgba(250, 246, 239, 0.96);
+  --ifm-navbar-link-color:       var(--dr-muted);
+  --ifm-navbar-link-hover-color: var(--dr-ink);
+  --ifm-navbar-height:           68px;
+  --ifm-navbar-shadow:           0 1px 0 rgba(26, 22, 20, 0.07);
+
+  /* Sidebar */
+  --ifm-sidebar-background:        var(--dr-vellum);
+  --ifm-menu-link-sublist-icon:     none;
+  --ifm-menu-color:                 var(--dr-muted);
+  --ifm-menu-color-active:          var(--dr-rose);
+  --ifm-menu-color-background-active: rgba(203, 1, 98, 0.05);
+
+  /* TOC */
+  --ifm-toc-border-color:           rgba(26, 22, 20, 0.08);
+  --ifm-toc-link-color:             var(--dr-faint);
+  --ifm-toc-link-hover-color:       var(--dr-rose);
+
+  /* Borders & dividers */
+  --ifm-hr-border-color:            rgba(26, 22, 20, 0.10);
+  --ifm-global-border-width:        1px;
+
+  /* Cards / alerts */
+  --ifm-alert-background-color-highlight: 0.04;
+
+  /* Breadcrumb */
+  --ifm-breadcrumb-color-active:    var(--dr-rose);
+
+  /* Tabs */
+  --ifm-tabs-color-active:          var(--dr-rose);
+  --ifm-tabs-color-active-border:   var(--dr-rose);
+
+  /* Shadows */
+  --ifm-global-shadow-lw: 0 1px 3px rgba(26, 22, 20, 0.06), 0 2px 8px rgba(26, 22, 20, 0.04);
+  --ifm-global-shadow-md: 0 4px 20px rgba(26, 22, 20, 0.10);
+  --ifm-global-shadow-tl: 0 12px 48px rgba(26, 22, 20, 0.14);
+
+  /* Breadcrumb */
+  --ifm-breadcrumb-border-radius: 2px;
+
+  /* Transition */
+  --ifm-transition-fast: 120ms ease;
+  --ifm-transition-slow: 220ms ease;
+}
+
+/* ─── Dark mode ─────────────────────────────────────── */
+[data-theme='dark'] {
+  --ifm-background-color:           #1a1614;
+  --ifm-background-surface-color:   #221e1c;
+  --ifm-font-color-base:            #f0e6d2;
+  --ifm-font-color-secondary:       #9a9088;
+  --ifm-navbar-background-color:    rgba(26, 22, 20, 0.96);
+  --ifm-sidebar-background:         #221e1c;
+  --ifm-code-background:            #2e2826;
+  --ifm-code-color:                 #e24a8a;
+  --ifm-color-primary:              #e24a8a;
+  --ifm-color-primary-dark:         #d03070;
+  --ifm-color-primary-darker:       #c42060;
+  --ifm-color-primary-darkest:      #a81050;
+  --ifm-color-primary-light:        #f060a0;
+  --ifm-color-primary-lighter:      #f870ab;
+  --ifm-color-primary-lightest:     #ff90bf;
+  --ifm-toc-border-color:           rgba(240, 230, 210, 0.08);
+  --ifm-hr-border-color:            rgba(240, 230, 210, 0.10);
+  --ifm-menu-color-background-active: rgba(226, 74, 138, 0.08);
+  --dr-paper:    #1a1614;
+  --dr-vellum:   #221e1c;
+  --dr-parchment:#2e2826;
+  --dr-ink:      #f0e6d2;
+  --dr-muted:    #9a9088;
+}
+
+/* ─── Base typography ───────────────────────────────── */
+body {
+  font-family: var(--ifm-font-family-base);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+h1 { font-size: 3.2rem; letter-spacing: -0.03em; }
+h2 { font-size: 2rem; }
+h3 { font-size: 1.45rem; }
+
+/* ─── Navbar ────────────────────────────────────────── */
+/* Glassmorphism via ::before so backdrop-filter doesn't create a
+   containing block for the fixed-position mobile sidebar */
+.navbar {
+  position: relative;
+}
+
+.navbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.navbar__title {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 600;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.navbar__title-em {
+  font-style: italic;
+  font-weight: 500;
+}
+
+.navbar__link {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 1rem;
+  transition: color var(--ifm-transition-fast);
+}
+
+.navbar__link--active,
+.navbar__link:hover {
+  color: var(--dr-rose);
+}
+
+/* Version badge in navbar */
+.navbar__item .badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  background: var(--dr-parchment);
+  color: var(--dr-plum);
+  border: 1px solid rgba(26, 22, 20, 0.12);
+  padding: 3px 8px;
+  border-radius: 2px;
+}
+
+/* ─── Sidebar ───────────────────────────────────────── */
+.theme-doc-sidebar-container {
+  background: var(--ifm-sidebar-background);
+  border-right: 1px solid rgba(26, 22, 20, 0.08) !important;
+}
+
+[data-theme='dark'] .theme-doc-sidebar-container {
+  border-right-color: rgba(240, 230, 210, 0.07) !important;
+}
+
+.menu__link {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 0.96rem;
+  transition: color var(--ifm-transition-fast), background var(--ifm-transition-fast);
+}
+
+.menu__link--active,
+.menu__link--active:hover {
+  color: var(--dr-rose);
+  background: var(--ifm-menu-color-background-active);
+  position: relative;
+}
+
+.menu__link--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--dr-rose);
+}
+
+/* Category labels in Caveat style */
+.menu__list-item-collapsible > .menu__link,
+.menu__list > .menu__list-item--collapsed > .menu__link {
+  font-family: 'Caveat', cursive;
+  font-size: 1.2rem;
+  color: var(--dr-faint);
+  letter-spacing: 0.02em;
+}
+
+/* ─── Docusaurus Content ────────────────────────────── */
+.markdown {
+  font-family: var(--ifm-font-family-base);
+  font-size: var(--ifm-font-size-base);
+  line-height: var(--ifm-line-height-base);
+}
+
+.markdown h1:first-child {
+  font-size: 3.2rem;
+  letter-spacing: -0.035em;
+}
+
+.markdown p:first-of-type {
+  font-style: italic;
+  font-size: 1.15rem;
+  color: var(--dr-muted);
+}
+
+/* Lead / intro blockquote style */
+.markdown blockquote {
+  border-left: 3px solid rgba(203, 1, 98, 0.35);
+  background: rgba(203, 1, 98, 0.03);
+  padding: 12px 20px;
+  font-style: italic;
+  color: var(--dr-muted);
+  margin: 1.5em 0;
+}
+
+[data-theme='dark'] .markdown blockquote {
+  background: rgba(226, 74, 138, 0.05);
+}
+
+/* Inline code */
+code {
+  font-family: var(--ifm-font-family-monospace) !important;
+  font-size: var(--ifm-code-font-size) !important;
+}
+
+/* Horizontal rule */
+hr {
+  border: none;
+  border-top: 1px dashed rgba(26, 22, 20, 0.10);
+  margin: 2.5em 0;
+}
+
+[data-theme='dark'] hr {
+  border-top-color: rgba(240, 230, 210, 0.10);
+}
+
+/* ─── Code blocks ───────────────────────────────────── */
+.prism-code {
+  font-family: var(--ifm-font-family-monospace) !important;
+  font-size: 0.82rem !important;
+  line-height: 1.75 !important;
+}
+
+.docusaurus-highlight-code-line {
+  background: rgba(203, 1, 98, 0.07);
+  display: block;
+  margin: 0 -1rem;
+  padding: 0 1rem;
+  border-left: 2px solid var(--dr-rose);
+}
+
+/* Code block header */
+div[class^="codeBlockTitle"] {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--dr-rose) !important;
+}
+
+/* Light-mode code block: override dracula dark bg until oneLight prism theme is active after restart */
+[data-theme='light'] .theme-code-block,
+[data-theme='light'] [class*="codeBlockContainer"] {
+  --prism-background-color: var(--dr-parchment);
+  background-color: var(--dr-parchment) !important;
+  border: 1px solid rgba(26, 22, 20, 0.10);
+}
+
+[data-theme='light'] .prism-code {
+  background-color: var(--dr-parchment) !important;
+  color: var(--dr-ink) !important;
+}
+
+/* ─── Admonitions (callouts) ────────────────────────── */
+.alert {
+  border-radius: 2px;
+  font-family: var(--ifm-font-family-base);
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+.alert--info {
+  --ifm-alert-background-color: rgba(26, 91, 110, 0.05);
+  --ifm-alert-border-color:     rgba(26, 91, 110, 0.30);
+  --ifm-alert-color:            var(--dr-navy);
+}
+
+.alert--success {
+  --ifm-alert-background-color: rgba(26, 91, 110, 0.04);
+  --ifm-alert-border-color:     rgba(26, 91, 110, 0.25);
+  --ifm-alert-color:            #1a5b3e;
+}
+
+.alert--warning {
+  --ifm-alert-background-color: rgba(196, 138, 30, 0.05);
+  --ifm-alert-border-color:     rgba(196, 138, 30, 0.35);
+  --ifm-alert-color:            var(--dr-amber);
+}
+
+.alert--danger {
+  --ifm-alert-background-color: rgba(203, 1, 98, 0.04);
+  --ifm-alert-border-color:     rgba(203, 1, 98, 0.25);
+  --ifm-alert-color:            var(--dr-rose);
+}
+
+/* Admonition title uses Fraunces */
+.admonitionHeading_node_modules-\@docusaurus-theme-classic-lib-theme-Admonition-Layout-styles-module,
+[class*="admonitionHeading"] {
+  font-family: var(--ifm-heading-font-family) !important;
+  font-size: 1rem !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.01em;
+}
+
+/* ─── Tabs ──────────────────────────────────────────── */
+.tabs__item {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tabs__item--active {
+  border-bottom-color: var(--dr-rose) !important;
+  color: var(--dr-rose) !important;
+}
+
+/* ─── TOC ───────────────────────────────────────────── */
+.table-of-contents {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 0.88rem;
+}
+
+.table-of-contents__link--active {
+  color: var(--dr-rose) !important;
+  font-weight: 600;
+}
+
+/* ─── Pagination (prev/next) ────────────────────────── */
+.pagination-nav__link {
+  border: 1px solid rgba(26, 22, 20, 0.10);
+  border-radius: 2px;
+  transition: border-color var(--ifm-transition-fast);
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--dr-rose);
+}
+
+.pagination-nav__label {
+  font-family: var(--ifm-heading-font-family);
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.pagination-nav__sublabel {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 0.82rem;
+  color: var(--dr-faint);
+}
+
+/* ─── Breadcrumbs ───────────────────────────────────── */
+.breadcrumbs__link {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 0.88rem;
+  border-radius: 2px !important;
+}
+
+.breadcrumbs__item--active .breadcrumbs__link {
+  color: var(--dr-rose) !important;
+  background: transparent !important;
+}
+
+/* ─── Navbar version badge ───────────────────────────── */
+.navbar-version-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  background: var(--dr-parchment);
+  border: 1px solid rgba(26, 22, 20, 0.12);
+  color: var(--dr-plum);
+  padding: 3px 9px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+[data-theme='dark'] .navbar-version-badge {
+  background: #2e2826;
+  border-color: rgba(240, 230, 210, 0.12);
+  color: #9a9088;
+}
+
+/* ─── Footer ────────────────────────────────────────── */
+.footer {
+  border-top: 1px dashed rgba(26, 22, 20, 0.10);
+  background: var(--dr-vellum);
+  padding: 0 !important;
+}
+
+[data-theme='dark'] .footer {
+  background: #221e1c;
+  border-top-color: rgba(240, 230, 210, 0.08);
+}
+
+/* Collapse all Docusaurus footer chrome — we render our own bar */
+.footer .container,
+.footer .footer__bottom {
+  padding: 0 !important;
+  margin: 0 !important;
+  max-width: none !important;
+}
+
+.footer .footer__copyright {
+  padding: 0;
+  text-align: unset;
+}
+
+/* ─── Footer bar (inside copyright HTML) ────────────── */
+.footer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 52px;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.footer-bar__brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-style: italic;
+  font-size: 0.875rem;
+  color: var(--dr-muted);
+}
+
+.footer-bar__brand em {
+  font-style: italic;
+}
+
+.footer-bar__links {
+  display: flex;
+  gap: 22px;
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 0.875rem;
+}
+
+.footer-bar__links a {
+  color: var(--dr-faint);
+  text-decoration: none;
+  transition: color var(--ifm-transition-fast);
+}
+
+.footer-bar__links a:hover {
+  color: var(--dr-rose);
+}
+
+.footer-bar__copy {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--dr-faint);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ─── Search (Algolia DocSearch) ────────────────────── */
+.DocSearch-Button {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 0.9rem;
+  background: var(--dr-vellum) !important;
+  border: 1px solid rgba(26, 22, 20, 0.12) !important;
+  border-radius: 2px !important;
+  color: var(--dr-faint) !important;
+}
+
+.DocSearch-Button:hover {
+  border-color: var(--dr-rose) !important;
+  box-shadow: none !important;
+}
+
+.DocSearch-Button-Placeholder {
+  font-family: 'Crimson Pro', Georgia, serif;
+}
+
+/* ─── Badges / tags ─────────────────────────────────── */
+.badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  border-radius: 2px;
+}
+
+.badge--primary {
+  background: rgba(203, 1, 98, 0.10);
+  border: 1px solid rgba(203, 1, 98, 0.25);
+  color: var(--dr-rose);
+}
+
+.badge--secondary {
+  background: var(--dr-parchment);
+  border: 1px solid rgba(26, 22, 20, 0.12);
+  color: var(--dr-plum);
+}
+
+/* ─── Details / Summary ─────────────────────────────── */
+details {
+  border: 1px solid rgba(26, 22, 20, 0.09);
+  background: var(--dr-vellum);
+  border-radius: 2px;
+}
+
+details summary {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* ─── Back-to-top button ────────────────────────────── */
+/*
+ * The button's arrow is drawn via ::after using mask: var(--ifm-menu-link-sublist-icon).
+ * We set that variable to `none` above (to hide sidebar collapse icons), which turns
+ * the ::after into a solid filled square. Override ::after directly with an upward
+ * chevron mask so the arrow renders correctly regardless of that variable.
+ */
+.theme-back-to-top-button {
+  background: var(--dr-rose) !important;
+  border-radius: 2px !important;
+  width: 2rem !important;
+  height: 2rem !important;
+  box-shadow: 0 2px 8px rgba(203, 1, 98, 0.35) !important;
+  transition: background var(--ifm-transition-fast), box-shadow var(--ifm-transition-fast) !important;
+}
+
+.theme-back-to-top-button::after {
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z'/%3E%3C/svg%3E") 50% / 1.25rem 1.25rem no-repeat !important;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z'/%3E%3C/svg%3E") 50% / 1.25rem 1.25rem no-repeat !important;
+  background-color: #ffffff !important;
+}
+
+.theme-back-to-top-button:hover {
+  background: #a8014f !important;
+  box-shadow: 0 4px 14px rgba(203, 1, 98, 0.45) !important;
+}
+
+[data-theme='dark'] .theme-back-to-top-button {
+  background: #e24a8a !important;
+  box-shadow: 0 2px 8px rgba(226, 74, 138, 0.35) !important;
+}
+
+[data-theme='dark'] .theme-back-to-top-button:hover {
+  background: #c42060 !important;
+  box-shadow: 0 4px 14px rgba(226, 74, 138, 0.45) !important;
+}
+
+/* ─── Scrollbar (WebKit) ────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(203, 1, 98, 0.25);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(203, 1, 98, 0.45);
+}
+
+/* ─── Hero section (for custom landing page) ─────────── */
+.hero {
+  background: var(--dr-paper);
+  padding: 80px 0 72px;
+}
+
+.hero__title {
+  font-family: var(--ifm-heading-font-family);
+  font-size: 4.5rem;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 0.95;
+}
+
+.hero__subtitle {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-style: italic;
+  font-size: 1.25rem;
+  color: var(--dr-muted);
+}
+
+/* ─── Responsive ────────────────────────────────────── */
+@media (max-width: 768px) {
+  h1, .hero__title { font-size: 3rem; }
+  h2 { font-size: 1.7rem; }
+  .markdown p:first-of-type { font-size: 1.05rem; }
+}
+
+/* ─── GitHub Navbar Icon ────────────────────────────── */
+.header-github-link::before {
+  content: '';
+  display: flex;
+  width: 1.25rem;
+  height: 1.25rem;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='%236b625a' d='M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.4-.5-1.6.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.6.2 2.8.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3'/%3E%3C/svg%3E")
+    no-repeat center / contain;
+}
+
+[data-theme='dark'] .header-github-link::before {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='%239a9088' d='M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.4-.5-1.6.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.6.2 2.8.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3'/%3E%3C/svg%3E");
+}
+
+/* ─── Homepage Hero ─────────────────────────────────── */
+.hero-banner {
+  padding: 80px 2rem 72px;
+  text-align: center;
+  background: var(--dr-vellum);
+  border-bottom: 1px dashed rgba(26, 22, 20, 0.10);
+  overflow: hidden;
+}
+
+[data-theme='dark'] .hero-banner {
+  background: #221e1c;
+  border-bottom-color: rgba(240, 230, 210, 0.08);
+}
+
+.hero-eyebrow {
+  font-family: 'Caveat', cursive;
+  font-size: 1.6rem;
+  color: var(--dr-rose);
+  display: inline-block;
+  transform: rotate(-2deg);
+  margin-bottom: 0.5rem;
+  line-height: 1;
+}
+
+.hero-title {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 5.75rem;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 0.93;
+  color: var(--dr-ink);
+  margin: 0 0 1.5rem;
+}
+
+[data-theme='dark'] .hero-title {
+  color: #f0e6d2;
+}
+
+.hero-title-em {
+  font-style: italic;
+  color: var(--dr-rose);
+}
+
+[data-theme='dark'] .hero-title-em {
+  color: #e24a8a;
+}
+
+.hero-subtitle {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 1.2rem;
+  color: #3a322c;
+  max-width: 580px;
+  margin: 0 auto 2.5rem;
+  line-height: 1.6;
+}
+
+[data-theme='dark'] .hero-subtitle {
+  color: #c8bfb4;
+}
+
+.hero-subtitle em {
+  color: var(--dr-rose);
+  font-style: italic;
+}
+
+[data-theme='dark'] .hero-subtitle em {
+  color: #e24a8a;
+}
+
+.hero-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.hero-button-primary {
+  display: inline-block;
+  background: var(--dr-rose);
+  border: 1px solid var(--dr-rose);
+  color: #ffffff !important;
+  padding: 0.7rem 2rem;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  border-radius: 2px;
+  text-decoration: none !important;
+  transition: background var(--ifm-transition-fast), border-color var(--ifm-transition-fast);
+}
+
+.hero-button-primary:hover {
+  background: #a8014f;
+  border-color: #a8014f;
+  color: #ffffff !important;
+}
+
+.hero-button-secondary {
+  display: inline-block;
+  background: transparent;
+  border: 1.5px solid rgba(26, 22, 20, 0.25);
+  color: var(--dr-ink) !important;
+  padding: 0.7rem 2rem;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  border-radius: 2px;
+  text-decoration: none !important;
+  transition: border-color var(--ifm-transition-fast), color var(--ifm-transition-fast);
+}
+
+.hero-button-secondary:hover {
+  border-color: var(--dr-rose);
+  color: var(--dr-rose) !important;
+}
+
+[data-theme='dark'] .hero-button-secondary {
+  border-color: rgba(240, 230, 210, 0.25);
+  color: #f0e6d2 !important;
+}
+
+[data-theme='dark'] .hero-button-secondary:hover {
+  border-color: #e24a8a;
+  color: #e24a8a !important;
+}
+
+/* ─── Quick Install ──────────────────────────────────── */
+.quick-install-section {
+  padding: 0 2rem 3.5rem;
+  background: var(--dr-vellum);
+}
+
+[data-theme='dark'] .quick-install-section {
+  background: #221e1c;
+}
+
+.quick-install-block {
+  max-width: 760px;
+  margin: 0 auto;
+  background: #2a2220;
+  border-radius: 3px;
+  padding: 1.5rem 2rem;
+  box-shadow: 0 16px 40px -12px rgba(203, 1, 98, 0.18);
+}
+
+.quick-install-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: #6b625a;
+  margin-bottom: 0.875rem;
+}
+
+.quick-install-pre {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.82rem;
+  line-height: 1.75;
+  color: #f0e6d2;
+  margin: 0;
+  white-space: pre;
+  overflow-x: auto;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+/* ─── Features Section ──────────────────────────────── */
+.features-section {
+  padding: 4rem 2rem 3.5rem;
+  background: var(--dr-paper);
+}
+
+[data-theme='dark'] .features-section {
+  background: #1a1614;
+}
+
+.features-header {
+  max-width: 1040px;
+  margin: 0 auto 2.5rem;
+}
+
+.features-eyebrow {
+  font-family: 'Caveat', cursive;
+  font-size: 1.5rem;
+  color: var(--dr-navy);
+  display: inline-block;
+  transform: rotate(-1.5deg);
+  margin-bottom: 0.25rem;
+  line-height: 1;
+}
+
+.features-heading {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 2.75rem;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--dr-ink);
+  margin: 0 0 0.5rem;
+}
+
+[data-theme='dark'] .features-heading {
+  color: #f0e6d2;
+}
+
+.features-heading-em {
+  font-style: italic;
+  color: var(--dr-rose);
+}
+
+[data-theme='dark'] .features-heading-em {
+  color: #e24a8a;
+}
+
+.features-subtitle {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-style: italic;
+  font-size: 1.1rem;
+  color: var(--dr-muted);
+  max-width: 56ch;
+  margin: 0.625rem 0 0;
+  line-height: 1.65;
+}
+
+/* ─── Feature Cards ─────────────────────────────────── */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.375rem;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.feature-card {
+  background: var(--dr-vellum);
+  border: 1px solid rgba(26, 22, 20, 0.07);
+  border-radius: 2px;
+  padding: 1.75rem 1.5rem;
+}
+
+[data-theme='dark'] .feature-card {
+  background: #221e1c;
+  border-color: rgba(240, 230, 210, 0.07);
+}
+
+.feature-card-icon {
+  font-size: 1.625rem;
+  margin-bottom: 0.75rem;
+  line-height: 1;
+}
+
+.feature-card-title {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 1.25rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--dr-ink);
+  margin: 0 0 0.5rem;
+}
+
+[data-theme='dark'] .feature-card-title {
+  color: #f0e6d2;
+}
+
+.feature-card-body {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 0.96rem;
+  color: #3a322c;
+  line-height: 1.6;
+  margin: 0;
+}
+
+[data-theme='dark'] .feature-card-body {
+  color: #9a9088;
+}
+
+/* ─── Documentation Links Section ───────────────────── */
+.doc-links-section {
+  padding: 3rem 2rem 4.5rem;
+  background: var(--dr-paper);
+  border-top: 1px solid rgba(26, 22, 20, 0.08);
+}
+
+[data-theme='dark'] .doc-links-section {
+  background: #1a1614;
+  border-top-color: rgba(240, 230, 210, 0.07);
+}
+
+.doc-links-heading {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 2.25rem;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--dr-ink);
+  max-width: 1040px;
+  margin: 0 auto 2rem;
+}
+
+[data-theme='dark'] .doc-links-heading {
+  color: #f0e6d2;
+}
+
+.doc-links-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.125rem;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.doc-card {
+  display: block;
+  padding: 1.25rem;
+  background: var(--dr-vellum);
+  text-decoration: none !important;
+  transition: background var(--ifm-transition-fast);
+}
+
+[data-theme='dark'] .doc-card {
+  background: #221e1c;
+}
+
+.doc-card:hover {
+  background: var(--dr-parchment);
+}
+
+[data-theme='dark'] .doc-card:hover {
+  background: #2e2826;
+}
+
+.doc-card--rose  { border-bottom: 3px solid var(--dr-rose); }
+.doc-card--navy  { border-bottom: 3px solid var(--dr-navy); }
+.doc-card--plum  { border-bottom: 3px solid var(--dr-plum); }
+.doc-card--amber { border-bottom: 3px solid var(--dr-amber); }
+
+.doc-card-title {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--dr-ink);
+  margin-bottom: 0.3125rem;
+}
+
+[data-theme='dark'] .doc-card-title {
+  color: #f0e6d2;
+}
+
+.doc-card-desc {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--dr-muted);
+}
+
+/* ─── Responsive ─────────────────────────────────────── */
+@media (max-width: 996px) {
+  .doc-links-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-title { font-size: 3.5rem; }
+  .hero-subtitle { font-size: 1.05rem; }
+  .quick-install-pre { font-size: 0.72rem; white-space: pre-wrap; }
+  .features-heading { font-size: 2rem; }
+  .doc-links-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 480px) {
+  .hero-title { font-size: 2.75rem; }
+  .doc-links-grid { grid-template-columns: 1fr; }
+}
