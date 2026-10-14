@@ -19,9 +19,11 @@ here saves a round trip on a pull request.
 Releases are cut by the owner with `scripts/tag-release.sh`, which picks
 the next version (`rc`, `final`, or `patch`/`minor`/`major`, with `--rc`
 for a first candidate), checks that CI passed on `main`, and pushes a
-signed tag. The release workflow builds the binaries and publishes the
-release from that tag. Don't create the release on GitHub by hand: the
-workflow cannot publish over one that already exists.
+signed tag. It asks before pushing; `--yes` skips that, and with `-m` lets
+it run where there is no terminal, such as `!` in Claude Code. The release
+workflow builds the binaries and publishes the release from that tag.
+Don't create the release on GitHub by hand: the workflow cannot publish
+over one that already exists.
 
 [AGENTS.md](AGENTS.md) has the full conventions: the rules that keep Janus
 safe to change, how comments and tests are written, and how experiments
