@@ -3,11 +3,13 @@ package route
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +53,10 @@ func lmStudio(t *testing.T, messages http.HandlerFunc) (*backend.Local, chan rec
 			io.WriteString(w, modelList)
 			return
 		}
+		if r.URL.Path == "/api/v1/models/load" {
+			answerLoad(w, r)
+			return
+		}
 		body, _ := io.ReadAll(r.Body)
 		got <- received{r.URL.Path, r.Header.Clone(), body}
 		if messages != nil {
@@ -63,6 +69,17 @@ func lmStudio(t *testing.T, messages http.HandlerFunc) (*backend.Local, chan rec
 	t.Cleanup(srv.Close)
 	u, _ := url.Parse(srv.URL)
 	return backend.NewLocal(u, nil), got
+}
+
+// answerLoad answers a load the way LM Studio does, with the context it
+// was asked for.
+func answerLoad(w http.ResponseWriter, r *http.Request) {
+	var asked struct {
+		Model         string `json:"model"`
+		ContextLength int    `json:"context_length"`
+	}
+	json.NewDecoder(r.Body).Decode(&asked)
+	fmt.Fprintf(w, `{"type":"llm","instance_id":%q,"load_time_seconds":0.1,"status":"loaded","load_config":{"context_length":%d}}`, asked.Model, asked.ContextLength)
 }
 
 func router(local *backend.Local, aliases map[string]LocalModel) *Router {
@@ -172,19 +189,19 @@ func TestPlanLimits(t *testing.T) {
 	if _, refusal := raised.Plan(context.Background(), http.Header{}, parse(t, big)); refusal != nil {
 		t.Errorf("refused under a raised limit: %s", refusal.Message)
 	}
-	// A model that is not loaded has no context to check against yet. A
-	// small request goes, and LM Studio loads the model; a large one is not
-	// worth a load that would then fail.
+	// A model that is not loaded is loaded by Janus, at a context it
+	// chose. A small request goes; a large one is not worth a load that
+	// would then fail.
 	unloaded := router(local, map[string]LocalModel{"janus-local": {ID: "gemma-4-e4b"}})
 	small := `{"model":"janus-local","messages":[{"role":"user","content":"hi"}]}`
 	if _, refusal := unloaded.Plan(context.Background(), http.Header{}, parse(t, small)); refusal != nil {
 		t.Errorf("a small request was refused for a model that is not loaded: %s", refusal.Message)
 	}
 	_, refusal := unloaded.Plan(context.Background(), http.Header{}, parse(t, big))
-	if refusal == nil || !strings.Contains(refusal.Message, `"gemma-4-e4b" is not loaded`) || !strings.Contains(refusal.Message, "contextTokens") {
+	if refusal == nil || !strings.Contains(refusal.Message, `the 65536-token context Janus loads local model "gemma-4-e4b" with`) || !strings.Contains(refusal.Message, "contextTokens") {
 		t.Errorf("a large request for a model that is not loaded: %+v", refusal)
 	}
-	// Saying what LM Studio loads it with lifts that.
+	// contextTokens sets the context it is loaded with.
 	told := router(local, map[string]LocalModel{"janus-local": {ID: "gemma-4-e4b", ContextTokens: 100000}})
 	if _, refusal := told.Plan(context.Background(), http.Header{}, parse(t, big)); refusal != nil {
 		t.Errorf("refused with contextTokens set: %s", refusal.Message)
@@ -1242,6 +1259,10 @@ func claudeDownWith(t *testing.T, models string, upstream http.HandlerFunc, lms 
 			io.WriteString(w, models)
 			return
 		}
+		if r.URL.Path == "/api/v1/models/load" {
+			answerLoad(w, r)
+			return
+		}
 		if r.Header.Get("Authorization") != "" || r.Header.Get("X-Janus-Route") != "" {
 			t.Errorf("LM Studio was sent a credential or the override header: %v", r.Header)
 		}
@@ -1418,9 +1439,9 @@ func TestNoStandInNoteWhenClaudeAnswers(t *testing.T) {
 	}
 }
 
-// A model LM Studio has not loaded would be loaded for the request, at a
-// context Janus cannot see. A request too large for a modest load is not
-// worth the load: Claude's error stands, and LM Studio is never asked.
+// A stand-in for a model LM Studio has not loaded is worth a load only if
+// the request fits the context Janus would load it with. A request too
+// large is not: Claude's error stands, and LM Studio is never asked.
 func TestAColdStartIsOnlyForARequestThatFits(t *testing.T) {
 	notLoaded := `{"data":[{"id":"qwen/qwen3.8-27b","state":"not-loaded","max_context_length":262144}]}`
 	errBody := `{"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your account's rate limit. Please try again later."}}`
@@ -1787,5 +1808,58 @@ func TestAStandInWaitsForABusyLocalModel(t *testing.T) {
 	begun := time.Now()
 	if _, ok := e.Fallback(ctx); ok || time.Since(begun) > 5*time.Second {
 		t.Errorf("after the client went: ok %v after %s", ok, time.Since(begun))
+	}
+}
+
+// A model LM Studio has not loaded is loaded by Janus, at the context it
+// chose, before the request is sent (#170); the plan records that. One
+// already loaded, at a context too small for the request, is left alone:
+// reloading it would throw away whatever else is using it.
+func TestJanusLoadsAnUnloadedModelButNeverReloads(t *testing.T) {
+	var loads []string
+	listing := `{"data":[{"id":"qwen/qwen3.8-27b","state":"not-loaded","max_context_length":262144}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v0/models":
+			io.WriteString(w, listing)
+		case "/api/v1/models/load":
+			body, _ := io.ReadAll(r.Body)
+			loads = append(loads, string(body))
+			r.Body = io.NopCloser(strings.NewReader(string(body)))
+			answerLoad(w, r)
+		default:
+			t.Errorf("unexpected request to %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	r := router(backend.NewLocal(u, nil), nil)
+	standIn := qwen["janus-local"]
+	r.Rules = []Rule{{Route: RouteUpstream, IfDown: &standIn}}
+
+	plan, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
+	local, ok := plan.Fallback(context.Background())
+	if !ok {
+		t.Fatalf("no stand-in: %s", local.Reason)
+	}
+	local.Release()
+	if len(loads) != 1 || !strings.Contains(loads[0], `"context_length":65536`) || !strings.Contains(loads[0], `"model":"qwen/qwen3.8-27b"`) {
+		t.Errorf("loads = %q", loads)
+	}
+	if !slices.Contains(local.Stages, backend.StageLoad) {
+		t.Errorf("stages = %v, want %s", local.Stages, backend.StageLoad)
+	}
+
+	// Loaded, but too small for this request: refused, and not reloaded.
+	listing = `{"data":[{"id":"qwen/qwen3.8-27b","state":"loaded","loaded_context_length":4096,"max_context_length":262144}]}`
+	r = router(backend.NewLocal(u, nil), nil)
+	r.Rules = []Rule{{Route: RouteUpstream, IfDown: &standIn}}
+	medium := `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"` + strings.Repeat("word ", 8000) + `"}]}`
+	plan, _, _ = r.Explain(context.Background(), mainHeader(), parse(t, medium))
+	if refused, ok := plan.Fallback(context.Background()); ok || !strings.Contains(refused.Reason, "more than the 4096-token context") {
+		t.Errorf("too small: ok %v, reason %q", ok, refused.Reason)
+	}
+	if len(loads) != 1 {
+		t.Errorf("a loaded model was reloaded: %q", loads)
 	}
 }

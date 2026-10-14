@@ -37,6 +37,7 @@ and each change is named in the ledger's `stages`:
 | `drop_deferred_tools` | Placeholder entries for those tools are removed | They stand for the definitions just moved |
 | `fold_system_messages` | System messages in the middle of the conversation become reminders in the user message before them | Many models' chat templates refuse a system message anywhere but first |
 | `tool_references_as_text` | The tool names a tool search returns become text in its result, saying whether the tool can be called | LM Studio rejects the `tool_reference` blocks the Anthropic API would expand |
+| `load_model` | Nothing in the request: Janus had LM Studio load the model first, with `contextTokens` or 65,536 tokens | Left to load on demand, LM Studio picks a context Janus can't see |
 
 Also:
 

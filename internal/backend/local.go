@@ -24,6 +24,17 @@ type Local struct {
 	mu      sync.Mutex
 	models  []Model
 	fetched time.Time
+	// loading holds the load in progress for each model, so that requests
+	// arriving together share one load rather than each starting another
+	// instance of the model.
+	loading map[string]*load
+}
+
+// load is one load in progress; done is closed when it has finished.
+type load struct {
+	done  chan struct{}
+	model Model
+	err   error
 }
 
 // Model is one model LM Studio knows about.
@@ -106,6 +117,84 @@ func (l *Local) Model(ctx context.Context, id string) (Model, bool, error) {
 	return Model{}, false, nil
 }
 
+// loadTimeout bounds one load. A 27B model took about 11 s to load
+// (docs/research/lmstudio.md); a cold disk or a large context takes longer.
+const loadTimeout = 5 * time.Minute
+
+// Load has LM Studio load model id with a context of contextTokens, and
+// returns the model as loaded. LM Studio would otherwise load it on the
+// first request at a context Janus cannot see (#170). Callers asking for
+// the same model while a load is under way wait for that load rather than
+// starting another, and a caller that gives up does not stop it for the
+// rest. Load is for a model that is not loaded: asking LM Studio to load
+// one that is would start a second instance in the same memory.
+func (l *Local) Load(ctx context.Context, id string, contextTokens int) (Model, error) {
+	l.mu.Lock()
+	if l.loading == nil {
+		l.loading = map[string]*load{}
+	}
+	current, under := l.loading[id]
+	if !under {
+		current = &load{done: make(chan struct{})}
+		l.loading[id] = current
+		go func() {
+			current.model, current.err = l.load(id, contextTokens)
+			l.mu.Lock()
+			delete(l.loading, id)
+			l.fetched = time.Time{} // the model list is out of date
+			l.mu.Unlock()
+			close(current.done)
+		}()
+	}
+	l.mu.Unlock()
+
+	select {
+	case <-current.done:
+		return current.model, current.err
+	case <-ctx.Done():
+		return Model{}, ctx.Err()
+	}
+}
+
+func (l *Local) load(id string, contextTokens int) (Model, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), loadTimeout)
+	defer cancel()
+	body, _ := json.Marshal(map[string]any{"model": id, "context_length": contextTokens, "echo_load_config": true})
+	endpoint := strings.TrimRight(l.base.String(), "/") + "/api/v1/models/load"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
+	if err != nil {
+		return Model{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	// The client given to NewLocal has a short timeout, meant for listing
+	// models; a load takes longer, and is bounded by ctx instead.
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return Model{}, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var loaded struct {
+		Status     string `json:"status"`
+		LoadConfig struct {
+			ContextLength int `json:"context_length"`
+		} `json:"load_config"`
+		Error json.RawMessage `json:"error"`
+	}
+	if json.Unmarshal(raw, &loaded) != nil || resp.StatusCode != http.StatusOK || loaded.Status != "loaded" {
+		why := strings.TrimSpace(string(raw))
+		if len(why) > 300 {
+			why = why[:300] + "..."
+		}
+		return Model{}, fmt.Errorf("LM Studio answered HTTP %d: %s", resp.StatusCode, why)
+	}
+	got := Model{ID: id, Loaded: true, LoadedContext: loaded.LoadConfig.ContextLength}
+	if got.LoadedContext == 0 {
+		got.LoadedContext = contextTokens
+	}
+	return got, nil
+}
+
 // ErrNotLMStudio means the server answered, but not the way LM Studio does.
 var ErrNotLMStudio = errors.New("the server answered but not like LM Studio")
 
@@ -150,6 +239,8 @@ const (
 	StageDropDeferred = "drop_deferred_tools"
 	StageFoldSystem   = "fold_system_messages"
 	StageToolRefs     = "tool_references_as_text"
+	// StageLoad records that Janus had LM Studio load the model first.
+	StageLoad = "load_model"
 	// StageDropThinking is applied on the way upstream, not to the local
 	// model; see RepairForUpstream.
 	StageDropThinking = "drop_unsigned_thinking"
