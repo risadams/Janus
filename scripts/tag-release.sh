@@ -7,7 +7,9 @@
 #   scripts/tag-release.sh patch|minor|major  v0.9.0      -> v0.9.1, v0.10.0, v1.0.0
 #
 # Options: -m "message" sets the tag message instead of opening an editor;
-# --dry-run checks and says what it would tag, and tags nothing.
+# --yes pushes without asking; --dry-run checks and says what it would tag,
+# and tags nothing. Where there is no terminal to ask on, such as a command
+# run with ! in Claude Code, -m and --yes are needed (#181).
 #
 # The release itself is never made by hand on GitHub: the workflow creates
 # it from the tag, and fails if one already exists (#166). The tag is signed
@@ -15,15 +17,16 @@
 # rather than as a button in Actions.
 set -euo pipefail
 
-usage="usage: scripts/tag-release.sh rc|final|patch|minor|major [--rc] [-m message] [--dry-run]"
+usage="usage: scripts/tag-release.sh rc|final|patch|minor|major [--rc] [-m message] [--yes] [--dry-run]"
 die() { echo "tag-release: $*" >&2; exit 1; }
 
-bump="" rc=false dry=false message=""
+bump="" rc=false dry=false yes=false message=""
 while [ $# -gt 0 ]; do
   case "$1" in
     rc | final | patch | minor | major) bump="$1" ;;
     --rc) rc=true ;;
     --dry-run) dry=true ;;
+    --yes | -y) yes=true ;;
     -m) [ $# -ge 2 ] || die "$usage"; message="$2"; shift ;;
     -h | --help) echo "$usage"; exit 0 ;;
     *) die "$usage" ;;
@@ -35,6 +38,13 @@ if $rc && { [ "$bump" = rc ] || [ "$bump" = final ]; }; then
   die "--rc goes with patch, minor, or major"
 fi
 command -v gh >/dev/null || die "needs the GitHub CLI, gh"
+
+# Without a terminal there is no editor for the message and no one to
+# answer "Push?". Say so now, before anything is tagged.
+if ! $dry && ! { : </dev/tty; } 2>/dev/null; then
+  [ -n "$message" ] || die "there is no terminal to open an editor in; give the tag message with -m"
+  $yes || die "there is no terminal to ask before pushing on; pass --yes to push without asking"
+fi
 
 cd "$(dirname "$0")/.."
 
@@ -125,8 +135,11 @@ git cat-file -p "$next" | grep -q -- '-----BEGIN SSH SIGNATURE-----' || {
   die "the tag came out unsigned, so it was removed; check git's gpg.format and user.signingkey"
 }
 
-printf 'Push %s to origin? [y/N] ' "$next"
-read -r answer </dev/tty || answer=""
+answer=y
+if ! $yes; then
+  printf 'Push %s to origin? [y/N] ' "$next"
+  read -r answer </dev/tty || answer=""
+fi
 case "$answer" in
   y | Y | yes) ;;
   *) git tag -d "$next" >/dev/null; echo "Not pushed; the tag was removed."; exit 0 ;;
