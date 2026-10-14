@@ -30,4 +30,6 @@ safe to change, how comments and tests are written, and how experiments
 against the real API and local models are run. It's written for coding
 agents and reads just as well for people.
 
-Security problems go through [SECURITY.md](SECURITY.md), not an issue.
+Everyone taking part is expected to follow the
+[code of conduct](CODE_OF_CONDUCT.md). Security problems go through
+[SECURITY.md](SECURITY.md), not an issue.
