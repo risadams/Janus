@@ -10,7 +10,10 @@ here saves a round trip on a pull request.
 - **Keep history linear.** `main` accepts no merge commits: rebase your
   branch on `main` to bring it up to date.
 - **Run the checks** CI runs: `gofmt -l .` (prints nothing), `go vet ./...`,
-  and `go test -race ./...`. The suite is offline.
+  `go test -race ./...`,
+  `go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...`, and
+  `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`. All of them must
+  pass before a pull request can merge. The suite is offline.
 - **Update the docs** that describe any behaviour you change, in the same
   pull request. They are Markdown in `docs/`, published as the
   [docs site](https://risadams.github.io/Janus/); to preview it,
