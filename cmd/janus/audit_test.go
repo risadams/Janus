@@ -220,3 +220,25 @@ func TestAuditOfNothingAndBadArguments(t *testing.T) {
 	out, _, _ = runAuditCmd(t, "-dir", clean)
 	wantLines(t, out, "None were found in anything bound for Anthropic.", "it is not proof there were none")
 }
+
+// A request where the local-only policy withheld something and the guard,
+// replacing secrets, found none: the audit says so in words, not as
+// "0 found () in" (#188).
+func TestAuditOfARequestWithNoSecretsSaysSo(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	rec := ledger.Record{V: 1, ID: "w1-withheld", Time: time.Date(2026, 10, 14, 12, 30, 40, 0, time.UTC),
+		Method: "POST", Path: "/v1/messages", Class: "main", Backend: "upstream", Reason: "rule main", Outcome: ledger.OutcomeOK,
+		Guard: &ledger.Guard{LocalOnly: []string{`Bash read vault/db.yaml, which "vault/**" makes local-only`}, Withheld: 1, Redacted: &zero}}
+	if err := ledger.Open(filepath.Join(dir, "ledger")).Append(rec); err != nil {
+		t.Fatal(err)
+	}
+	out, _, code := runAuditCmd(t, "-dir", dir, "w1-withheld")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	wantLines(t, out, "Local-only 1 piece withheld before sending", "Guard no secrets found")
+	if strings.Contains(out, "0 found") || strings.Contains(out, "()") {
+		t.Errorf("the audit printed an empty finding:\n%s", out)
+	}
+}

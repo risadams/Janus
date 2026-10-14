@@ -396,7 +396,11 @@ func auditOne(stdout, stderr io.Writer, records []ledger.Record, captures, id st
 	if g := rec.Guard; g != nil && len(g.LocalOnly) > 0 {
 		switch {
 		case g.Withheld > 0:
-			fmt.Fprintf(stdout, "  Local-only %d pieces withheld before sending: %s\n", g.Withheld, strings.Join(g.LocalOnly, "; "))
+			pieces := "pieces"
+			if g.Withheld == 1 {
+				pieces = "piece"
+			}
+			fmt.Fprintf(stdout, "  Local-only %d %s withheld before sending: %s\n", g.Withheld, pieces, strings.Join(g.LocalOnly, "; "))
 		default:
 			fmt.Fprintf(stdout, "  Local-only %s\n", strings.Join(g.LocalOnly, "; "))
 		}
@@ -405,6 +409,9 @@ func auditOne(stdout, stderr io.Writer, records []ledger.Record, captures, id st
 		switch {
 		case g.Blocked != "":
 			fmt.Fprintf(stdout, "  Guard     stopped: %s\n", g.Blocked)
+		case g.Findings == 0:
+			// Checked, with redaction on, and nothing was there (#188).
+			fmt.Fprintf(stdout, "  Guard     no secrets found\n")
 		case g.Redacted != nil:
 			fmt.Fprintf(stdout, "  Guard     %d found (%s) in %s\n            %d distinct secrets replaced before sending; %d placeholders put back in the answer\n",
 				g.Findings, kindList(g.Kinds), strings.Join(g.Where, "; "), *g.Redacted, g.Restored)
