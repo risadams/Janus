@@ -1,11 +1,9 @@
-<p align="center">
+<h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/janus-mark-dark.svg">
-    <img src="docs/assets/janus-mark.svg" width="120" alt="The Janus mark: two half circles back to back, each with an eye, looking away from each other">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/janus-lockup-dark.png">
+    <img src="docs/assets/janus-lockup.png" width="480" alt="Janus">
   </picture>
-</p>
-
-# Janus
+</h1>
 
 [![test](https://github.com/risadams/Janus/actions/workflows/test.yml/badge.svg)](https://github.com/risadams/Janus/actions/workflows/test.yml)
 
