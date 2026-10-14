@@ -22,9 +22,12 @@ other rules; the first rule that matches decides.
 
 ## What happens
 
-Each request goes to Claude as usual. If Claude is unreachable, or answers
-with a `429` or a `500` and above (which includes "overloaded"), the same
-request is sent to the local model and its answer returned. The response
+Each request goes to Claude as usual. If Claude says it is out of usage (a
+`429` that won't clear for a minute or more), the same request is sent to
+the local model at once. A shorter failure (an overload, a server error,
+no connection, a brief rate limit) is passed to Claude Code to retry; only
+if Claude fails three times within two minutes does the local model step
+in. Either way the local model's answer is returned. The response
 carries an `X-Janus-Fallback` header, the console line shows that Claude
 was tried first and why it failed, the ledger records it, and
 `janus stats` counts how often it happened.

@@ -224,10 +224,23 @@ Claude cannot answer:
 { "name": "main", "class": "main", "route": "upstream", "ifDown": "janus-local" }
 ```
 
-The local model answers when Claude is unreachable, or responds with a rate
-limit (429) or a server error (500 and above, which includes
-"overloaded"). On a subscription, a rate limit is what running out of usage
-looks like, so this also covers that.
+The local model answers when Claude is down for a while, not on every
+failure:
+
+- **A usage limit, at once.** On a subscription, running out of usage is a
+  rate limit (429) whose headers say it resets in an hour or more. When a
+  429 says Claude won't answer for a minute or more, the local model
+  answers straight away.
+- **An outage, on the third failure.** Anything else that means Claude
+  can't answer (a short rate limit, a server error such as "overloaded",
+  no connection) is first passed to Claude Code, which retries with
+  backoff and usually gets through a few seconds later. If Claude fails
+  three times within two minutes without answering in between, it is
+  down, and the local model answers. The next answer from Claude resets
+  the count.
+
+That way a passing blip doesn't put a local model's turn into the
+conversation, where it would stay (docs/research/standin.md).
 
 Any other error, such as a bad request or an expired login, is about the
 request and not about Claude being down. It reaches the client untouched

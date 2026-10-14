@@ -71,3 +71,34 @@ system prompt, `CLAUDE.md`, and the tool definitions.
   harmless command, was replayed.
 - Memory. The model ran on LM Studio at `studio.local` at a 107k context;
   what 65,536 tokens costs on the owner's 36 GB Mac was not measured.
+
+## When to stand in (#150)
+
+Added 2026-10-14. Until then, any 429 or 5xx made the local model stand
+in. Claude Code retries those itself, so a two-second overload could put a
+local model's turn into a conversation for good.
+
+**What the headers say.** The ledger keeps `retry-after`,
+`x-should-retry` and the `anthropic-ratelimit-*` headers on every failed
+upstream response. Over the 74 failures recorded to 2026-10-14:
+
+- Every session-limit 429 had `anthropic-ratelimit-unified-status:
+  rejected` and a `retry-after` equal to the seconds left until the
+  5-hour limit reset: 9,720 (2.7 hours) on 2026-10-13, 5,745 on
+  2026-10-14. `anthropic-ratelimit-unified-reset` gave the same time.
+- `x-should-retry` was `true` on all of them, hours from the reset, so it
+  does not tell a long limit from a short one.
+- Claude Code's start-up quota check got a 429 with no rate-limit headers.
+  It is its own class, and no rule stands in for it.
+- No 529 ("overloaded") or 5xx was seen.
+
+**Decision.** Stand in at once when a 429's `retry-after`, or its
+unified reset when `rejected`, is a minute or more away. Otherwise relay
+the failure to Claude Code to retry, and stand in only when Claude has
+failed three times within two minutes with no answer between: an outage,
+not a blip. An answer from Claude clears the count.
+
+**What this does not show.** How a 529 or an unreachable Anthropic looks
+in practice, since none happened; the three-in-two-minutes threshold rests
+on Claude Code's backoff, not a measured outage. Whether a short 429
+(seconds from its reset) ever happens on a subscription.

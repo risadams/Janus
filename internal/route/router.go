@@ -136,6 +136,9 @@ type Router struct {
 
 	health breaker
 	busy   slots
+	// down decides when Claude has been down long enough for an ifDown
+	// stand-in (#150).
+	down outage
 }
 
 // slots counts the requests in flight to each local model, so that rules
@@ -266,6 +269,9 @@ func (b *breaker) record(ok bool) {
 // Report tells the router how a finished exchange went, so that it can
 // notice the local backend failing. Call it for every exchange.
 func (r *Router) Report(ex proxy.Exchange) {
+	if ex.Backend == "upstream" && ex.Status > 0 && ex.Status < 400 {
+		r.down.recovered() // Claude answered
+	}
 	switch {
 	case ex.Attempt != nil && ex.Attempt.Backend == "local":
 		r.health.record(!ex.Attempt.Fault)
@@ -367,7 +373,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			return plan
 		}
 		local := *rule.IfDown
-		plan.FallBackOn = UpstreamDown
+		plan.FallBackOn = r.down.standIn
 		// When there is no stand-in after all, the returned plan's Reason
 		// says why, for the record: Claude's failure is the answer.
 		noStandIn := func(cause, why string) (proxy.Plan, bool) {
