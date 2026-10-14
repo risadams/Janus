@@ -16,6 +16,13 @@ here saves a round trip on a pull request.
 - **Never commit captures, logs, or a config.** They hold prompts, code, and
   credentials.
 
+Releases are cut by the owner with `scripts/tag-release.sh`, which picks
+the next version (`rc`, `final`, or `patch`/`minor`/`major`, with `--rc`
+for a first candidate), checks that CI passed on `main`, and pushes a
+signed tag. The release workflow builds the binaries and publishes the
+release from that tag. Don't create the release on GitHub by hand: the
+workflow cannot publish over one that already exists.
+
 [AGENTS.md](AGENTS.md) has the full conventions: the rules that keep Janus
 safe to change, how comments and tests are written, and how experiments
 against the real API and local models are run. It's written for coding
