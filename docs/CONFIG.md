@@ -234,8 +234,15 @@ and the local model is not consulted.
   with the count.
 - **It only works before the answer starts.** If Claude fails part-way
   through a streamed answer, what was sent cannot be taken back.
-- **If the local model cannot help either** (too large a request, LM Studio
-  down), the client gets Claude's error exactly as Claude sent it.
+- **A conversation too long for the local model is cut to fit.** Its
+  copy keeps the system prompt, the tools, the first message, and the
+  latest turns that fit in three quarters of the model's context (the
+  rest is room to answer), with a note saying how many messages were left
+  out. The model works without the middle of the conversation, so it may
+  repeat work or miss a decision made there. Claude's copy is never cut.
+- **If the local model cannot help either** (LM Studio down, or even the
+  latest turn too large), the client gets Claude's error exactly as
+  Claude sent it.
 - **It costs nothing while Claude is healthy.** The fallback is only worked
   out when it is needed; LM Studio is not contacted otherwise.
 - The conversation can go back to Claude on the next turn.

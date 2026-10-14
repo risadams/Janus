@@ -729,7 +729,13 @@ func New(opts Options) http.Handler {
 				}
 				state.plan = *next
 				state.hold(state.plan)
+				// The fallback's reason starts with the same rule; what it
+				// adds (older turns left out, a wait for the model) is kept.
+				added := strings.TrimLeft(strings.TrimPrefix(next.Reason, tried.Reason), ";, ")
 				state.plan.Reason = fmt.Sprintf("%s: %s; sent %s", tried.Reason, why, state.plan.Backend.Name())
+				if added != "" {
+					state.plan.Reason += ", " + added
+				}
 
 				body, err := prepare(state.plan)
 				if err != nil {
