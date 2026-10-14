@@ -392,11 +392,17 @@ func exchangeNotes(ex proxy.Exchange) []note {
 			}
 			notes = append(notes, note{level: warn, text: text})
 		} else {
-			notes = append(notes, note{level: info, text: fmt.Sprintf("%s tried for %s first, then it went to Claude: %s", a.Backend, humanDuration(a.Duration), a.Why)})
+			notes = append(notes, note{level: info, text: fmt.Sprintf("%s tried for %s first, then it went to Claude: %s", a.Backend, humanDuration(a.Duration), a.Why) + nextStep(a.Cause)})
 		}
 	}
 	if ex.NoFallback != "" {
-		notes = append(notes, note{level: warn, text: ex.NoFallback})
+		notes = append(notes, note{level: warn, text: ex.NoFallback + nextStep(ex.LocalCause)})
+	} else if ex.LocalCause != "" && ex.Attempt == nil {
+		// A rule meant this for the local model and sent it to Claude
+		// without trying. Busy and the like recur on every parallel turn,
+		// so each cause is said once per conversation.
+		text := "not sent to the local model (" + strings.ReplaceAll(ex.LocalCause, "_", " ") + ")" + nextStep(ex.LocalCause)
+		notes = append(notes, note{level: info, text: text, once: "local-cause " + ex.LocalCause})
 	}
 	if ex.Fault != "" {
 		notes = append(notes, note{level: bad, text: "fault: " + ex.Fault})
@@ -412,6 +418,14 @@ func exchangeNotes(ex proxy.Exchange) []note {
 		notes = append(notes, note{level: warn, text: "response not read: " + ex.Unread})
 	}
 	return notes
+}
+
+// nextStep is a cause's next step, as the tail of a console note.
+func nextStep(cause string) string {
+	if hint := proxy.CauseHint(cause); hint != "" {
+		return "; next: " + hint
+	}
+	return ""
 }
 
 // scanForSecrets looks for secrets in a Messages request that was sent to

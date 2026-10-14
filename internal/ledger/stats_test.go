@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/risadams/janus/internal/proxy"
 )
 
 func at(day, hour int) time.Time { return time.Date(2026, 10, day, hour, 0, 0, 0, time.UTC) }
@@ -289,6 +291,63 @@ func TestLocalFirstSummary(t *testing.T) {
 	}
 	if len(Summarise([]Record{rec("x", at(10, 1), "main", u)}, DefaultPrices).LocalFirst) != 0 {
 		t.Error("a report with no attempts has a local-first section")
+	}
+}
+
+// Why the local model did not answer is counted by cause: attempts that
+// ended that way, and requests a rule or stand-in passed over without
+// trying it. Records from before causes were recorded are read from their
+// Why or Reason, and an old "rejected" that was really an error from LM
+// Studio is counted as failed (#202).
+func TestLocalFirstCausesAreCounted(t *testing.T) {
+	u := &Usage{Input: 2, Output: 100}
+	attempt := func(id string, a Attempt) Record {
+		r := rec(id, at(10, 1), "subagent", u)
+		a.Backend = "local"
+		r.Attempt = &a
+		return r
+	}
+	passedOver := func(id, reason, cause string) Record {
+		r := rec(id, at(10, 2), "subagent", u)
+		r.Reason, r.LocalCause = reason, cause
+		return r
+	}
+	rep := Summarise([]Record{
+		attempt("a", Attempt{Verdict: VerdictAccepted}),
+		attempt("b", Attempt{Verdict: VerdictFailed, Cause: proxy.CauseSlow}),
+		attempt("c", Attempt{Verdict: VerdictRejected, Cause: proxy.CauseRejected, Check: "empty"}),
+		// Written before causes: read from Why.
+		attempt("d", Attempt{Verdict: VerdictFailed, Why: "the local answer broke off: context deadline exceeded"}),
+		attempt("e", Attempt{Verdict: VerdictRejected, Why: "the local model returned an error: api_error"}),
+		passedOver("f", "rule subagents: qwen already has 1 requests in flight, its limit; sent upstream", proxy.CauseBusy),
+		// Written before causes: read from Reason.
+		passedOver("g", "rule subagents: could not reach LM Studio at http://x: refused; sent upstream", ""),
+		rec("h", at(10, 3), "main", u), // never meant for the local model
+	}, DefaultPrices)
+
+	got := map[string]CauseRow{}
+	for _, r := range rep.LocalFirstCause {
+		got[r.Cause] = r
+	}
+	want := map[string]CauseRow{
+		proxy.CauseSlow:        {Cause: proxy.CauseSlow, Attempts: 2},
+		proxy.CauseRejected:    {Cause: proxy.CauseRejected, Attempts: 1},
+		proxy.CauseServerError: {Cause: proxy.CauseServerError, Attempts: 1},
+		proxy.CauseBusy:        {Cause: proxy.CauseBusy, NotTried: 1},
+		proxy.CauseUnreachable: {Cause: proxy.CauseUnreachable, NotTried: 1},
+	}
+	if len(got) != len(want) {
+		t.Errorf("causes = %+v, want %+v", rep.LocalFirstCause, want)
+	}
+	for c, w := range want {
+		if got[c] != w {
+			t.Errorf("cause %s = %+v, want %+v", c, got[c], w)
+		}
+	}
+
+	// The old api_error "rejection" is a failure: only c was judged.
+	if lf := rep.LocalFirst; len(lf) != 1 || lf[0].Tried != 5 || lf[0].Accepted != 1 || lf[0].Rejected != 1 || lf[0].Failed != 3 {
+		t.Errorf("local-first rows = %+v, want 5 tried: 1 accepted, 1 rejected, 3 failed", lf)
 	}
 }
 

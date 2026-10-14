@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/risadams/janus/internal/proxy"
 )
 
 // Read returns the records whose time falls in [since, until), oldest
@@ -147,6 +149,10 @@ type Report struct {
 	// LocalFirst summarises, by class, requests where the local model was
 	// tried with Claude as the fallback.
 	LocalFirst []LocalFirstRow `json:"local_first,omitempty"`
+	// LocalFirstCause counts, by cause, why the local model did not
+	// answer: attempts that ended that way, and requests a rule or
+	// stand-in passed over without trying it (#202).
+	LocalFirstCause []CauseRow `json:"local_first_cause,omitempty"`
 	// Shadow summarises shadow runs by class. They are in no other figure.
 	Shadow []ShadowRow `json:"shadow,omitempty"`
 	// Transforms is what each transform saved, set beside what the guard
@@ -181,6 +187,7 @@ func Summarise(records []Record, prices Prices) Report {
 
 	shadows := map[string]*shadowTally{}
 	attempts := map[string]*attemptTally{}
+	causes := map[string]*CauseRow{}
 	delegated := map[string]*delegatedTally{}
 	transforms := map[string]*TransformRow{}
 	first := true
@@ -216,6 +223,18 @@ func Summarise(records []Record, prices Prices) Report {
 				attempts[rec.Class] = &attemptTally{}
 			}
 			attempts[rec.Class].add(*rec.Attempt)
+		}
+		if c := firstCause(rec); c != "" {
+			row, ok := causes[c]
+			if !ok {
+				row = &CauseRow{Cause: c}
+				causes[c] = row
+			}
+			if rec.Attempt != nil {
+				row.Attempts++
+			} else {
+				row.NotTried++
+			}
 		}
 		if g := rec.Guard; g != nil && g.Blocked != "" {
 			rep.Guard.Blocked++
@@ -271,6 +290,10 @@ func Summarise(records []Record, prices Prices) Report {
 		rep.LocalFirst = append(rep.LocalFirst, row)
 	}
 	sort.Slice(rep.LocalFirst, func(i, j int) bool { return rep.LocalFirst[i].Class < rep.LocalFirst[j].Class })
+	for _, row := range causes {
+		rep.LocalFirstCause = append(rep.LocalFirstCause, *row)
+	}
+	sort.Slice(rep.LocalFirstCause, func(i, j int) bool { return rep.LocalFirstCause[i].Cause < rep.LocalFirstCause[j].Cause })
 	for tool, tally := range delegated {
 		row := tally.row
 		row.Tool, row.MedianMs = tool, medianOf(tally.ms)
@@ -432,15 +455,24 @@ type attemptTally struct {
 
 func (t *attemptTally) add(a Attempt) {
 	t.row.Tried++
-	switch a.Verdict {
-	case VerdictAccepted:
+	switch {
+	case a.Verdict == VerdictAccepted:
 		t.row.Accepted++
-	case VerdictRejected:
+	case a.Verdict == VerdictRejected && !failedOnTheWire(a):
 		t.row.Rejected++
 	default:
 		t.row.Failed++
 	}
 	t.ms = append(t.ms, a.DurationMs)
+}
+
+// failedOnTheWire reports whether an attempt recorded as rejected, by a
+// Janus older than causes (#202), in fact never produced an answer to
+// judge: an error from LM Studio, or an answer cut short. Those are
+// failures, and are counted as such.
+func failedOnTheWire(a Attempt) bool {
+	c := AttemptCause(a)
+	return c != "" && c != proxy.CauseRejected
 }
 
 // DelegatedRow is the delegated work done through one tool.

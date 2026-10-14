@@ -180,6 +180,15 @@ yourself; see CONFIG, "Auto mode while Claude is out".
 
 ## Local answers
 
+**The local model often doesn't answer, and you want to know why.** Run
+`janus stats`. Its "Why the local model did not answer" table counts each
+cause (unreachable, busy, slow, too large, LM Studio errors, rejected
+answers) with the next step for each. The console note for a request says
+the same, and `janus audit <id>` gives it for one request.
+[The ledger](LEDGER.md#why-the-local-model-did-not-answer) lists every
+cause.
+
+
 **`this request is about N tokens, more than the N-token context of local
 model ...`.** The request does not fit. With a rule it would have gone to
 Claude instead; this error means it was sent to an alias or forced local

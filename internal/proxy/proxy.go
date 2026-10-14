@@ -87,6 +87,10 @@ type Exchange struct {
 	// failed, and the failure was the client's answer: for a local
 	// stand-in, why the local model did not answer instead.
 	NoFallback string
+	// LocalCause is why the local model did not answer a request a rule or
+	// stand-in meant for it, when it was never tried: one of the Cause
+	// names. A local model tried and not accepted has Attempt.Cause.
+	LocalCause string
 
 	// RequestBody is kept for Messages requests always, and for everything
 	// else only when Options.KeepBodies is set. ResponseBody is kept only
@@ -142,6 +146,9 @@ type Attempt struct {
 	Why      string
 	// Check is the validator that failed, when one did.
 	Check string
+	// Cause is why a local attempt was not accepted: one of the Cause
+	// names. Empty for an attempt at the upstream.
+	Cause string
 	// Fault is true when the attempt failed because the backend was
 	// unavailable, as opposed to giving an answer that was not good
 	// enough. It is what a circuit breaker should count.
@@ -250,7 +257,11 @@ type Plan struct {
 	// answer is held back and shown to Accept; the client gets it only if
 	// Accept passes it, and otherwise gets the fallback's answer, never
 	// knowing there were two. A trial needs Else or Fallback.
-	Accept func(Fetched) (ok bool, why string)
+	Accept func(Fetched) (ok bool, check, why string)
+	// LocalCause is set on a plan that sends upstream a request a rule
+	// meant for the local model, or on a stand-in that could not be made:
+	// why the local model was not tried, as a Cause name.
+	LocalCause string
 }
 
 // Shadow names the local model to compare an upstream answer against.
@@ -316,7 +327,7 @@ type exchangeState struct {
 	// fallBack switches to the plan's fallback and serves it, reporting
 	// false if there turned out to be none. It is set by the handler for
 	// plans that may have one, and cleared once used.
-	fallBack func(w http.ResponseWriter, why string, fault bool) bool
+	fallBack func(w http.ResponseWriter, why string, fault bool, cause string) bool
 	// next is a fallback already worked out, by the response hook, which
 	// has to know there is one before it throws a response away.
 	next *Plan
@@ -324,6 +335,9 @@ type exchangeState struct {
 	resolve func() (Plan, bool)
 	// noFallback is why resolve found no fallback, if it said.
 	noFallback string
+	// noFallbackCause is the Cause the stand-in that could not be made
+	// gave, if it gave one.
+	noFallbackCause string
 	// release frees what the current plan holds, if anything; see
 	// Plan.Release.
 	release func()
@@ -472,22 +486,23 @@ func New(opts Options) http.Handler {
 			}
 
 			why := "could not reach " + name + ": " + err.Error()
-			status, fault := http.StatusBadGateway, true
+			status, fault, cause := http.StatusBadGateway, true, CauseUnreachable
 			var bad errBackendStatus
 			switch {
 			case errors.Is(err, context.DeadlineExceeded):
 				why = fmt.Sprintf("%s did not answer within %s", name, state.plan.Timeout)
-				status = http.StatusGatewayTimeout
+				status, cause = http.StatusGatewayTimeout, CauseSlow
 			case errors.As(err, &bad):
 				why = name + " " + bad.Error()
 				// A rate limit is the backend being unavailable too; any
 				// other 4xx is about this one request.
 				fault = int(bad) >= 500 || int(bad) == http.StatusTooManyRequests
+				cause = CauseServerError
 			}
 			if state.fallBack != nil {
 				// Nothing has been written yet: the error handler runs
 				// before any of the response is relayed.
-				if state.fallBack(w, why, fault) {
+				if state.fallBack(w, why, fault, cause) {
 					return
 				}
 			}
@@ -702,12 +717,13 @@ func New(opts Options) http.Handler {
 				next, ok := state.plan.Fallback(base)
 				if !ok && next.Reason != "" {
 					state.noFallback = next.Reason
+					state.noFallbackCause = next.LocalCause
 				}
 				return next, ok
 			}
 			// The plan may have a fallback. Record the attempt, switch to
 			// the fallback, and serve that.
-			state.fallBack = func(w http.ResponseWriter, why string, fault bool) bool {
+			state.fallBack = func(w http.ResponseWriter, why string, fault bool, cause string) bool {
 				tried := state.plan
 				state.fallBack = nil
 				state.releaseNow() // the tried backend is done with the request
@@ -726,6 +742,12 @@ func New(opts Options) http.Handler {
 					state.attempt = &Attempt{Backend: tried.Backend.Name(), Model: tried.BackendModel, Stages: tried.Stages,
 						Why: why, Fault: fault, Duration: time.Since(start),
 						ResponseHeader: state.failedHeader, ResponseBody: state.failedBody}
+					if state.attempt.Backend == "local" {
+						state.attempt.Cause = cause
+						if cause == CauseServerError && Overflowed(string(state.failedBody)) {
+							state.attempt.Cause = CauseTooLarge
+						}
+					}
 				}
 				state.plan = *next
 				state.hold(state.plan)
@@ -777,6 +799,7 @@ func New(opts Options) http.Handler {
 				BackendFault:   state.backendFault,
 				Unread:         state.unread,
 				NoFallback:     state.noFallback,
+				LocalCause:     firstOf(state.plan.LocalCause, state.noFallbackCause),
 				ResponseHeader: state.responseHeader,
 			}
 			if g := state.guard; g != nil {
@@ -867,17 +890,27 @@ func New(opts Options) http.Handler {
 			attempt := &Attempt{Backend: tried.Backend.Name(), Model: tried.BackendModel, Stages: tried.Stages, Duration: got.Duration}
 			switch {
 			case got.Err != nil && errors.Is(got.Err, context.DeadlineExceeded):
-				attempt.Why, attempt.Fault = fmt.Sprintf("%s did not answer within %s", attempt.Backend, tried.Timeout), true
+				attempt.Why, attempt.Fault, attempt.Cause = fmt.Sprintf("%s did not answer within %s", attempt.Backend, tried.Timeout), true, CauseSlow
 			case got.Err != nil:
-				attempt.Why, attempt.Fault = "could not reach "+attempt.Backend+": "+got.Err.Error(), true
+				attempt.Why, attempt.Fault, attempt.Cause = "could not reach "+attempt.Backend+": "+got.Err.Error(), true, CauseUnreachable
 			case got.Status >= 500:
-				attempt.Why, attempt.Fault = fmt.Sprintf("%s answered HTTP %d", attempt.Backend, got.Status), true
+				attempt.Why, attempt.Fault, attempt.Cause = fmt.Sprintf("%s answered HTTP %d", attempt.Backend, got.Status), true, CauseServerError
+				if Overflowed(string(got.Body)) {
+					attempt.Cause = CauseTooLarge
+				}
 			case got.Truncated:
-				attempt.Why = fmt.Sprintf("the %s answer was larger than %d bytes", attempt.Backend, trialLimit)
+				attempt.Why, attempt.Cause, attempt.Check = fmt.Sprintf("the %s answer was larger than %d bytes", attempt.Backend, trialLimit), CauseRejected, "oversize"
+			case got.Fault != "" && strings.Contains(got.Fault, context.DeadlineExceeded.Error()):
+				// The answer was streaming when the time ran out: slow,
+				// not broken.
+				attempt.Why, attempt.Fault, attempt.Cause = "the "+attempt.Backend+" answer broke off: "+got.Fault, true, CauseSlow
 			case got.Fault != "":
-				attempt.Why, attempt.Fault = "the "+attempt.Backend+" answer broke off: "+got.Fault, true
+				attempt.Why, attempt.Fault, attempt.Cause = "the "+attempt.Backend+" answer broke off: "+got.Fault, true, CauseBrokeOff
 			default:
-				attempt.Accepted, attempt.Why = tried.Accept(got)
+				attempt.Accepted, attempt.Check, attempt.Why = tried.Accept(got)
+				if !attempt.Accepted {
+					attempt.Cause = checkCause(attempt.Check, got)
+				}
 			}
 			state.attempt = attempt
 
@@ -902,7 +935,7 @@ func New(opts Options) http.Handler {
 			if got.Err == nil {
 				attempt.Summary, attempt.ResponseBody = &got.Summary, got.Body
 			}
-			state.fallBack(sw, attempt.Why, attempt.Fault)
+			state.fallBack(sw, attempt.Why, attempt.Fault, attempt.Cause)
 			return
 		}
 		rp.ServeHTTP(sw, r.WithContext(ctx))
@@ -1075,3 +1108,29 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 }
 
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// checkCause is the Cause of an answer that failed a check. The checks
+// that an answer arrived whole and without an error are about LM Studio,
+// not about the answer; the rest judge the answer itself.
+func checkCause(check string, got Fetched) string {
+	switch check {
+	case "error":
+		if e := got.Summary.Error; e != nil && Overflowed(e.Message) || Overflowed(string(got.Body)) {
+			return CauseTooLarge
+		}
+		return CauseServerError
+	case "incomplete":
+		return CauseBrokeOff
+	}
+	return CauseRejected
+}
+
+// firstOf returns the first of its arguments that is not empty.
+func firstOf(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}

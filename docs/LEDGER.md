@@ -94,7 +94,8 @@ ignore fields they do not know.
 | `unread` | string | Why a Messages response has no `usage`, e.g. `content-encoding br` |
 | `fault` | string | What went wrong getting the response from the backend: it could not be reached or did not answer in time, with no fallback (Janus then answered with an error of its own), or its response broke off part-way, e.g. a dropped connection. Absent for a response that arrived whole, and for one the client abandoned. |
 | `capture` | string | The capture's path under `captures/`, without extension |
-| `attempt` | object | Present when one backend was tried and another may have answered: `backend`, `model`, `verdict`, `why`, `duration_ms`, and for a rejected attempt its `usage`. See below. |
+| `attempt` | object | Present when one backend was tried and another may have answered: `backend`, `model`, `verdict`, `why`, `cause`, `check`, `duration_ms`, and for a rejected attempt its `usage`. See below. |
+| `local_cause` | string | Present when a rule or a stand-in meant the request for the local model and it was never tried there: why, as one of the causes below. |
 | `guard` | object | Present when secrets or local-only content were found in a request: `findings` (a count), `kinds` (count by kind), `where` (which parts of the request). When redacting, also `redacted` (distinct secrets replaced before sending; absent means the request went with its secrets in it), `restored` (placeholders put back in the answer), and `blocked` (why the exchange was stopped). Under a local-only policy, `local_only` (why the request held protected content, naming paths and markers) and `withheld` (pieces replaced by a notice in what was sent upstream; `local_only` without it means the request did not go upstream). It never holds a secret or protected content. See [the guard](GUARD.md). |
 | `transforms` | array | Present when a transform rewrote the request on its way upstream, or declined to. One entry per transform: `name`; `blocks` carrying its output, of which `rewritten` were rewritten for the first time and `revised` were already sent and changed; `declined` (answers not used); `tokens` (about how many fewer tokens were sent); `saved_usd` (what those would have cost on this request); `cost_usd` (cache written again because of a revision); `expected_usd` (the net-savings guard's estimate, when it decided, of what this request's decisions will save over the rest of the conversation); and `unpriced` when the model had no price. See below. |
 | `worker` | object | Present on a record of delegated work, where Claude called a tool that the local model carried out: `tool`, `files`, `read_bytes`, `model_calls`, `answer_bytes`, `avoided_tokens`. Such a record has `class` `worker` and `method` `TOOL`, is not a proxied request, and is left out of the request totals. |
@@ -119,8 +120,8 @@ ignore fields they do not know.
 | `verdict` | The local model's answer | Who answered the client |
 | --- | --- | --- |
 | `accepted` | Passed the checks | The local model. The record's `backend`, `response`, and `usage` are its own. |
-| `rejected` | Failed a check; `why` says which | Claude. The record is Claude's answer, and `attempt.usage` is what the local model spent first. |
-| `failed` | None: it could not be reached, timed out, or returned an error | Claude |
+| `rejected` | Came back whole and failed a check; `check` says which | Claude. The record is Claude's answer, and `attempt.usage` is what the local model spent first. |
+| `failed` | None to judge: it could not be reached, ran out of time, broke off, or returned an error; `cause` says which | Claude |
 
 `attempt.backend` is which backend was tried first. It is `local` for the
 cases above. It is `upstream` when Claude could not answer and the local
@@ -129,6 +130,30 @@ model's answer, and `reason` ends `; sent local`. `attempt.limits` then
 holds Claude's retry and rate-limit headers, as `limits` does above, and
 with captures on, Claude's error body is saved as
 `.attempt.response.txt`.
+
+### Why the local model did not answer
+
+`attempt.cause` (for a local attempt that was not accepted) and
+`local_cause` (for a request passed over without trying) are one of:
+
+| Cause | Meaning | Next step |
+| --- | --- | --- |
+| `unreachable` | No connection to LM Studio | Start its server; check `local.baseUrl` |
+| `skipped` | Not tried: the local backend failed three times in a row and is left alone for 30 seconds | Fix what made it fail; it resumes by itself |
+| `model_missing` | LM Studio does not have the model | Correct `model`; `janus doctor` lists the ids |
+| `load_failed` | The model was not loaded, and loading it failed | Free memory, or lower `contextTokens` |
+| `too_large` | The request does not fit the model's context, by Janus's estimate or by LM Studio's own error | Raise `contextTokens` |
+| `busy` | The model already had `maxConcurrent` requests | Raise `maxConcurrent`, if memory allows |
+| `slow` | It ran out of time: `maxSeconds` on a local-then-escalate rule, or `timeoutSeconds` | Raise them, or use a faster model |
+| `server_error` | LM Studio answered with an error | LM Studio's log |
+| `broke_off` | The answer stopped part way, not by a timeout | LM Studio's log |
+| `rejected` | A whole answer that failed `check`: `empty`, `truncated`, `tools`, `schema`, `refusal`, `malformed`, or `oversize` | The model is not up to that work |
+| `unsupported` | The request could not be adapted for the local model | Report it |
+
+Records written before causes were recorded have none; `janus stats`
+works them out from `why` and `reason`, which have always had a fixed
+form. Such a record's `verdict` may say `rejected` for an error from LM
+Studio; `janus stats` counts it as failed.
 
 `attempt.duration_ms` is how long the local model was given before the
 decision. For a rejected or failed attempt, that time was spent before
