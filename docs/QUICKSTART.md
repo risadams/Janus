@@ -11,8 +11,8 @@ You need Claude Code working already, and for the second half,
 Download the archive for your machine from the
 [releases page](https://github.com/risadams/Janus/releases) and unpack it,
 or build it with `go install github.com/risadams/janus/cmd/janus@latest`.
-The [README](../README.md#installing) has the commands and how to check
-the download.
+[Installing](guide/install.md) has the commands for each platform and how
+to check the download.
 
 ```bash
 janus version
@@ -130,5 +130,6 @@ shows what went to Anthropic and re-reads what was sent to check it.
 | Keep secrets and files from leaving | [Recipe: privacy](recipes/privacy.md) |
 | Have Claude hand reading to the local model | [Recipe: workers](recipes/workers.md) |
 | Know exactly what Janus changes | [What Janus changes](WHAT-JANUS-CHANGES.md) |
+| Install, configure, and use Janus in detail | [User guide](guide/README.md) |
 | Fix something | [Troubleshooting](TROUBLESHOOTING.md) |
 | Look up a setting | [Configuration](CONFIG.md) |

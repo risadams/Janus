@@ -98,7 +98,9 @@ Work as usual. Afterwards, see where the tokens went:
 ```
 
 The [quick start guide](docs/QUICKSTART.md) carries on to sending your
-first requests to a local model.
+first requests to a local model, and the [user guide](docs/guide/README.md)
+covers installing on every platform, configuring, everyday use, and
+troubleshooting in full.
 
 ## What happens to a request
 

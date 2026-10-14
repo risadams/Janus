@@ -33,7 +33,6 @@ the defaults below and carries on.
 | `logging.capture` | Save every request and response in full. On by default. Captures contain your prompts and code. |
 | `logging.retainDays` | Delete captures older than this. `0` keeps them forever. |
 | `logging.maxMegabytes` | Delete the oldest captures once they exceed this. `0` means no limit. |
-
 | `pricing` | Optional. Prices to add or correct, by model id. See below. |
 
 A field left out of the file keeps its default. A field Janus does not
