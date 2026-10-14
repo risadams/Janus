@@ -146,22 +146,61 @@ type Router struct {
 type slots struct {
 	mu       sync.Mutex
 	inFlight map[string]int
+	// freed is closed, and replaced, whenever a place is given back, to
+	// wake whoever is waiting for one.
+	freed chan struct{}
 }
 
 // take reserves a place for one request to local, and returns the
 // function that gives it back, which is safe to call more than once. ok is
 // false, and nothing is reserved, when the model is already at its limit.
 func (s *slots) take(local LocalModel) (release func(), ok bool) {
+	release, ok, _ = s.try(local)
+	return release, ok
+}
+
+// wait is take for a request with nowhere else to go: a stand-in, whose
+// only alternative is Claude's error. It waits for a place until ctx ends
+// or limit passes (no limit if zero), and says how long it waited.
+func (s *slots) wait(ctx context.Context, local LocalModel, limit time.Duration) (release func(), ok bool, waited time.Duration) {
+	start := time.Now()
+	var expired <-chan time.Time
+	if limit > 0 {
+		timer := time.NewTimer(limit)
+		defer timer.Stop()
+		expired = timer.C
+	}
+	for {
+		release, ok, freed := s.try(local)
+		if ok {
+			return release, true, time.Since(start)
+		}
+		select {
+		case <-freed:
+		case <-ctx.Done():
+			return nil, false, time.Since(start)
+		case <-expired:
+			return nil, false, time.Since(start)
+		}
+	}
+}
+
+// try is one attempt at a place. When there is none, freed is the channel
+// that will be closed when one is given back.
+func (s *slots) try(local LocalModel) (release func(), ok bool, freed <-chan struct{}) {
 	if local.MaxConcurrent <= 0 {
-		return func() {}, true
+		return func() {}, true, nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.inFlight == nil {
 		s.inFlight = map[string]int{}
 	}
+	if s.freed == nil {
+		s.freed = make(chan struct{})
+	}
 	if s.inFlight[local.ID] >= local.MaxConcurrent {
-		return nil, false
+		return nil, false, s.freed
 	}
 	s.inFlight[local.ID]++
 	var once sync.Once
@@ -170,8 +209,10 @@ func (s *slots) take(local LocalModel) (release func(), ok bool) {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			s.inFlight[local.ID]--
+			close(s.freed)
+			s.freed = make(chan struct{})
 		})
-	}, true
+	}, true, nil
 }
 
 // A breaker stops rules from sending requests to a local backend that is
@@ -341,11 +382,18 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			if err != nil {
 				return noStandIn("the request could not be read again: " + err.Error())
 			}
-			release, ok := r.busy.take(local)
+			// A stand-in waits its turn: slower is better than Claude's
+			// error. It waits no longer than the model would be given to
+			// answer.
+			release, ok, waited := r.busy.wait(ctx, local, local.Timeout)
 			if !ok {
-				return noStandIn(fmt.Sprintf("%s already has %d requests in flight, its limit", local.ID, local.MaxConcurrent))
+				return noStandIn(fmt.Sprintf("%s had %d requests in flight, its limit, for %s", local.ID, local.MaxConcurrent, waited.Round(100*time.Millisecond)))
 			}
-			fallback, _, problem := r.local(ctx, copy, local, facts.Model, label)
+			reason := label
+			if waited >= time.Second {
+				reason = fmt.Sprintf("%s, after waiting %s for the local model", label, waited.Round(time.Second))
+			}
+			fallback, _, problem := r.local(ctx, copy, local, facts.Model, reason)
 			if problem != nil {
 				release()
 				if problem.status == http.StatusBadGateway {
