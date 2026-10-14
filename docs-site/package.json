@@ -25,7 +25,19 @@
     "node": ">=20.0"
   },
   "browserslist": {
-    "production": [">0.5%", "not dead", "not op_mini all"],
-    "development": ["last 3 chrome versions", "last 3 firefox versions", "last 5 safari versions"]
+    "production": [
+      ">0.5%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 3 chrome versions",
+      "last 3 firefox versions",
+      "last 5 safari versions"
+    ]
+  },
+  "allowScripts": {
+    "core-js@3.50.0": true,
+    "fsevents@2.3.3": true
   }
 }

@@ -14,7 +14,8 @@ here saves a round trip on a pull request.
 - **Update the docs** that describe any behaviour you change, in the same
   pull request. They are Markdown in `docs/`, published as the
   [docs site](https://risadams.github.io/Janus/); to preview it,
-  `cd docs-site && npm ci && npm start`. Its build fails on a broken link.
+  `cd docs-site && npm ci && npm start`, which serves it at
+  http://localhost:3000/. Its build fails on a broken link.
 - **Never commit captures, logs, or a config.** They hold prompts, code, and
   credentials.
 

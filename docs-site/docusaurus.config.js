@@ -16,6 +16,12 @@ function latestTag() {
 }
 const version = latestTag();
 
+// GitHub Pages serves the site at /Janus/, so a build uses that base. The
+// development server (docusaurus start) serves at /, so the site is at
+// http://localhost:3000/. BASE_URL overrides either.
+const isDevServer = process.argv.includes('start');
+const baseUrl = process.env.BASE_URL || (isDevServer ? '/' : '/Janus/');
+
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Janus',
@@ -24,7 +30,7 @@ const config = {
   favicon: 'img/favicon.svg',
 
   url: 'https://risadams.github.io',
-  baseUrl: '/Janus/',
+  baseUrl,
 
   organizationName: 'risadams',
   projectName: 'Janus',
