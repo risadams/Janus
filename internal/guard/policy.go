@@ -159,7 +159,7 @@ func (p *Policy) Check(req *anthropic.Request) Match {
 			if b.Decode(&use) != nil || use.ID == "" {
 				continue
 			}
-			for _, candidate := range pathsIn(use.Input) {
+			for _, candidate := range pathsIn(use.Name, use.Input) {
 				if glob, ok := p.matchPath(candidate); ok {
 					reason := fmt.Sprintf("%s read %s, which %q makes local-only", use.Name, candidate, glob)
 					m.results[use.ID] = reason
@@ -224,14 +224,38 @@ func (p *Policy) Check(req *anthropic.Request) Match {
 	return m
 }
 
+// dataArgs are the arguments of Claude Code's own tools that hold data
+// rather than a path the tool reads: what Write writes, what Edit replaces
+// and with what, a command's description. A pattern that only appears
+// there is a mention, not a read (#187). Every other tool, MCP tools
+// included, has every argument searched, since Janus cannot know which of
+// its arguments name files.
+var dataArgs = map[string][]string{
+	"Bash":         {"description"},
+	"Write":        {"content"},
+	"Edit":         {"old_string", "new_string"},
+	"MultiEdit":    {"edits"},
+	"NotebookEdit": {"new_source"},
+}
+
 // pathsIn pulls everything that could be a path out of a tool call's
 // arguments: each string, and each word of a string, so that the file in
 // {"file_path": "secrets/db.yaml"} and the one in {"command": "cat
-// secrets/db.yaml | head"} are both found.
-func pathsIn(input json.RawMessage) []string {
+// secrets/db.yaml | head"} are both found. The data arguments of Claude
+// Code's own tools are left out, and so are heredoc bodies a Bash command
+// only writes out (dataHeredocs).
+func pathsIn(tool string, input json.RawMessage) []string {
 	var v any
 	if json.Unmarshal(input, &v) != nil {
 		return nil
+	}
+	if args, ok := v.(map[string]any); ok {
+		for _, key := range dataArgs[tool] {
+			delete(args, key)
+		}
+		if command, ok := args["command"].(string); ok && tool == "Bash" {
+			args["command"] = dataHeredocs(command)
+		}
 	}
 	var out []string
 	var walk func(v any, depth int)
@@ -261,6 +285,128 @@ func pathsIn(input json.RawMessage) []string {
 	}
 	walk(v, 0)
 	return out
+}
+
+// heredocStart finds a heredoc operator and its delimiter: <<WORD, <<-WORD,
+// <<'WORD' or <<"WORD", but not a <<< here-string.
+var heredocStart = regexp.MustCompile(`(^|[^<])<<(-?)[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)(['"]?)`)
+
+// heredocSinks only copy their input somewhere: to a file, or as the text
+// of an issue or a commit.
+var heredocSinks = map[string]bool{"cat": true, "tee": true, "gh": true, "git": true}
+
+// runners can run what they are given, or what was written: a heredoc in a
+// command that also uses one of these may be code that reads a file.
+var runners = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "fish": true,
+	"eval": true, "source": true, ".": true, "exec": true, "xargs": true, "env": true,
+	"python": true, "python3": true, "node": true, "deno": true, "bun": true,
+	"ruby": true, "perl": true, "php": true, "osascript": true, "awk": true,
+}
+
+// dataHeredocs removes from a Bash command the bodies of heredocs that are
+// only data: text cat or tee writes to a file, or gh or git takes as a body,
+// such as {cat > notes.md <<'EOF' ... EOF}. A pattern quoted in such a body
+// is not a file the command reads (#187).
+//
+// It fails closed. If the command runs anything that could run the text
+// (a shell, an interpreter, eval, a pipe out of the heredoc's command), or
+// mentions again a file a heredoc was written to, every body stays in, and
+// every word of it is searched as before.
+func dataHeredocs(command string) string {
+	lines := strings.Split(command, "\n")
+	var kept []string // the command without heredoc bodies, to judge it by
+	var bodies [][2]int
+	written := map[string]bool{}
+	allData := true
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		kept = append(kept, line)
+		loc := heredocStart.FindStringSubmatchIndex(line)
+		if loc == nil {
+			continue
+		}
+		op := loc[2] + len(line[loc[2]:loc[3]]) // where << begins
+		dash := line[loc[4]:loc[5]] == "-"
+		open, word, shut := line[loc[6]:loc[7]], line[loc[8]:loc[9]], line[loc[10]:loc[11]]
+		if open != shut {
+			allData = false
+			continue
+		}
+		segment := line[:op]
+		if cut := strings.LastIndexAny(segment, "|;&(`"); cut >= 0 {
+			segment = segment[cut+1:]
+		}
+		fields := strings.Fields(segment)
+		for len(fields) > 0 && strings.Contains(fields[0], "=") && !strings.HasPrefix(fields[0], "-") {
+			fields = fields[1:] // VAR=value before the command
+		}
+		receiver := ""
+		if len(fields) > 0 {
+			receiver = fields[0][strings.LastIndex(fields[0], "/")+1:]
+		}
+		rest := line[loc[1]:]
+		if !heredocSinks[receiver] || strings.Contains(rest, "|") {
+			allData = false
+		}
+		for j, f := range fields {
+			if (f == ">" || f == ">>") && j+1 < len(fields) {
+				written[fields[j+1]] = true
+			} else if t := strings.TrimLeft(f, ">"); t != f && t != "" {
+				written[t] = true
+			}
+		}
+		end := i + 1
+		for end < len(lines) {
+			l := lines[end]
+			if dash {
+				l = strings.TrimLeft(l, "\t")
+			}
+			if l == word {
+				break
+			}
+			end++
+		}
+		if end == len(lines) {
+			allData = false // never closed: not a heredoc to trust
+			continue
+		}
+		bodies = append(bodies, [2]int{i + 1, end})
+		kept = append(kept, lines[end])
+		i = end
+	}
+	if len(bodies) == 0 || !allData {
+		return command
+	}
+	outside := strings.Join(kept, "\n")
+	for _, w := range strings.FieldsFunc(outside, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || strings.ContainsRune(`"'`+"`"+`;|&()<>`, r)
+	}) {
+		if runners[w[strings.LastIndex(w, "/")+1:]] {
+			return command
+		}
+	}
+	// A file a heredoc wrote, run as a command later on (./run.sh), may
+	// be code that reads a protected file. Run by a shell or interpreter
+	// (sh run.sh), it was caught above.
+	for _, segment := range strings.FieldsFunc(outside, func(r rune) bool {
+		return r == '\n' || strings.ContainsRune(";|&(`", r)
+	}) {
+		fields := strings.Fields(segment)
+		for len(fields) > 0 && strings.Contains(fields[0], "=") && !strings.HasPrefix(fields[0], "-") {
+			fields = fields[1:]
+		}
+		if len(fields) == 0 {
+			continue
+		}
+		run := strings.TrimPrefix(fields[0], "./")
+		for file := range written {
+			if run == strings.TrimPrefix(file, "./") || strings.HasSuffix(run, "/"+strings.TrimPrefix(file, "./")) {
+				return command
+			}
+		}
+	}
+	return outside
 }
 
 // withheldNotice replaces local-only content in what goes to Anthropic. It

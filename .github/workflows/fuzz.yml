@@ -21,6 +21,7 @@ jobs:
           - { pkg: ./internal/anthropic, target: FuzzParseRequest }
           - { pkg: ./internal/anthropic, target: FuzzObserverIgnoresHowTheBodyIsCut }
           - { pkg: ./internal/guard, target: FuzzRestoreAnyCut }
+          - { pkg: ./internal/guard, target: FuzzDataHeredocs }
           - { pkg: ./internal/mcp, target: FuzzServe }
           - { pkg: ./internal/digest, target: FuzzExcerpt }
     steps:
