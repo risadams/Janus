@@ -247,6 +247,29 @@ and the local model is not consulted.
   out when it is needed; LM Studio is not contacted otherwise.
 - The conversation can go back to Claude on the next turn.
 
+#### Auto mode while Claude is out
+
+In auto mode, Claude Code asks Claude whether each tool call is safe
+before it runs it. Those checks are their own class, `safety`, and stay
+with Claude: `ifDown` on a `main` rule does not cover them. So while the
+local model stands in for the conversation, Claude Code refuses every tool
+call as "temporarily unavailable". The console says so, once per
+conversation. Press Shift+Tab to leave auto mode; Claude Code then asks
+you before each tool call, and the session goes on.
+
+To have the local model grade the checks instead, give them a rule of
+their own:
+
+```json
+{ "name": "safety", "class": "safety", "route": "upstream", "ifDown": "janus-local" }
+```
+
+That puts a security decision in the hands of a weaker model, so it is
+not the default. It also helps less than it seems: each check carries the
+conversation's transcript, so late in a long session it is too large for
+a local model and Claude's error stands. A ~32k-token check took qwen3.8-27b
+46 s, and its verdict was sound (docs/research/standin.md).
+
 With this on the main-conversation rule and a `local` rule for subagents, a
 whole Claude Code session runs with no connection to Anthropic at all. That
 was tested; it is as good as the local model is, and much slower.

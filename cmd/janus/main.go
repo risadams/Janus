@@ -160,6 +160,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		color = wantColor(f, os.Getenv)
 	}
 	console := NewConsole(stderr, color, prices(cfg))
+	for _, r := range cfg.Routing {
+		console.standIns = console.standIns || (cfg.Features.Route && r.IfDown != "")
+	}
 	logger := console.Logger()
 	led := ledger.Open(filepath.Join(cfg.Logging.Dir, "ledger"))
 	var captures *capture.Writer
@@ -344,6 +347,15 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 	case ex.Backend == "local":
 		text := fmt.Sprintf("local-only: kept on this machine (%s)", strings.Join(g.LocalOnly, "; "))
 		guardNotes = append(guardNotes, note{level: info, text: text, once: text})
+	}
+	if console.standIns && rec.Class == string(route.Safety) && ex.Backend == "upstream" &&
+		(ex.Status == http.StatusTooManyRequests || ex.Status >= 500 || (ex.Status == 0 && ex.Fault != "")) {
+		// Auto mode asks Claude whether each tool call is safe, and those
+		// checks stay with Claude (#162). While the local model stands in
+		// for the conversation, Claude Code refuses every tool call as
+		// "temporarily unavailable"; the way through is to approve them.
+		text := "auto mode's safety check could not reach Claude, so Claude Code will refuse tool calls; press Shift+Tab to leave auto mode and approve them yourself while the local model stands in"
+		guardNotes = append(guardNotes, note{level: warn, text: text, once: text})
 	}
 	if captures != nil {
 		name, err := captures.Write(ex)

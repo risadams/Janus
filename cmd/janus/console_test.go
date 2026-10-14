@@ -395,3 +395,47 @@ func TestDetectOnlyFindingsAreAlwaysSaid(t *testing.T) {
 		}
 	}
 }
+
+// In auto mode, Claude Code asks Claude whether each tool call is safe,
+// and those checks never go to the local model (#162). At a session limit
+// with a stand-in carrying the conversation, every tool call is then
+// refused; the console says what to do, once per conversation, and only
+// when a stand-in is configured (#173).
+func TestASafetyCheckThatCannotReachClaudeSaysToLeaveAutoMode(t *testing.T) {
+	var out bytes.Buffer
+	led := ledger.Open(filepath.Join(t.TempDir(), "ledger"))
+	check := `{"model":"claude-sonnet-5","max_tokens":64,"system":[{"type":"text","text":"You are a security monitor for autonomous AI coding agents."}],"messages":[{"role":"user","content":"Respond with <severity>N</severity> ONLY."}]}`
+	turn := func(c *Console, status int) string {
+		out.Reset()
+		ex := consoleExchange(func(ex *proxy.Exchange) {
+			ex.Status, ex.Duration = status, 300*time.Millisecond
+			ex.RequestBody = []byte(check)
+			ex.Summary = &anthropic.Summary{Complete: true, Error: &anthropic.APIError{Type: "rate_limit_error"}}
+		})
+		record(ex, led, nil, nil, c)
+		return out.String()
+	}
+	hint := "↳ auto mode's safety check could not reach Claude, so Claude Code will refuse tool calls; press Shift+Tab to leave auto mode"
+
+	c := testConsole(&out)
+	c.standIns = true
+	if first := turn(c, 429); !strings.Contains(first, "safety") || !strings.Contains(first, hint) {
+		t.Errorf("first refused check:\n%s", first)
+	}
+	if again := turn(c, 429); strings.Contains(again, "↳") {
+		t.Errorf("the hint was repeated:\n%s", again)
+	}
+
+	// Without a stand-in the whole session is stopped, and there is
+	// nothing to say about auto mode in particular.
+	plain := testConsole(&out)
+	if got := turn(plain, 429); strings.Contains(got, "auto mode") {
+		t.Errorf("hint with no stand-in configured:\n%s", got)
+	}
+	// Nor when Claude answered.
+	fresh := testConsole(&out)
+	fresh.standIns = true
+	if got := turn(fresh, 200); strings.Contains(got, "auto mode") {
+		t.Errorf("hint when Claude answered:\n%s", got)
+	}
+}
