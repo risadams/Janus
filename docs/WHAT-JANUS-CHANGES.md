@@ -35,6 +35,8 @@ and each change is named in the ledger's `stages`:
 | `set_model` | `model` becomes the local model's id | LM Studio would otherwise answer with whatever model is loaded |
 | `lift_tool_additions` | Tool definitions Claude Code sends inside messages are moved to the `tools` list | LM Studio rejects them where they are |
 | `drop_deferred_tools` | Placeholder entries for those tools are removed | They stand for the definitions just moved |
+| `fold_system_messages` | System messages in the middle of the conversation become reminders in the user message before them | Many models' chat templates refuse a system message anywhere but first |
+| `tool_references_as_text` | The tool names a tool search returns become text in its result, saying whether the tool can be called | LM Studio rejects the `tool_reference` blocks the Anthropic API would expand |
 
 Also:
 

@@ -82,7 +82,9 @@ which over-counts. A request over the limit is refused with an error; it is
 not sent upstream, because an alias has no upstream model.
 
 What changes on the way to LM Studio: the model name, `tool_addition`
-blocks (lifted into `tools`), and tools marked `defer_loading` (dropped).
+blocks (lifted into `tools`), tools marked `defer_loading` (dropped),
+system messages mid-conversation (folded into reminders), and a tool
+search's `tool_reference` results (turned into text).
 Your Anthropic credentials are removed from the request. On the way back,
 the model name is changed to the one the client asked for.
 
