@@ -84,8 +84,9 @@ Start LM Studio's server, load a model, and note its id. Then in
 "features": { "route": true, "escalate": false, "compress": false, "guard": false }
 ```
 
-`local.baseUrl` defaults to `http://studio.local:1234`, for LM Studio on
-another machine; set it to wherever yours is. Run `janus doctor` again: it
+Set `local.baseUrl` to wherever your LM Studio runs; `http://127.0.0.1:1234`
+is right when it is on this machine. The default, `http://studio.local:1234`,
+is the Janus developer's own machine and a placeholder only. Run `janus doctor` again: it
 now checks that LM Studio has the model and how much context it is loaded
 with. Restart Janus.
 

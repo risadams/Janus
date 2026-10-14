@@ -15,12 +15,19 @@ the defaults below and carries on.
 }
 ```
 
+> **`studio.local` is a placeholder.** `http://studio.local:1234` is the
+> Janus developer's own LM Studio machine, and the default only because
+> Janus was built against it. Set `local.baseUrl` to where your LM Studio
+> runs: `http://127.0.0.1:1234` on the same machine, or
+> `http://<its address>:1234` on another. `janus doctor` says whether it
+> answers.
+
 | Field | Meaning |
 | --- | --- |
 | `listen` | Address Janus accepts connections on. Must be loopback unless `allowRemote` is true. |
 | `allowRemote` | Permit a non-loopback `listen`. Janus forwards whatever credentials clients send, so leave this off unless you mean it. While it is off, Janus also refuses requests from web pages: any whose `Host` is not this machine or whose `Origin` is a page from elsewhere. |
 | `upstream.baseUrl` | The Anthropic API, or a gateway in front of it. |
-| `local.baseUrl` | The LM Studio server. |
+| `local.baseUrl` | The LM Studio server. The default, `http://studio.local:1234`, is the developer's own machine: change it to yours. |
 | `local.models` | Optional. Model names that are answered locally; see below. |
 | `routing` | Optional. Rules that decide which requests go local; see below. |
 | `features.route` | Switch routing on: aliases in `local.models` and the rules in `routing`. Off by default. |
@@ -59,7 +66,7 @@ With `features.route` on, a request for that name is answered locally.
 ```json
 {
   "local": {
-    "baseUrl": "http://studio.local:1234",
+    "baseUrl": "http://127.0.0.1:1234",
     "models": {
       "janus-local": { "model": "qwen/qwen3.8-27b", "contextTokens": 0, "timeoutSeconds": 900 }
     }

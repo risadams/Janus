@@ -210,10 +210,11 @@ local model. Janus uses [LM Studio](https://lmstudio.ai) for that.
    }
    ```
 
-   The default `baseUrl` is `http://studio.local:1234`, for a machine
-   named `studio`; on the same machine use `http://127.0.0.1:1234`. The
-   `model` must be the id LM Studio shows, exactly; `janus doctor` lists
-   the ids it found.
+   Always set `baseUrl`. The default, `http://studio.local:1234`, is a
+   placeholder: it is the Janus developer's own LM Studio machine. On the
+   same machine as Janus use `http://127.0.0.1:1234`; on another, its
+   address and port. The `model` must be the id LM Studio shows, exactly;
+   `janus doctor` lists the ids it found.
 4. Run `janus doctor` again. The `local` line should be `ok` and name the
    model.
 

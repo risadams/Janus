@@ -137,8 +137,10 @@ the conversation local.
 
 ## The local model's connection
 
-Requests to LM Studio go over plain HTTP to `local.baseUrl`, by default
-`http://studio.local:1234`.
+Requests to LM Studio go over plain HTTP to `local.baseUrl`. Its default,
+`http://studio.local:1234`, is a placeholder for the developer's own
+machine; set it to yours, ideally `http://127.0.0.1:1234`, LM Studio on
+the same machine.
 
 - If LM Studio is on another machine, **everything routed to it crosses
   your network unencrypted**, including content the local-only policy

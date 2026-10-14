@@ -40,7 +40,7 @@ Questions that can only be answered by reading all of a large text:
    requests locally, you have one:
 
    ```json
-   { "local": { "baseUrl": "http://studio.local:1234",
+   { "local": { "baseUrl": "http://127.0.0.1:1234",
                 "models": { "janus-local": { "model": "qwen/qwen3.8-27b" } } } }
    ```
 
