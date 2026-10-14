@@ -1727,7 +1727,10 @@ func TestNoLimitMeansNoLimit(t *testing.T) {
 	}
 }
 
-func TestAFullLocalModelCannotStandIn(t *testing.T) {
+// A stand-in has nowhere else to go but Claude's error, so when the local
+// model is at its limit it waits for a place rather than failing (#172):
+// until a place is freed, the model's timeout passes, or the client goes.
+func TestAStandInWaitsForABusyLocalModel(t *testing.T) {
 	local, _ := lmStudio(t, nil)
 	r := router(local, nil)
 	one := qwen["janus-local"]
@@ -1739,13 +1742,50 @@ func TestAFullLocalModelCannotStandIn(t *testing.T) {
 	if !ok || standIn.Release == nil {
 		t.Fatalf("the first stand-in was refused, or holds no place")
 	}
-	if _, ok := b.Fallback(context.Background()); ok {
-		t.Error("a second stand-in was allowed while the first holds the only place")
+
+	type result struct {
+		plan proxy.Plan
+		ok   bool
+	}
+	second := make(chan result, 1)
+	go func() {
+		plan, ok := b.Fallback(context.Background())
+		second <- result{plan, ok}
+	}()
+	select {
+	case <-second:
+		t.Fatal("a second stand-in went ahead while the first holds the only place")
+	case <-time.After(100 * time.Millisecond):
 	}
 	standIn.Release()
-	if again, ok := b.Fallback(context.Background()); !ok {
-		t.Error("the stand-in was refused after the place was freed")
-	} else {
-		again.Release()
+	select {
+	case got := <-second:
+		if !got.ok {
+			t.Fatalf("the waiting stand-in was refused after the place was freed: %s", got.plan.Reason)
+		}
+		got.plan.Release()
+	case <-time.After(5 * time.Second):
+		t.Fatal("the waiting stand-in did not go ahead when the place was freed")
+	}
+
+	// It waits no longer than the model would be given to answer.
+	one.Timeout = 150 * time.Millisecond
+	c, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
+	d, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
+	holding, _ := c.Fallback(context.Background())
+	defer holding.Release()
+	refused, ok := d.Fallback(context.Background())
+	if ok || !strings.Contains(refused.Reason, "had 1 requests in flight, its limit, for ") {
+		t.Errorf("past the timeout: ok %v, reason %q", ok, refused.Reason)
+	}
+
+	// Nor once the client has gone.
+	one.Timeout = time.Minute
+	e, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(50*time.Millisecond, cancel)
+	begun := time.Now()
+	if _, ok := e.Fallback(ctx); ok || time.Since(begun) > 5*time.Second {
+		t.Errorf("after the client went: ok %v after %s", ok, time.Since(begun))
 	}
 }
