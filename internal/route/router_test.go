@@ -1572,8 +1572,8 @@ func TestOverrideHeaderIsNotForwarded(t *testing.T) {
 
 func TestUpstreamDown(t *testing.T) {
 	for status, want := range map[int]bool{200: false, 400: false, 401: false, 404: false, 429: true, 500: true, 503: true, 529: true} {
-		if got := upstreamDown(status); got != want {
-			t.Errorf("upstreamDown(%d) = %v, want %v", status, got, want)
+		if got := UpstreamDown(status); got != want {
+			t.Errorf("UpstreamDown(%d) = %v, want %v", status, got, want)
 		}
 	}
 }

@@ -397,46 +397,70 @@ func TestDetectOnlyFindingsAreAlwaysSaid(t *testing.T) {
 }
 
 // In auto mode, Claude Code asks Claude whether each tool call is safe,
-// and those checks never go to the local model (#162). At a session limit
-// with a stand-in carrying the conversation, every tool call is then
-// refused; the console says what to do, once per conversation, and only
-// when a stand-in is configured (#173).
+// and those checks never go to the local model (#162). When the local
+// model has been standing in for the conversation and such a check cannot
+// reach Claude, every tool call is refused; the console says what to do,
+// once per conversation (#173). With no stand-in, there is nothing local
+// to keep working with, and nothing to say.
 func TestASafetyCheckThatCannotReachClaudeSaysToLeaveAutoMode(t *testing.T) {
 	var out bytes.Buffer
 	led := ledger.Open(filepath.Join(t.TempDir(), "ledger"))
+	c := testConsole(&out)
 	check := `{"model":"claude-sonnet-5","max_tokens":64,"system":[{"type":"text","text":"You are a security monitor for autonomous AI coding agents."}],"messages":[{"role":"user","content":"Respond with <severity>N</severity> ONLY."}]}`
-	turn := func(c *Console, status int) string {
+	standIn := func(session string) {
+		record(consoleExchange(func(ex *proxy.Exchange) {
+			ex.Header.Set("X-Claude-Code-Session-Id", session)
+			ex.Backend, ex.BackendModel = "local", "qwen/qwen3.8-27b"
+			ex.Attempt = &proxy.Attempt{Backend: "upstream", Why: "upstream answered HTTP 429"}
+			ex.Summary = &anthropic.Summary{Model: "qwen/qwen3.8-27b", StopReason: "tool_use", Complete: true}
+		}), led, nil, nil, c)
+	}
+	safety := func(session string, status int, failure string) string {
 		out.Reset()
-		ex := consoleExchange(func(ex *proxy.Exchange) {
+		record(consoleExchange(func(ex *proxy.Exchange) {
+			ex.Header.Set("X-Claude-Code-Session-Id", session)
 			ex.Status, ex.Duration = status, 300*time.Millisecond
 			ex.RequestBody = []byte(check)
-			ex.Summary = &anthropic.Summary{Complete: true, Error: &anthropic.APIError{Type: "rate_limit_error"}}
-		})
-		record(ex, led, nil, nil, c)
+			ex.Summary = &anthropic.Summary{Complete: true}
+			if failure != "" {
+				ex.Summary.Error = &anthropic.APIError{Type: failure}
+			}
+		}), led, nil, nil, c)
 		return out.String()
 	}
 	hint := "↳ auto mode's safety check could not reach Claude, so Claude Code will refuse tool calls; press Shift+Tab to leave auto mode"
 
-	c := testConsole(&out)
-	c.standIns = true
-	if first := turn(c, 429); !strings.Contains(first, "safety") || !strings.Contains(first, hint) {
-		t.Errorf("first refused check:\n%s", first)
+	standIn("s1")
+	if first := safety("s1", 429, "rate_limit_error"); !strings.Contains(first, "safety") || !strings.Contains(first, hint) {
+		t.Errorf("first refused check after a stand-in:\n%s", first)
 	}
-	if again := turn(c, 429); strings.Contains(again, "↳") {
+	if again := safety("s1", 429, "rate_limit_error"); strings.Contains(again, "↳") {
 		t.Errorf("the hint was repeated:\n%s", again)
 	}
 
-	// Without a stand-in the whole session is stopped, and there is
-	// nothing to say about auto mode in particular.
-	plain := testConsole(&out)
-	if got := turn(plain, 429); strings.Contains(got, "auto mode") {
-		t.Errorf("hint with no stand-in configured:\n%s", got)
+	// An error inside a 200 stream is Claude not answering too.
+	standIn("s2")
+	if got := safety("s2", 200, "overloaded_error"); !strings.Contains(got, hint) {
+		t.Errorf("an overloaded_error event after a stand-in:\n%s", got)
 	}
-	// Nor when Claude answered.
-	fresh := testConsole(&out)
-	fresh.standIns = true
-	if got := turn(fresh, 200); strings.Contains(got, "auto mode") {
+
+	// No stand-in in the conversation, as when the main turn was too large
+	// for any local model or ifDown is only on another rule: nothing local
+	// is answering, so leaving auto mode would not help.
+	if got := safety("s3", 429, "rate_limit_error"); strings.Contains(got, "auto mode") {
+		t.Errorf("hint with no stand-in:\n%s", got)
+	}
+	// Nor when Claude answered the check.
+	standIn("s4")
+	if got := safety("s4", 200, ""); strings.Contains(got, "auto mode") {
 		t.Errorf("hint when Claude answered:\n%s", got)
+	}
+	// Nor long after the last stand-in, by which time the conversation has
+	// gone back to Claude or stopped.
+	standIn("s5")
+	c.now = func() time.Time { return time.Date(2026, 10, 13, 16, 55, 50, 0, time.Local) }
+	if got := safety("s5", 429, "rate_limit_error"); strings.Contains(got, "auto mode") {
+		t.Errorf("hint 20 minutes after the last stand-in:\n%s", got)
 	}
 }
 
