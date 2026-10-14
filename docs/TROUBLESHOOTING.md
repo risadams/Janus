@@ -93,6 +93,12 @@ conversation to fit, but the first message and the latest turn together
 are still too big, usually because of one very large tool result. Claude's
 error stands. Load the model with a larger `contextTokens`.
 
+**At a session limit, every tool call is refused as "temporarily
+unavailable", though the local model is answering.** That is auto mode:
+Claude Code checks each tool call with Claude, and those checks stay with
+Claude. Press Shift+Tab to leave auto mode and approve tool calls
+yourself; see CONFIG, "Auto mode while Claude is out".
+
 ## Local answers
 
 **`this request is about N tokens, more than the N-token context of local

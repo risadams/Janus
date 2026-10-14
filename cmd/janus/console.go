@@ -33,6 +33,9 @@ type Console struct {
 	// said is, per conversation, the notes already printed that need not
 	// be repeated, and when the conversation was last seen.
 	said map[string]*said
+	// standIns is whether a routing rule has an ifDown stand-in, so that
+	// the local model may be carrying a conversation while Claude is out.
+	standIns bool
 }
 
 type said struct {
