@@ -712,3 +712,40 @@ func TestPlanReleaseRunsOnceAndEarly(t *testing.T) {
 		fallback.Close()
 	}
 }
+
+// A client that sends Expect: 100-continue, as curl does with a large body,
+// gets an interim 100 Continue from the backend before the real answer.
+// The exchange records the real answer's status (#178).
+func TestInterimContinueIsNotTheRecordedStatus(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body) // reading the body sends the 100 Continue
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"type":"message"}`)
+	}))
+	defer up.Close()
+	u, _ := url.Parse(up.URL)
+	reported := make(chan Exchange, 1)
+	front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: func(ex Exchange) { reported <- ex }}))
+	defer front.Close()
+
+	req, _ := http.NewRequest("POST", front.URL+"/v1/messages", strings.NewReader(`{"model":"m","messages":[]}`))
+	req.Header.Set("Expect", "100-continue")
+	client := &http.Client{Transport: &http.Transport{ExpectContinueTimeout: 5 * time.Second}}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("client got %d", resp.StatusCode)
+	}
+	select {
+	case ex := <-reported:
+		if ex.Status != 200 {
+			t.Errorf("recorded status %d, want 200", ex.Status)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no exchange reported")
+	}
+}
