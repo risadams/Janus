@@ -8,7 +8,10 @@ is going is in [docs/ROADMAP.md](docs/ROADMAP.md).
 ## Checks
 
 CI runs `gofmt -l .` (must print nothing), `go vet ./...`, and
-`go test ./...` on Linux, macOS, and Windows. Run `go test -race ./...`
+`go test ./...` on Linux, macOS, and Windows, and
+`go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...` and
+`go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`; all of them must
+pass before a merge. Run them all before pushing, with `go test -race ./...`
 locally. The suite is offline: fake upstreams and a fake LM Studio are
 `httptest` servers.
 
