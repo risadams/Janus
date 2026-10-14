@@ -1057,7 +1057,11 @@ type statusWriter struct {
 }
 
 func (w *statusWriter) WriteHeader(code int) {
-	if w.status == 0 {
+	// An interim response, such as the 100 Continue a backend sends a
+	// client that asked for one, comes before the answer and is not it
+	// (#178). 101 Switching Protocols is final.
+	interim := code >= 100 && code < 200 && code != http.StatusSwitchingProtocols
+	if w.status == 0 && !interim {
 		w.status = code
 	}
 	w.ResponseWriter.WriteHeader(code)
