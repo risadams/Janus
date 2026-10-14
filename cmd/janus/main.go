@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -373,7 +374,11 @@ func exchangeNotes(ex proxy.Exchange) []note {
 	}
 	if a := ex.Attempt; a != nil && !a.Accepted {
 		if a.Backend == "upstream" {
-			notes = append(notes, note{level: warn, text: "Claude could not answer (" + a.Why + "), so the local model stood in"})
+			text := "Claude could not answer (" + a.Why + "), so the local model stood in"
+			if slices.Contains(ex.Stages, route.StageLeaveOut) {
+				text += ", with older turns left out to fit its context"
+			}
+			notes = append(notes, note{level: warn, text: text})
 		} else {
 			notes = append(notes, note{level: info, text: fmt.Sprintf("%s tried for %s first, then it went to Claude: %s", a.Backend, humanDuration(a.Duration), a.Why)})
 		}

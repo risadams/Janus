@@ -82,6 +82,16 @@ func TestConsoleLines(t *testing.T) {
 			"main       qwen3.8-27b (local)     ✓ 3.2s    answered    22 in                   37 out     free\n" +
 				"          ↳ Claude could not answer (upstream answered HTTP 429), so the local model stood in",
 		},
+		"stood in on part of a long conversation": {
+			consoleExchange(func(ex *proxy.Exchange) {
+				ex.Backend, ex.BackendModel, ex.Duration = "local", "qwen/qwen3.8-27b", 3180*time.Millisecond
+				ex.Stages = []string{"set_model", "leave_out_messages"}
+				ex.Attempt = &proxy.Attempt{Backend: "upstream", Why: "upstream answered HTTP 429", Duration: 300 * time.Millisecond}
+				ex.Summary = &anthropic.Summary{Model: "qwen/qwen3.8-27b", StopReason: "end_turn", Complete: true, Usage: anthropic.Usage{Input: 22, Output: 37}}
+			}),
+			"main       qwen3.8-27b (local)     ✓ 3.2s    answered    22 in                   37 out     free\n" +
+				"          ↳ Claude could not answer (upstream answered HTTP 429), so the local model stood in, with older turns left out to fit its context",
+		},
 		"escalated": {
 			consoleExchange(func(ex *proxy.Exchange) {
 				ex.Header.Set("X-Claude-Code-Agent-Id", "a1")

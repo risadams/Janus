@@ -1416,7 +1416,7 @@ func TestClaudesErrorStandsWhenLocalCannotHelp(t *testing.T) {
 	// The record says the stand-in was considered, and why it did not
 	// answer.
 	wantReason := "rule main: upstream answered HTTP 529; no local stand-in: this request is about "
-	if !strings.HasPrefix(ex.Reason, wantReason) || !strings.Contains(ex.Reason, `more than the 61696-token context of local model "qwen/qwen3.8-27b"`) {
+	if !strings.HasPrefix(ex.Reason, wantReason) || !strings.Contains(ex.Reason, `even its first and latest turns are more than the 46272 tokens local model "qwen/qwen3.8-27b" has room for`) {
 		t.Errorf("reason = %q", ex.Reason)
 	}
 	if !strings.HasPrefix(ex.NoFallback, "no local stand-in: this request is about ") {
@@ -1856,7 +1856,7 @@ func TestJanusLoadsAnUnloadedModelButNeverReloads(t *testing.T) {
 	r.Rules = []Rule{{Route: RouteUpstream, IfDown: &standIn}}
 	medium := `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"` + strings.Repeat("word ", 8000) + `"}]}`
 	plan, _, _ = r.Explain(context.Background(), mainHeader(), parse(t, medium))
-	if refused, ok := plan.Fallback(context.Background()); ok || !strings.Contains(refused.Reason, "more than the 4096-token context") {
+	if refused, ok := plan.Fallback(context.Background()); ok || !strings.Contains(refused.Reason, "more than the 3072 tokens local model") {
 		t.Errorf("too small: ok %v, reason %q", ok, refused.Reason)
 	}
 	if len(loads) != 1 {

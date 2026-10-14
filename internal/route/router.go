@@ -348,7 +348,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			if problem != "" {
 				return refuse(http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("%s: %s: %s", backend.RouteHeader, choice, problem))
 			}
-			plan, _, failure := r.local(ctx, req, local, facts.Model, reason)
+			plan, _, failure := r.local(ctx, req, local, facts.Model, reason, false)
 			if failure != nil {
 				return refuse(failure.status, failure.kind, failure.message)
 			}
@@ -393,7 +393,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			if waited >= time.Second {
 				reason = fmt.Sprintf("%s, after waiting %s for the local model", label, waited.Round(time.Second))
 			}
-			fallback, _, problem := r.local(ctx, copy, local, facts.Model, reason)
+			fallback, _, problem := r.local(ctx, copy, local, facts.Model, reason, true)
 			if problem != nil {
 				release()
 				if problem.status == http.StatusBadGateway {
@@ -411,7 +411,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	// fall back to: a request that cannot go local is refused, with why.
 	if local, ok := r.Aliases[facts.Model]; ok {
 		reason := "model alias " + facts.Model
-		plan, _, problem := r.local(ctx, req, local, facts.Model, reason)
+		plan, _, problem := r.local(ctx, req, local, facts.Model, reason, false)
 		if problem != nil {
 			trace = append(trace, fmt.Sprintf("%s: refused: %s", reason, problem.message))
 			return proxy.Plan{}, &proxy.Refusal{
@@ -447,7 +447,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				trace = append(trace, reason)
 				return upstream(reason), nil, trace
 			}
-			plan, adapted, problem := r.local(ctx, req, rule.Local, facts.Model, label)
+			plan, adapted, problem := r.local(ctx, req, rule.Local, facts.Model, label, false)
 			if problem != nil {
 				release()
 				if problem.status == http.StatusBadGateway {
@@ -527,7 +527,7 @@ func (r *Router) LocalOnly(name string) proxy.Planner {
 		if problem != "" {
 			return refuse(http.StatusForbidden, "permission_error", problem)
 		}
-		plan, _, why := r.local(ctx, req, local, req.Model(), "local-only policy")
+		plan, _, why := r.local(ctx, req, local, req.Model(), "local-only policy", false)
 		if why != nil {
 			return refuse(why.status, why.kind, why.message)
 		}
@@ -564,6 +564,23 @@ func (r *Router) named(name string) (LocalModel, string) {
 // qwen/qwen3.8-27b ran at a 107k context on the owner's 36 GB Mac.
 const DefaultLoadContextTokens = 65536
 
+// StageLeaveOut records that older turns were left out of a conversation
+// to fit the local model's context.
+const StageLeaveOut = "leave_out_messages"
+
+// loadContext is the context Janus has LM Studio load local with:
+// contextTokens, or DefaultLoadContextTokens, within the model's maximum.
+func loadContext(local LocalModel, info backend.Model) int {
+	load := local.ContextTokens
+	if load == 0 {
+		load = DefaultLoadContextTokens
+	}
+	if info.MaxContext > 0 && info.MaxContext < load {
+		load = info.MaxContext
+	}
+	return load
+}
+
 // problem is why a request cannot go to the local model.
 type problem struct {
 	status  int
@@ -576,8 +593,10 @@ type problem struct {
 //
 // It works on a copy of the request, which it also returns, so that a
 // request which turns out not to fit can still go upstream exactly as it
-// arrived.
-func (r *Router) local(ctx context.Context, req *anthropic.Request, local LocalModel, reportAs, reason string) (proxy.Plan, *anthropic.Request, *problem) {
+// arrived. With fit, a request too large for the model's context has its
+// older turns left out until it fits (fitConversation); that is for a
+// stand-in, which has nowhere else to go.
+func (r *Router) local(ctx context.Context, req *anthropic.Request, local LocalModel, reportAs, reason string, fit bool) (proxy.Plan, *anthropic.Request, *problem) {
 	info, found, err := r.Local.Model(ctx, local.ID)
 	switch {
 	case err != nil:
@@ -602,22 +621,36 @@ func (r *Router) local(ctx context.Context, req *anthropic.Request, local LocalM
 	estimate := EstimateTokens(body)
 
 	limit := local.ContextTokens
-	if info.Loaded {
-		if limit == 0 {
-			limit = info.LoadedContext
+	if info.Loaded && limit == 0 {
+		limit = info.LoadedContext
+	}
+	if fit {
+		// The context the request has to fit: the model's, or the one
+		// Janus would load it with.
+		context := limit
+		if !info.Loaded {
+			context = loadContext(local, info)
 		}
-	} else {
+		if context > 0 && estimate > context {
+			total := len(adapted.Messages())
+			budget := context - answerReserve(context)
+			leftOut, ok := fitConversation(adapted, budget)
+			if !ok {
+				return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error",
+					fmt.Sprintf("this request is about %d tokens, and even its first and latest turns are more than the %d tokens local model %q has room for", estimate, budget, local.ID)}
+			}
+			body = adapted.Bytes()
+			estimate = EstimateTokens(body)
+			stages = append(stages, StageLeaveOut)
+			reason = fmt.Sprintf("%s; %d of %d messages left out to fit the local model's context", reason, leftOut, total)
+		}
+	}
+	if !info.Loaded {
 		// Left to itself, LM Studio would load the model for this request
 		// at a context Janus cannot see, and a request too large for it
 		// would cost the load (most of this machine's memory, for a 27B
 		// model) and then fail. So Janus loads it, at a context it chose.
-		load := local.ContextTokens
-		if load == 0 {
-			load = DefaultLoadContextTokens
-		}
-		if info.MaxContext > 0 && info.MaxContext < load {
-			load = info.MaxContext
-		}
+		load := loadContext(local, info)
 		if estimate > load {
 			return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error",
 				fmt.Sprintf("this request is about %d tokens, more than the %d-token context Janus loads local model %q with (set contextTokens to change that)", estimate, load, local.ID)}

@@ -87,6 +87,12 @@ was standing in. Raise `contextTokens` if the machine has the memory.
 load, often for want of memory; its reason follows. Unload another model,
 or lower `contextTokens`.
 
+**`... even its first and latest turns are more than the N tokens local
+model ... has room for`.** A stand-in leaves out the middle of a long
+conversation to fit, but the first message and the latest turn together
+are still too big, usually because of one very large tool result. Claude's
+error stands. Load the model with a larger `contextTokens`.
+
 ## Local answers
 
 **`this request is about N tokens, more than the N-token context of local
