@@ -95,9 +95,10 @@ problems without starting anything.
 ## Reaching LM Studio
 
 **`could not reach LM Studio at ...`.** Its server is not running, or not
-where `local.baseUrl` says. The default is `http://studio.local:1234`,
-which is for LM Studio on another machine called `studio`; for LM Studio
-on the same machine set `http://127.0.0.1:1234`.
+where `local.baseUrl` says. If you never set it, it is still the default,
+`http://studio.local:1234`: a placeholder for the Janus developer's own
+LM Studio machine, which yours can't reach. Set it to where your LM Studio
+runs: `http://127.0.0.1:1234` on the same machine.
 
 **It works on the LM Studio machine and not from another.** LM Studio
 serves on loopback only until told otherwise. Turn on serving on the local
@@ -109,9 +110,9 @@ quit.
 **`lms server start` hangs with the Bionic app.** The command-line tool
 and the app each try to own the server. Start the server from the app.
 
-**`studio.local` stops resolving.** `.local` names depend on mDNS on your
-network, which routers and VPNs sometimes break. Put the machine's address
-in `local.baseUrl` instead.
+**A `.local` name stops resolving.** Names like `mymac.local` depend on
+mDNS on your network, which routers and VPNs sometimes break. Put the
+machine's IP address in `local.baseUrl` instead.
 
 **`the server answered but not like LM Studio`.** Something else is at
 that address. Janus checks before trusting it, because LM Studio and other

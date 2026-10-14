@@ -35,6 +35,13 @@ The file Janus writes on its first run:
 }
 ```
 
+> **`studio.local` is a placeholder.** `http://studio.local:1234` is the
+> Janus developer's own LM Studio machine, and the default only because
+> Janus was built against it. Set `local.baseUrl` to where your LM Studio
+> runs: `http://127.0.0.1:1234` on the same machine, or
+> `http://<its address>:1234` on another. `janus doctor` says whether it
+> answers.
+
 | Section | What it is for |
 | --- | --- |
 | `listen`, `allowRemote` | The address Claude Code connects to. Loopback only, unless you set `allowRemote`. |

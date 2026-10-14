@@ -15,7 +15,7 @@ and switch routing on:
 ```json
 {
   "local": {
-    "baseUrl": "http://studio.local:1234",
+    "baseUrl": "http://127.0.0.1:1234",
     "models": {
       "janus-local": { "model": "qwen/qwen3.8-27b" }
     }
@@ -23,6 +23,9 @@ and switch routing on:
   "features": { "route": true }
 }
 ```
+
+Set `baseUrl` to your LM Studio's address; `http://127.0.0.1:1234` is
+right when it runs on the same machine as Janus.
 
 The alias can be any name. A request for it is answered by the local model;
 every other request goes upstream untouched.
