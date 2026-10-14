@@ -2,14 +2,19 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -56,6 +61,33 @@ func doctor(t *testing.T, upstream, local string, extra map[string]any) (out str
 	var stdout, stderr bytes.Buffer
 	code = run([]string{"doctor", "-config", path}, &stdout, &stderr)
 	return stdout.String() + stderr.String(), code, dir
+}
+
+func TestDiagnoseUpstreamNamesTheFault(t *testing.T) {
+	u, _ := url.Parse("https://api.anthropic.com")
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"no such host", &net.DNSError{Err: "no such host", Name: "api.anthropic.com", IsNotFound: true}, "no such host"},
+		{"temporary dns", &net.DNSError{Err: "server misbehaving", Name: "x", IsTemporary: true}, "temporary"},
+		{"not trusted", x509.UnknownAuthorityError{}, "not trusted"},
+		{"bad cert", &x509.CertificateInvalidError{Reason: x509.Expired}, "certificate"},
+		{"timeout", context.DeadlineExceeded, "did not answer in time"},
+		{"refused", &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}, "nothing is listening"},
+		{"plain", errors.New("some socket weirdness"), "some socket weirdness"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := diagnoseUpstream(u, c.err); !strings.Contains(got, c.want) {
+				t.Errorf("diagnoseUpstream = %q, want it to contain %q", got, c.want)
+			}
+		})
+	}
+	if got := diagnoseUpstream(nil, errors.New("unsupported protocol scheme")); !strings.Contains(got, "unsupported protocol scheme") {
+		t.Errorf("a nil URL should fall back to the raw error, got %q", got)
+	}
 }
 
 func wantLines(t *testing.T, out string, wants ...string) {

@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -120,12 +121,51 @@ func checkListen(addr string) finding {
 // real request would be authorised.
 func checkUpstream(client *http.Client, base string) finding {
 	start := time.Now()
+	u, _ := url.Parse(base) // the config has been validated
 	resp, err := client.Get(base)
 	if err != nil {
-		return finding{"fail", "upstream", fmt.Sprintf("%s did not answer: %v", base, err)}
+		return finding{"fail", "upstream", fmt.Sprintf("%s did not answer: %s", base, diagnoseUpstream(u, err))}
 	}
 	resp.Body.Close()
 	return finding{"ok", "upstream", fmt.Sprintf("%s answered in %s", base, time.Since(start).Round(time.Millisecond))}
+}
+
+// diagnoseUpstream turns the raw error from an upstream GET into the part
+// of the URL that failed and what to do about it, rather than a stack of
+// socket errors.
+func diagnoseUpstream(u *url.URL, err error) string {
+	if u == nil {
+		return err.Error() // an unparseable URL reports itself well enough
+	}
+	host := u.Host
+	// Unwrap down to the cause the network layer reports.
+	var dns *net.DNSError
+	var op *net.OpError
+	var unknown x509.UnknownAuthorityError
+	var cert *x509.CertificateInvalidError
+	switch {
+	case errors.As(err, &dns) && dns.IsNotFound:
+		return fmt.Sprintf("no such host %q. Check the hostname in upstream.baseUrl", host)
+	case errors.As(err, &dns) && dns.IsTemporary:
+		return fmt.Sprintf("a temporary failure resolving %q. Check the network, or the DNS the machine uses", host)
+	case errors.As(err, &unknown):
+		return fmt.Sprintf("TLS to %q was not trusted. Check that upstream.baseUrl uses https, or the certificate if you run it behind a proxy", host)
+	case errors.As(err, &cert):
+		return fmt.Sprintf("the TLS certificate for %q is invalid: %s", host, cert.Error())
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Sprintf("it did not answer in time. A firewall may be dropping the connection, or the upstream is overloaded")
+	case errors.As(err, &op) && isRefused(op.Err):
+		return fmt.Sprintf("nothing is listening on %q. Check the port in upstream.baseUrl", host)
+	default:
+		return err.Error()
+	}
+}
+
+// isRefused reports whether a network error is a connection refused.
+// Windows and the other platforms word it differently.
+func isRefused(err error) bool {
+	var errno syscall.Errno
+	return errors.Is(err, syscall.ECONNREFUSED) || (errors.As(err, &errno) && errno == syscall.ECONNREFUSED)
 }
 
 // checkLocal looks at LM Studio, at each model a request can be routed

@@ -370,24 +370,24 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		plan.FallBackOn = upstreamDown
 		// When there is no stand-in after all, the returned plan's Reason
 		// says why, for the record: Claude's failure is the answer.
-		noStandIn := func(why string) (proxy.Plan, bool) {
-			return proxy.Plan{Reason: "no local stand-in: " + why}, false
+		noStandIn := func(cause, why string) (proxy.Plan, bool) {
+			return proxy.Plan{Reason: "no local stand-in: " + why, LocalCause: cause}, false
 		}
 		plan.Fallback = func(ctx context.Context) (proxy.Plan, bool) {
 			if skip, failures, until := r.health.open(); skip {
-				return noStandIn(fmt.Sprintf("the local backend has failed %d times in a row and is being skipped until %s",
+				return noStandIn(proxy.CauseSkipped, fmt.Sprintf("the local backend has failed %d times in a row and is being skipped until %s",
 					failures, until.Format("15:04:05")))
 			}
 			copy, err := anthropic.ParseRequest(arrived)
 			if err != nil {
-				return noStandIn("the request could not be read again: " + err.Error())
+				return noStandIn(proxy.CauseUnsupported, "the request could not be read again: "+err.Error())
 			}
 			// A stand-in waits its turn: slower is better than Claude's
 			// error. It waits no longer than the model would be given to
 			// answer.
 			release, ok, waited := r.busy.wait(ctx, local, local.Timeout)
 			if !ok {
-				return noStandIn(fmt.Sprintf("%s had %d requests in flight, its limit, for %s", local.ID, local.MaxConcurrent, waited.Round(100*time.Millisecond)))
+				return noStandIn(proxy.CauseBusy, fmt.Sprintf("%s had %d requests in flight, its limit, for %s", local.ID, local.MaxConcurrent, waited.Round(100*time.Millisecond)))
 			}
 			reason := label
 			if waited >= time.Second {
@@ -399,7 +399,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				if problem.status == http.StatusBadGateway {
 					r.health.record(false)
 				}
-				return noStandIn(problem.message)
+				return noStandIn(problem.cause, problem.message)
 			}
 			fallback.Release = release
 			return fallback, true
@@ -438,14 +438,18 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				reason := fmt.Sprintf("%s: the local backend has failed %d times in a row and is being skipped until %s; sent upstream",
 					label, failures, until.Format("15:04:05"))
 				trace = append(trace, reason)
-				return upstream(reason), nil, trace
+				plan := upstream(reason)
+				plan.LocalCause = proxy.CauseSkipped
+				return plan, nil, trace
 			}
 			release, ok := r.busy.take(rule.Local)
 			if !ok {
 				reason := fmt.Sprintf("%s: %s already has %d requests in flight, its limit; sent upstream",
 					label, rule.Local.ID, rule.Local.MaxConcurrent)
 				trace = append(trace, reason)
-				return upstream(reason), nil, trace
+				plan := upstream(reason)
+				plan.LocalCause = proxy.CauseBusy
+				return plan, nil, trace
 			}
 			plan, adapted, problem := r.local(ctx, req, rule.Local, facts.Model, label, false)
 			if problem != nil {
@@ -455,7 +459,9 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				}
 				reason := fmt.Sprintf("%s: %s; sent upstream", label, problem.message)
 				trace = append(trace, reason)
-				return upstream(reason), nil, trace
+				plan := upstream(reason)
+				plan.LocalCause = problem.cause
+				return plan, nil, trace
 			}
 			plan.Release = release
 
@@ -476,12 +482,12 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 					plan.Timeout = rule.TrialTimeout
 				}
 				skip := rule.SkipChecks
-				plan.Accept = func(got proxy.Fetched) (bool, string) {
+				plan.Accept = func(got proxy.Fetched) (bool, string, string) {
 					answer, readable := anthropic.Assemble(got.Body, got.Header.Get("Content-Type"))
-					if _, why := validate.Check(adapted, got.Summary, answer, readable, skip); why != "" {
-						return false, why
+					if check, why := validate.Check(adapted, got.Summary, answer, readable, skip); why != "" {
+						return false, check, why
 					}
-					return true, ""
+					return true, "", ""
 				}
 				trace = append(trace, fmt.Sprintf("%s: local first, on %s; its answer is checked, and Claude answers instead if it fails", label, rule.Local.ID))
 			} else {
@@ -586,6 +592,8 @@ type problem struct {
 	status  int
 	kind    string
 	message string
+	// cause is why, as one of the proxy's Cause names.
+	cause string
 }
 
 // local builds the plan for sending req to a local model. The response
@@ -601,21 +609,21 @@ func (r *Router) local(ctx context.Context, req *anthropic.Request, local LocalM
 	switch {
 	case err != nil:
 		return proxy.Plan{}, nil, &problem{http.StatusBadGateway, "api_error",
-			fmt.Sprintf("could not reach LM Studio at %s: %v", r.Local.URL(), err)}
+			fmt.Sprintf("could not reach LM Studio at %s: %v", r.Local.URL(), err), proxy.CauseUnreachable}
 	case !found:
 		// LM Studio would not reject this; it would answer with whatever
 		// model happens to be loaded.
 		return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error",
-			fmt.Sprintf("LM Studio does not have local model %q", local.ID)}
+			fmt.Sprintf("LM Studio does not have local model %q", local.ID), proxy.CauseModelMissing}
 	}
 
 	adapted, err := anthropic.ParseRequest(req.Bytes())
 	if err != nil {
-		return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error", "cannot read this request: " + err.Error()}
+		return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error", "cannot read this request: " + err.Error(), proxy.CauseUnsupported}
 	}
 	stages, err := backend.Normalize(adapted, local.ID)
 	if err != nil {
-		return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error", "cannot adapt this request for the local model: " + err.Error()}
+		return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error", "cannot adapt this request for the local model: " + err.Error(), proxy.CauseUnsupported}
 	}
 	body := adapted.Bytes()
 	estimate := EstimateTokens(body)
@@ -637,7 +645,7 @@ func (r *Router) local(ctx context.Context, req *anthropic.Request, local LocalM
 			leftOut, ok := fitConversation(adapted, budget)
 			if !ok {
 				return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error",
-					fmt.Sprintf("this request is about %d tokens, and even its first and latest turns are more than the %d tokens local model %q has room for", estimate, budget, local.ID)}
+					fmt.Sprintf("this request is about %d tokens, and even its first and latest turns are more than the %d tokens local model %q has room for", estimate, budget, local.ID), proxy.CauseTooLarge}
 			}
 			body = adapted.Bytes()
 			estimate = EstimateTokens(body)
@@ -653,12 +661,12 @@ func (r *Router) local(ctx context.Context, req *anthropic.Request, local LocalM
 		load := loadContext(local, info)
 		if estimate > load {
 			return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error",
-				fmt.Sprintf("this request is about %d tokens, more than the %d-token context Janus loads local model %q with (set contextTokens to change that)", estimate, load, local.ID)}
+				fmt.Sprintf("this request is about %d tokens, more than the %d-token context Janus loads local model %q with (set contextTokens to change that)", estimate, load, local.ID), proxy.CauseTooLarge}
 		}
 		loaded, err := r.Local.Load(ctx, local.ID, load)
 		if err != nil {
 			return proxy.Plan{}, nil, &problem{http.StatusBadGateway, "api_error",
-				fmt.Sprintf("LM Studio could not load local model %q with a %d-token context: %v", local.ID, load, err)}
+				fmt.Sprintf("LM Studio could not load local model %q with a %d-token context: %v", local.ID, load, err), proxy.CauseLoadFailed}
 		}
 		if limit == 0 || loaded.LoadedContext < limit {
 			limit = loaded.LoadedContext
@@ -668,7 +676,7 @@ func (r *Router) local(ctx context.Context, req *anthropic.Request, local LocalM
 
 	if limit > 0 && estimate > limit {
 		return proxy.Plan{}, nil, &problem{http.StatusBadRequest, "invalid_request_error",
-			fmt.Sprintf("this request is about %d tokens, more than the %d-token context of local model %q", estimate, limit, local.ID)}
+			fmt.Sprintf("this request is about %d tokens, more than the %d-token context of local model %q", estimate, limit, local.ID), proxy.CauseTooLarge}
 	}
 
 	return proxy.Plan{

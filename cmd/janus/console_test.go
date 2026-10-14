@@ -439,3 +439,38 @@ func TestASafetyCheckThatCannotReachClaudeSaysToLeaveAutoMode(t *testing.T) {
 		t.Errorf("hint when Claude answered:\n%s", got)
 	}
 }
+
+// When the local model does not answer, the console says what to do about
+// it. A rule passing over the local model is said once per conversation
+// for each cause, since a busy model is busy on every parallel turn (#202).
+func TestConsoleNamesTheNextStepWhenTheLocalModelDoesNotAnswer(t *testing.T) {
+	var out bytes.Buffer
+	c := testConsole(&out)
+	led := ledger.Open(filepath.Join(t.TempDir(), "ledger"))
+
+	slow := consoleExchange(func(ex *proxy.Exchange) {
+		ex.Header.Set("X-Claude-Code-Agent-Id", "a1")
+		ex.Attempt = &proxy.Attempt{Backend: "local", Why: "the local answer broke off: context deadline exceeded", Cause: proxy.CauseSlow, Duration: 90 * time.Second}
+		ex.Summary = &anthropic.Summary{Model: "claude-opus-5-5", StopReason: "end_turn", Complete: true}
+	})
+	record(slow, led, nil, nil, c)
+	if !strings.Contains(out.String(), "; next: raise maxSeconds or timeoutSeconds, or use a faster model") {
+		t.Errorf("slow attempt:\n%s", out.String())
+	}
+
+	busy := func() string {
+		out.Reset()
+		record(consoleExchange(func(ex *proxy.Exchange) {
+			ex.Header.Set("X-Claude-Code-Agent-Id", "a2")
+			ex.Reason, ex.LocalCause = "rule subagents: qwen already has 1 requests in flight, its limit; sent upstream", proxy.CauseBusy
+			ex.Summary = &anthropic.Summary{Model: "claude-opus-5-5", StopReason: "end_turn", Complete: true}
+		}), led, nil, nil, c)
+		return out.String()
+	}
+	if first := busy(); !strings.Contains(first, "↳ not sent to the local model (busy); next: raise maxConcurrent") {
+		t.Errorf("first busy turn:\n%s", first)
+	}
+	if again := busy(); strings.Contains(again, "↳") {
+		t.Errorf("the busy note was repeated:\n%s", again)
+	}
+}

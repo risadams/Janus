@@ -686,7 +686,7 @@ func TestPlanReleaseRunsOnceAndEarly(t *testing.T) {
 				Release: func() { released.Add(1) }}
 			if c.trial {
 				p.Else = &Plan{Backend: backend.NewUpstream(fallbackURL, nil), Route: "upstream", Reason: "fallback"}
-				p.Accept = func(Fetched) (bool, string) { return c.accept, "not good enough" }
+				p.Accept = func(Fetched) (bool, string, string) { return c.accept, "empty", "not good enough" }
 			}
 			return p, nil
 		}

@@ -17,6 +17,7 @@ import (
 	"github.com/risadams/janus/internal/config"
 	"github.com/risadams/janus/internal/guard"
 	"github.com/risadams/janus/internal/ledger"
+	"github.com/risadams/janus/internal/proxy"
 )
 
 func runAudit(args []string, stdout, stderr io.Writer) int {
@@ -392,6 +393,18 @@ func auditOne(stdout, stderr io.Writer, records []ledger.Record, captures, id st
 	fmt.Fprintf(stdout, "  Why       %s\n", rec.Reason)
 	if len(rec.Stages) > 0 {
 		fmt.Fprintf(stdout, "  Changed   %s\n", strings.Join(rec.Stages, ", "))
+	}
+	// Why the local model did not answer this request, if it was meant to:
+	// tried first and failed (an attempt), or passed over without trying.
+	if a := rec.Attempt; a != nil && a.Backend == "local" && a.Verdict != ledger.VerdictAccepted {
+		fmt.Fprintf(stdout, "  Local     tried first and did not answer: %s\n", a.Why)
+		if h := proxy.CauseHint(ledger.AttemptCause(*a)); h != "" {
+			fmt.Fprintf(stdout, "            next step: %s\n", h)
+		}
+	} else if c := ledger.LocalCause(*rec); c != "" {
+		if h := proxy.CauseHint(c); h != "" {
+			fmt.Fprintf(stdout, "  Local     not tried here; next step: %s\n", h)
+		}
 	}
 	if g := rec.Guard; g != nil && len(g.LocalOnly) > 0 {
 		switch {

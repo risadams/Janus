@@ -101,6 +101,12 @@ By class
 Local first (the local model tried, with Claude as the fallback)
        class  tried  accepted  rejected  failed  accepted %  attempt time
     subagent     58        44         5       9         76%         31.2s
+
+Why the local model did not answer, and what to do about it
+  cause      tried  never tried  next step
+  busy       0      6            raise maxConcurrent, if the machine has the memory
+  rejected   5      0            the model is not up to this work
+  slow       9      0            raise maxSeconds or timeoutSeconds, or use a faster model
 ```
 
 These figures are made up; yours will differ. The report also breaks the
@@ -115,10 +121,17 @@ What to look for:
   call with a separate request (`safety`), and asks for short progress
   lines while subagents run (`status`). They can add up.
 - **The "Local first" table**, if you route subagents locally. `accepted`
-  answers came from the local model at no cost. `rejected` ones failed a
-  check and `failed` ones found the model unavailable; Claude answered
-  both, after the attempt time had already been spent. If few are
-  accepted, the local model is costing you time and saving nothing.
+  answers came from the local model at no cost. `rejected` ones came back
+  whole and failed a check; `failed` ones never gave an answer to judge.
+  Claude answered both, after the attempt time had already been spent. If
+  few are accepted, the local model is costing you time and saving
+  nothing.
+- **Why the local model did not answer.** Each cause comes with its next
+  step. `tried` counts attempts that ended that way; `never tried` counts
+  requests a rule sent to Claude without trying, such as when the model
+  was busy. Mostly `slow`: raise `maxSeconds` or use a faster model.
+  Mostly `rejected`: the model isn't up to the work. The full list is in
+  [the ledger](../LEDGER.md#why-the-local-model-did-not-answer).
 
 [The ledger](../LEDGER.md) explains each figure.
 

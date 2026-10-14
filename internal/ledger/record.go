@@ -66,6 +66,11 @@ type Record struct {
 	// answered: the local model first with Claude as the fallback, or
 	// Claude first with the local model standing in when Claude was down.
 	Attempt *Attempt `json:"attempt,omitempty"`
+	// LocalCause is present when a rule or a stand-in meant this request
+	// for the local model and it was never tried there: why, with the same
+	// names as Attempt.Cause, plus skipped (the local backend had failed
+	// repeatedly and was being left alone for a while).
+	LocalCause string `json:"local_cause,omitempty"`
 	// Guard is present when the guard found secrets or local-only content
 	// in a request, or stopped it. It says how many and of what kinds,
 	// never what they were.
@@ -177,11 +182,20 @@ type Attempt struct {
 	Model   string `json:"model,omitempty"`
 	// Verdict is "accepted" (the local answer was given to the client, and
 	// this record's response and usage are the local model's), "rejected"
-	// (the local answer failed a check and Claude answered), or "failed"
-	// (the local model was unavailable and Claude answered).
+	// (a whole local answer came back and failed a check; Claude
+	// answered), or "failed" (no usable answer came back at all: the model
+	// was unreachable, slow, too small, or answered with an error; Claude
+	// answered).
 	Verdict string `json:"verdict"`
 	// Why says what was wrong, for a rejected or failed attempt.
-	Why        string `json:"why,omitempty"`
+	Why string `json:"why,omitempty"`
+	// Cause is why a local attempt was not accepted, as a fixed name:
+	// unreachable, model_missing, load_failed, too_large, busy, slow,
+	// server_error, broke_off, rejected, or unsupported (#202).
+	Cause string `json:"cause,omitempty"`
+	// Check is the check a rejected answer failed: empty, truncated,
+	// tools, schema, refusal, malformed, or oversize.
+	Check      string `json:"check,omitempty"`
 	DurationMs int64  `json:"duration_ms"`
 	// Usage is what a rejected attempt spent on the local model. For an
 	// accepted one, see the record's own usage.
@@ -300,6 +314,7 @@ func FromExchange(ex proxy.Exchange) Record {
 		DurationMs: ex.Duration.Milliseconds(),
 		Unread:     ex.Unread,
 		Fault:      ex.Fault,
+		LocalCause: ex.LocalCause,
 	}
 
 	if rec.Stages == nil {
@@ -316,15 +331,18 @@ func FromExchange(ex proxy.Exchange) Record {
 	}
 
 	if a := ex.Attempt; a != nil {
-		rec.Attempt = &Attempt{Backend: a.Backend, Model: a.Model, Why: a.Why, DurationMs: a.Duration.Milliseconds(),
+		rec.Attempt = &Attempt{Backend: a.Backend, Model: a.Model, Why: a.Why, Cause: a.Cause, DurationMs: a.Duration.Milliseconds(),
 			Limits: Limits(a.ResponseHeader)}
 		switch {
 		case a.Accepted:
-			rec.Attempt.Verdict, rec.Attempt.Why = VerdictAccepted, ""
-		case a.Fault:
-			rec.Attempt.Verdict = VerdictFailed
+			rec.Attempt.Verdict, rec.Attempt.Why, rec.Attempt.Cause = VerdictAccepted, "", ""
+		case a.Cause == proxy.CauseRejected, a.Cause == "" && !a.Fault:
+			// Only an answer that came back whole and was judged is
+			// rejected. An error, a timeout, or a broken answer is a
+			// failure, whatever it looked like on the wire (#202).
+			rec.Attempt.Verdict, rec.Attempt.Check = VerdictRejected, a.Check
 		default:
-			rec.Attempt.Verdict = VerdictRejected
+			rec.Attempt.Verdict = VerdictFailed
 		}
 		if !a.Accepted && a.Summary != nil && a.Summary.Error == nil {
 			u := a.Summary.Usage

@@ -127,6 +127,7 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 	}
 
 	printLocalFirst(w, rep.LocalFirst)
+	printLocalFirstCause(w, rep.LocalFirstCause)
 	printDelegated(w, rep.Delegated)
 	printShadow(w, rep.Shadow)
 	printTransforms(w, rep.Transforms)
@@ -263,9 +264,28 @@ func printLocalFirst(w io.Writer, rows []ledger.LocalFirstRow) {
 			commas(r.Rejected), commas(r.Failed), 100*float64(r.Accepted)/float64(r.Tried), float64(r.MedianMs)/1000)
 	}
 	tw.Flush()
-	fmt.Fprintf(w, "  Accepted answers came from the local model. Rejected ones failed a check and\n"+
-		"  failed ones found it unavailable; Claude answered both, after the attempt time\n"+
-		"  (a median) had already been spent.\n")
+	fmt.Fprintf(w, "  Accepted answers came from the local model. Rejected ones came back whole and\n"+
+		"  failed a check; failed ones never gave an answer to judge (why is below).\n"+
+		"  Claude answered both, after the attempt time (a median) had been spent.\n")
+}
+
+// printLocalFirstCause reports why the local model did not answer:
+// attempts that ended that way, and requests a rule or stand-in passed
+// over without trying it. Each cause names its next step.
+func printLocalFirstCause(w io.Writer, rows []ledger.CauseRow) {
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\nWhy the local model did not answer, and what to do about it\n")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "  cause\ttried\tnever tried\tnext step\n")
+	for _, r := range rows {
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", r.Cause, commas(r.Attempts), commas(r.NotTried), r.Hint())
+	}
+	tw.Flush()
+	fmt.Fprintf(w, "  \"Tried\" is a local attempt that ended that way; Claude answered.\n"+
+		"  \"Never tried\" is a request a rule meant for the local model that was\n"+
+		"  sent upstream (or left without a stand-in) for that reason.\n")
 }
 
 // printDelegated reports the work Claude handed to the local model.
