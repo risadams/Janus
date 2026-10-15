@@ -70,7 +70,7 @@ func TestRunReportsInvalidConfig(t *testing.T) {
 func TestRunRefusesALogFolderInUse(t *testing.T) {
 	root := t.TempDir()
 	cfgPath := filepath.Join(root, "janus.config.json")
-	os.WriteFile(cfgPath, []byte(`{"listen":"127.0.0.1:0"}`), 0o600)
+	os.WriteFile(cfgPath, []byte(`{"listen":"127.0.0.1:0","logging":{"dir":"logs"}}`), 0o600)
 	held, err := instance.Acquire(filepath.Join(root, "logs"))
 	if err != nil {
 		t.Fatal(err)
@@ -118,8 +118,8 @@ func TestBannerGivesTheClaudeCodeCommand(t *testing.T) {
 		`$env:ANTHROPIC_BASE_URL="http://127.0.0.1:8787"`,
 		"https://api.anthropic.com",
 		"http://studio.local:1234",
-		filepath.Join("logs", "ledger"),
-		filepath.Join("logs", "captures"),
+		filepath.Join(config.StateDir(), "ledger"),
+		filepath.Join(config.StateDir(), "captures"),
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("banner is missing %q:\n%s", want, out.String())

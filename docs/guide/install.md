@@ -106,10 +106,9 @@ since the binaries are not signed. Choose "More info", then "Run anyway".
 
 ## 2. Give Janus a folder
 
-Janus keeps its config file, ledger, and captures together. By default it
-reads `janus.config.json` from the folder you start it in and writes its
-logs to a `logs` folder beside the config. A folder of its own keeps that
-tidy:
+By default Janus reads `janus.config.json` from the folder you start it
+in, and writes its ledger and captures to a folder per user (macOS `~/Library/Application Support/janus`, Linux `$XDG_STATE_HOME/janus` (or `~/.local/state/janus`), Windows `%LocalAppData%\janus`), so they are in one place whichever folder that is. Give the
+config a folder of its own:
 
 ```bash
 mkdir -p ~/janus && cd ~/janus
@@ -347,8 +346,9 @@ have, and the console prints it at the top when Janus starts.
 2. Remove the setting that points Claude Code at Janus: the alias, or the
    `env` entries in `~/.claude/settings.json`.
 3. If you added the worker tools, `claude mcp remove janus`.
-4. Delete the binary, and the Janus folder. That folder's `logs` holds
-   the captures, which contain your prompts and code in full, and
+4. Delete the binary, the Janus folder, and the log folder
+   (`logging.dir`; `janus doctor` names it). The log folder holds the
+   captures, which contain your prompts and code in full, and
    `redact.key`, the key for the guard's placeholders.
 
 Next: [configuring Janus](configure.md).

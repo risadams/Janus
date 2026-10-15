@@ -26,7 +26,8 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("janus stats", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", config.DefaultPath, "path to the config file")
-	dir := fs.String("dir", "", "ledger directory (default: <logging.dir>/ledger from the config)")
+	var dirs dirList
+	fs.Var(&dirs, "dir", "ledger directory (default: <logging.dir>/ledger from the config); give it more than once to read several together")
 	since := fs.String("since", "", "only requests from this point: a date (2026-10-01), a time (RFC 3339), or an age (24h, 7d)")
 	until := fs.String("until", "", "only requests before this point; same forms as -since")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
@@ -46,8 +47,8 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "janus stats: %v\n", err)
 		return 1
 	}
-	if *dir == "" {
-		*dir = filepath.Join(cfg.Logging.Dir, "ledger")
+	if len(dirs) == 0 {
+		dirs = dirList{filepath.Join(cfg.Logging.Dir, "ledger")}
 		// Without a config file the ledger folder is only a guess, so say so
 		// rather than report an empty ledger as if nothing had happened.
 		if _, err := os.Stat(*configPath); os.IsNotExist(err) {
@@ -64,7 +65,7 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 		live := isFile && wantColor(f, func(string) string { return "" })
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
-		return watchStats(ctx, stdout, *dir, prices(cfg), live, time.Now, watchEvery)
+		return watchStats(ctx, stdout, dirs, prices(cfg), live, time.Now, watchEvery)
 	}
 
 	now := time.Now()
@@ -79,7 +80,7 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	records, malformed, err := ledger.Read(*dir, from, to)
+	records, malformed, err := readLedgers(dirs, from, to)
 	if err != nil {
 		fmt.Fprintf(stderr, "janus stats: %v\n", err)
 		return 1
@@ -97,7 +98,7 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 		enc.Encode(report)
 		return 0
 	}
-	printReport(stdout, *dir, report)
+	printReport(stdout, strings.Join(dirs, ", "), report)
 	return 0
 }
 
@@ -108,11 +109,11 @@ const watchEvery = 5 * time.Second
 // watchStats draws today's figures from the ledger, and while live keeps
 // redrawing them until ctx ends (#244). Not live, as when the output is a
 // file or a pipe, it draws once.
-func watchStats(ctx context.Context, w io.Writer, dir string, prices ledger.Prices, live bool, now func() time.Time, every time.Duration) int {
+func watchStats(ctx context.Context, w io.Writer, dirs []string, prices ledger.Prices, live bool, now func() time.Time, every time.Duration) int {
 	draw := func() {
 		t := now()
 		midnight := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-		records, _, err := ledger.Read(dir, midnight, time.Time{})
+		records, _, err := readLedgers(dirs, midnight, time.Time{})
 		var b strings.Builder
 		if err != nil {
 			fmt.Fprintf(&b, "janus stats: %v\n", err)
@@ -201,6 +202,33 @@ func printToday(w io.Writer, rep ledger.Report, now time.Time, live bool, every 
 		fmt.Fprintf(tw, "  limits\t%s\n", strings.Join(parts, " · "))
 	}
 	tw.Flush()
+}
+
+// dirList is a flag that can be given more than once.
+type dirList []string
+
+func (d *dirList) String() string       { return strings.Join(*d, ", ") }
+func (d *dirList) Set(dir string) error { *d = append(*d, dir); return nil }
+
+// readLedgers reads several ledgers as one, oldest first. A record found
+// in more than one, as when a day's file was copied, is counted once.
+func readLedgers(dirs []string, from, to time.Time) (records []ledger.Record, malformed int, err error) {
+	seen := map[string]bool{}
+	for _, dir := range dirs {
+		recs, bad, err := ledger.Read(dir, from, to)
+		if err != nil {
+			return nil, 0, err
+		}
+		malformed += bad
+		for _, rec := range recs {
+			if !seen[rec.ID] {
+				seen[rec.ID] = true
+				records = append(records, rec)
+			}
+		}
+	}
+	sort.SliceStable(records, func(i, j int) bool { return records[i].Time.Before(records[j].Time) })
+	return records, malformed, nil
 }
 
 // parseWhen reads a point in time given as a date, an RFC 3339 time, or an

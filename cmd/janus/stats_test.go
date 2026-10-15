@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
+	"github.com/risadams/janus/internal/config"
 	"github.com/risadams/janus/internal/ledger"
 )
 
@@ -152,7 +153,7 @@ func TestStatsSaysWhenThereIsNoConfig(t *testing.T) {
 	root := t.TempDir()
 	var out, errOut bytes.Buffer
 	run([]string{"stats", "-config", filepath.Join(root, "janus.config.json")}, &out, &errOut)
-	if !strings.Contains(errOut.String(), "no config file at") || !strings.Contains(out.String(), "Ledger "+filepath.Join(root, "logs", "ledger")) {
+	if !strings.Contains(errOut.String(), "no config file at") || !strings.Contains(out.String(), "Ledger "+filepath.Join(config.StateDir(), "ledger")) {
 		t.Errorf("stdout %q, stderr %q", out.String(), errOut.String())
 	}
 
@@ -322,7 +323,7 @@ func TestStatsWatchShowsToday(t *testing.T) {
 	l.Append(ledger.Record{V: 1, ID: "b", Time: now.Add(-time.Minute), Class: "main", Backend: "upstream", Outcome: ledger.OutcomeAPIError})
 
 	var out bytes.Buffer
-	if code := watchStats(context.Background(), &out, dir, ledger.DefaultPrices, false, func() time.Time { return now }, time.Second); code != 0 {
+	if code := watchStats(context.Background(), &out, []string{dir}, ledger.DefaultPrices, false, func() time.Time { return now }, time.Second); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
 	squeezed := strings.Join(strings.Fields(out.String()), " ")
@@ -345,7 +346,7 @@ func TestStatsWatchShowsToday(t *testing.T) {
 	var live syncBuffer
 	done := make(chan int)
 	go func() {
-		done <- watchStats(ctx, &live, dir, ledger.DefaultPrices, true, func() time.Time { return now }, 10*time.Millisecond)
+		done <- watchStats(ctx, &live, []string{dir}, ledger.DefaultPrices, true, func() time.Time { return now }, 10*time.Millisecond)
 	}()
 	time.Sleep(100 * time.Millisecond)
 	cancel()
@@ -385,6 +386,23 @@ func TestStatsCountsHandbacks(t *testing.T) {
 	out, _, _ := stats(t, "-dir", dir)
 	if !strings.Contains(strings.Join(strings.Fields(out), " "), "Claude took a conversation back 1 times, after 12 main-loop turns") {
 		t.Errorf("no handback in:\n%s", out)
+	}
+}
+
+func TestStatsReadsSeveralLedgersAsOne(t *testing.T) {
+	old, current := filepath.Join(t.TempDir(), "ledger"), filepath.Join(t.TempDir(), "ledger")
+	when := time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC)
+	add := func(dir, id string, at time.Time) {
+		ledger.Open(dir).Append(ledger.Record{V: 1, ID: id, Time: at, Class: "main", Backend: "upstream", Outcome: ledger.OutcomeOK})
+	}
+	add(old, "a", when)
+	add(old, "copied", when.Add(time.Hour))
+	add(current, "copied", when.Add(time.Hour))
+	add(current, "b", when.Add(48*time.Hour))
+
+	out, _, code := stats(t, "-dir", old, "-dir", current)
+	if code != 0 || !strings.Contains(out, "Ledger "+old+", "+current) || !strings.Contains(out, ", 3 requests") {
+		t.Errorf("exit %d; want both ledgers read and the copied record counted once:\n%s", code, out)
 	}
 }
 

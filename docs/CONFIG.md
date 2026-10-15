@@ -11,7 +11,7 @@ the defaults below and carries on.
   "upstream": { "baseUrl": "https://api.anthropic.com" },
   "local": { "baseUrl": "http://studio.local:1234" },
   "features": { "route": false, "escalate": false, "compress": false, "guard": false },
-  "logging": { "dir": "logs", "capture": true, "retainDays": 7, "maxMegabytes": 1024 }
+  "logging": { "dir": "/Users/you/Library/Application Support/janus", "capture": true, "retainDays": 7, "maxMegabytes": 1024 }
 }
 ```
 
@@ -36,7 +36,7 @@ the defaults below and carries on.
 | `features.compress` | Rewrite requests going upstream to send fewer tokens: large tool results are replaced by a digest the local model writes. Needs a local model in `local.models` and `janus mcp` added to Claude Code. See [Compression](#compression). |
 | `compress` | Optional. Settings for `features.compress`; see below. |
 | `features.escalate` | Reserved. Janus refuses to start if it is true. Local-first routing is a rule, not a feature switch. |
-| `logging.dir` | Where the ledger and captures are written. A relative path is relative to the folder holding the config file, so every `janus` command finds the same logs wherever it is run. Only one Janus runs per folder; a second stops and names the first. See [the ledger and captures](LEDGER.md). |
+| `logging.dir` | Where the ledger and captures are written. By default a folder per user, the same whichever folder Janus starts in: macOS `~/Library/Application Support/janus`, Linux `$XDG_STATE_HOME/janus` (or `~/.local/state/janus`), Windows `%LocalAppData%\janus`. A config written by Janus names it in full. A relative path is relative to the folder holding the config file, so every `janus` command finds the same logs wherever it is run. Only one Janus runs per folder; a second stops and names the first. See [the ledger and captures](LEDGER.md). |
 | `logging.capture` | Save every request and response in full. On by default. Captures contain your prompts and code. |
 | `logging.retainDays` | Delete captures older than this. `0` keeps them forever. |
 | `logging.maxMegabytes` | Delete the oldest captures once they exceed this. `0` means no limit. |

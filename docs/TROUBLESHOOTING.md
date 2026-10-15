@@ -315,6 +315,14 @@ quiet. It cannot see a shell alias, so with an alias and recent requests
 it says `ok`. Check too that doctor read the config Janus runs with: the
 ledger is under that config's `logging.dir`.
 
+**The ledger is split across two folders.** Before the default log
+folder became one per user, it was `logs` beside the config, so starting
+Janus from two folders made two ledgers. A config that sets `logging.dir`
+keeps it. To move to the per-user folder, remove `logging.dir` from the
+config (or set it to the folder `janus doctor` names) and restart Janus;
+to read old and new together, `janus stats -dir <old>/ledger -dir
+<new>/ledger`.
+
 **Costs do not match the bill.** `janus stats` prices tokens at list
 price. On a subscription there is no per-token bill; the figure is what
 the same usage would cost through the API, which is useful for comparing
