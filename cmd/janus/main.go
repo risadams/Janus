@@ -273,6 +273,7 @@ func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local
 		rules[i] = route.Rule{
 			Name: r.Name, Class: route.Class(r.Class), Model: r.Model, MaxTokens: r.MaxTokens, Tools: r.Tools,
 			Route: r.Route, Local: models[r.Local], SkipChecks: r.SkipChecks, TrialTimeout: trialTimeout(r),
+			IfUsageAbove: r.IfUsageAbove,
 		}
 		if m, ok := models[r.IfDown]; ok {
 			rules[i].IfDown = &m
@@ -570,6 +571,14 @@ func routingSummary(cfg config.Config) []string {
 			} else {
 				conditions = append(conditions, "without tools")
 			}
+		}
+		windows := make([]string, 0, len(r.IfUsageAbove))
+		for w := range r.IfUsageAbove {
+			windows = append(windows, w)
+		}
+		sort.Strings(windows)
+		for _, w := range windows {
+			conditions = append(conditions, fmt.Sprintf("once the %s limit is over %.0f%% used", w, r.IfUsageAbove[w]*100))
 		}
 		when := "everything else"
 		if len(conditions) > 0 {

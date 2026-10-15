@@ -130,6 +130,7 @@ Outcome.
 | `skipChecks` | For `local-then-escalate`: checks to leave out. See below. |
 | `maxSeconds` | For `local-then-escalate`: how long the local model gets before Claude is asked. Default 120. |
 | `ifDown` | For `upstream` and `shadow`: an entry of `local.models` to answer instead when Claude cannot. See below. |
+| `ifUsageAbove` | Match only once a subscription usage limit is used past a share, as Claude last reported: `{"5h": 0.8}` for the five-hour limit, `"7d"` for the weekly one; any one past its share is enough. Until Claude has answered, and after a limit's reset, it does not match. Not for `upstream`. See [the pacing recipe](recipes/pace.md). |
 
 **A rule never fails a request.** If a rule sends a request local and the
 local model cannot take it, the request goes to Claude instead and the

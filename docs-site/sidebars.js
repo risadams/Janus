@@ -27,6 +27,7 @@ const sidebars = {
         { type: 'doc', id: 'recipes/claude-code', label: 'Subagents on a local model' },
         { type: 'doc', id: 'recipes/local-first', label: 'Local first, Claude as the net' },
         { type: 'doc', id: 'recipes/outage', label: 'Keep working when Claude is down' },
+        { type: 'doc', id: 'recipes/pace', label: 'Move work local before a limit' },
         { type: 'doc', id: 'recipes/privacy', label: 'Keep secrets and files in' },
         { type: 'doc', id: 'recipes/workers', label: 'Hand reading to the local model' },
       ],
