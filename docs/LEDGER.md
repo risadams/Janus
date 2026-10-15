@@ -282,6 +282,17 @@ different share of each prompt, so read the figure as the size of the
 saving rather than an exact one. In `-json` it is `local_saving`:
 `requests`, `usd`, and `unpriced`.
 
+When Claude could not answer some requests, a section lists them as
+outages: runs of such requests none more than 15 minutes after the one
+before. Each gives when it began and ended, its most common cause
+(`rate_limited` for a `429`, `overloaded`, `server_error` for another
+`5xx`, `unreachable`), how many requests it held, how many the local model
+**stood in** for (the rest reached the client as errors), and, for a rate
+limit, the subscription limit reached and when Claude said it would answer
+again, from `limits` or `attempt.limits`. Claude Code's start-up `quota`
+check is left out, since a `429` is its normal answer. In `-json` it is
+`outages`.
+
 When the guard was on, sections follow for what it did: secrets found and
 replaced, and content the local-only policy kept from Anthropic, by how
 (withheld with a notice, answered locally, or refused) and by its most

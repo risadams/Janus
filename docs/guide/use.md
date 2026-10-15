@@ -123,7 +123,10 @@ Why the local model did not answer, and what to do about it
 ```
 
 These figures are made up; yours will differ. The report also breaks the
-totals down by model and by backend, and lists outcomes.
+totals down by model and by backend, lists outcomes, and, if Claude
+turned requests away, says when and why under "When Claude could not
+answer": a rate limit names the subscription limit reached and when it
+lifts.
 
 What to look for:
 

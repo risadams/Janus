@@ -30,7 +30,20 @@ if Claude fails three times within two minutes does the local model step
 in. Either way the local model's answer is returned. The response
 carries an `X-Janus-Fallback` header, the console line shows that Claude
 was tried first and why it failed, the ledger records it, and
-`janus stats` counts how often it happened.
+`janus stats` lists when it happened, under "When Claude could not answer":
+
+```
+When Claude could not answer
+  from              to     cause         requests  stood in  limit      answering again
+  2026-10-14 09:54  11:24  rate_limited  61        60        five_hour  11:30
+```
+
+Each row is a run of requests Claude did not answer, none more than 15
+minutes after the one before. **stood in** is how many the local model
+answered; the rest reached Claude Code as errors, to retry. For a rate
+limit, **limit** is which of the subscription's limits was reached
+(`five_hour`, `seven_day`) and **answering again** is when Claude said it
+would answer again.
 
 Errors about the request itself, such as an expired login or a bad
 request, are passed to Claude Code untouched. The local model would not
