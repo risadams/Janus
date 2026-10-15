@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Recipe: keep working when Claude is down | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/recipes/outage"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Recipe: keep working when Claude is down | Janus"><meta data-rh="true" name="description" content="Have the local model stand in when Anthropic cannot answer: an outage, an"><meta data-rh="true" property="og:description" content="Have the local model stand in when Anthropic cannot answer: an outage, an"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/recipes/outage"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/recipes/outage" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/recipes/outage" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Keep working when Claude is down","item":"https://risadams.github.io/Janus/docs/recipes/outage"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.649aa20e.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.9da9066f.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.fb700db0.js" defer="defer"></script>
 </head>
 <body>
@@ -46,22 +46,41 @@ request, are passed to Claude Code untouched. The local model would not
 fix them.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-to-expect">What to expect<a href="#what-to-expect" class="hash-link" aria-label="Direct link to What to expect" title="Direct link to What to expect" translate="no">​</a></h2>
 <ul>
-<li class=""><strong>The answers are the local model&#x27;s.</strong> It is standing in for Claude on
+<li class="">
+<p><strong>The answers are the local model&#x27;s.</strong> It is standing in for Claude on
 work that was meant for Claude, including the main conversation. Expect
-slower and weaker; the aim is to keep going, not to match.</li>
-<li class=""><strong>Claude Code is not told.</strong> It sees a normal response naming the model
-it asked for. Watch Janus&#x27;s console to know which you are talking to.</li>
-<li class=""><strong>Requests too large for the local model fail</strong> with Claude&#x27;s original
+slower and weaker; the aim is to keep going, not to match.</p>
+</li>
+<li class="">
+<p><strong>Claude Code is not told.</strong> It sees a normal response naming the model
+it asked for. Watch Janus&#x27;s console to know which you are talking to.</p>
+</li>
+<li class="">
+<p><strong>Requests too large for the local model fail</strong> with Claude&#x27;s original
 error, since there is nowhere else to send them. A long main
 conversation can outgrow a local context. A model LM Studio has not
 loaded is only sent requests up to 32,768 tokens unless <code>contextTokens</code>
 says otherwise. The console line&#x27;s <code>↳ no local stand-in: ...</code> and the
-ledger&#x27;s <code>reason</code> say why the local model did not answer.</li>
-<li class=""><strong>It only works before an answer starts.</strong> If Claude fails part-way
-through a streamed answer, what was already sent cannot be taken back.</li>
-<li class=""><strong>Picking up again is safe.</strong> When Claude is back, the conversation
+ledger&#x27;s <code>reason</code> say why the local model did not answer.</p>
+</li>
+<li class="">
+<p><strong>It only works before an answer starts.</strong> If Claude fails part-way
+through a streamed answer, what was already sent cannot be taken back.</p>
+</li>
+<li class="">
+<p><strong>Picking up again is safe.</strong> When Claude is back, the conversation
 goes upstream with the local model&#x27;s turns in it. Janus removes the one
-thing Anthropic would reject, the local model&#x27;s unsigned thinking.</li>
+thing Anthropic would reject, the local model&#x27;s unsigned thinking.</p>
+</li>
+<li class="">
+<p><strong>Janus says when Claude takes over again.</strong> Claude reads the local
+model&#x27;s turns as its own, so the first answer it gives the main
+conversation afterwards gets a note:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#ebdbb2;--prism-background-color:#292828"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#ebdbb2;background-color:#292828"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#ebdbb2"><span class="token plain">↳ Claude is answering again, after 12 turns from the local model since 09:54; it reads them as its own, so check what they did</span><br></div></code></pre></div></div>
+<p>The ledger marks that answer with <code>handback</code>, and <code>janus stats</code> counts
+them. It is a good moment to ask Claude to review what was done in the
+meantime.</p>
+</li>
 </ul>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="trying-it">Trying it<a href="#trying-it" class="hash-link" aria-label="Direct link to Trying it" title="Direct link to Trying it" translate="no">​</a></h2>
 <p>Point <code>upstream.baseUrl</code> at a port with nothing on it, restart Janus, and
