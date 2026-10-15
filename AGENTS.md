@@ -23,6 +23,13 @@ Some tests run only when pointed at real traffic or asked for:
 | `JANUS_PERF=1` | Overhead benchmarks and the soak test in `internal/route` |
 | `JANUS_DIGEST_EVAL` and friends | The digest evaluation; see `internal/digest/eval_test.go` |
 
+To loop tests on CI's runners, for a hang or a flake seen only there, run
+the `stress` workflow by hand rather than adding a job to a PR, so the
+PR's checks stay the two-minute set:
+`gh workflow run stress.yml --ref <branch> -f packages=./internal/proxy -f flags="-count=200 -cpu=1 -v"`.
+The whole output is kept as the run's `stress-log` artifact
+(`gh run download <run id> -n stress-log`).
+
 Fuzz targets (`Fuzz*`) cover the code that reads untrusted input: request
 parsing, response streams, the secret-restoring stream, the MCP loop, and
 `tool_output`. CI runs each for 30 seconds; run one longer with
