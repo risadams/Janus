@@ -53,7 +53,8 @@ The "Local first" section shows, for each class of request, how many
 were tried locally, how many answers were accepted, rejected by a check,
 or failed because the model was unavailable, and the median time an
 attempt took. Rejected and failed requests paid that time and then
-Claude's as well.
+Claude's as well. Above it, "Saved by answering locally" prices the
+accepted answers at the Claude model each asked for: what the rule saved.
 
 In one test session with a small model, one answer was rejected as empty
 and three passed the checks; two of those three were long and useless,

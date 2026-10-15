@@ -146,6 +146,9 @@ type Report struct {
 	// StoodIn counts requests the local model answered because Claude
 	// could not: unreachable, rate limited, overloaded, or failing.
 	StoodIn int `json:"stood_in,omitempty"`
+	// LocalSaving is what the requests the local model answered by choice
+	// would have cost had Claude answered them (#227).
+	LocalSaving LocalSaving `json:"local_saving,omitzero"`
 	// LocalFirst summarises, by class, requests where the local model was
 	// tried with Claude as the fallback.
 	LocalFirst []LocalFirstRow `json:"local_first,omitempty"`
@@ -216,7 +219,8 @@ func Summarise(records []Record, prices Prices) Report {
 			rep.From, first = rec.Time, false
 		}
 		rep.To = rec.Time
-		if rec.Attempt != nil && rec.Attempt.Backend == "upstream" {
+		standIn := rec.Attempt != nil && rec.Attempt.Backend == "upstream"
+		if standIn {
 			rep.StoodIn++
 		} else if rec.Attempt != nil {
 			if attempts[rec.Class] == nil {
@@ -272,6 +276,9 @@ func Summarise(records []Record, prices Prices) Report {
 		if reason := rep.Total.add(rec, prices); reason != "" {
 			rep.Unpriced[reason]++
 		}
+		if rec.Backend == "local" && !standIn {
+			rep.LocalSaving.add(rec, prices)
+		}
 		group(byClass, rec.Class).add(rec, prices)
 		group(byBackend, rec.Backend).add(rec, prices)
 		if rec.Usage != nil {
@@ -305,6 +312,40 @@ func Summarise(records []Record, prices Prices) Report {
 	}
 	sort.Slice(rep.Transforms, func(i, j int) bool { return rep.Transforms[i].Name < rep.Transforms[j].Name })
 	return rep
+}
+
+// LocalSaving is what the requests the local model answered by choice, by
+// a rule or an accepted local-first attempt, would have cost at the list
+// price of the Claude model each asked for. Stand-ins are left out: Claude
+// could not answer those, so nothing was saved by choosing local.
+//
+// It is an estimate. The tokens are the local model's count, not Claude's,
+// and Claude would have cached a different share of each prompt, so it
+// says how large the saving was, not what it was to the cent.
+type LocalSaving struct {
+	Requests int     `json:"requests"`
+	USD      float64 `json:"usd"`
+	// Unpriced counts local answers left out of USD: no usage was read,
+	// or the model asked for has no price, as with a local alias.
+	Unpriced int `json:"unpriced"`
+}
+
+func (s *LocalSaving) add(rec Record, prices Prices) {
+	s.Requests++
+	asked := ""
+	if rec.Request != nil {
+		asked = rec.Request.Model
+	}
+	if rec.Usage == nil {
+		s.Unpriced++
+		return
+	}
+	usd, unpriced := prices.Cost(asked, *rec.Usage)
+	if unpriced != "" {
+		s.Unpriced++
+		return
+	}
+	s.USD += usd
 }
 
 // TransformRow is one transform's totals over the requests it touched.

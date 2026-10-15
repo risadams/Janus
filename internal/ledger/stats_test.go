@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,6 +176,35 @@ func TestLocalRequestsCostNothingUpstream(t *testing.T) {
 	}
 	if rep.ByBackend[0].Key != "local" || rep.ByBackend[0].Output != 1000 {
 		t.Errorf("by backend = %+v", rep.ByBackend)
+	}
+}
+
+func TestLocalSavingPricesLocalAnswersAtTheModelAskedFor(t *testing.T) {
+	local := func(id, asked string, u *Usage, a *Attempt) Record {
+		r := rec(id, at(10, 1), "subagent", u)
+		r.Backend, r.Route, r.Attempt = "local", "local", a
+		r.Request = &Request{Model: asked}
+		if r.Response != nil {
+			r.Response.Model = "qwen/qwen3.8-27b"
+		}
+		return r
+	}
+	accepted := &Attempt{Backend: "local", Verdict: VerdictAccepted}
+	standIn := &Attempt{Backend: "upstream", Verdict: VerdictFailed}
+	records := []Record{
+		// 10,000 x 4 + 50,000 x 0.2 + 1,000 x 20 = 70,000 millionths
+		local("ruled", "claude-opus-5-5", &Usage{Input: 10_000, CacheRead: n(50_000), Output: 1000}, nil),
+		// 1,000 x 2 + 100 x 10 = 3,000 millionths
+		local("tried", "claude-sonnet-5", &Usage{Input: 1000, Output: 100}, accepted),
+		local("stood in", "claude-opus-5-5", &Usage{Input: 1_000_000}, standIn),
+		local("alias", "janus-local", &Usage{Input: 1000}, nil),
+		local("no usage", "claude-opus-5-5", nil, nil),
+		rec("upstream", at(10, 2), "subagent", &Usage{Input: 1_000_000}),
+	}
+
+	got := Summarise(records, DefaultPrices).LocalSaving
+	if got.Requests != 4 || got.Unpriced != 2 || math.Abs(got.USD-0.073) > 1e-9 {
+		t.Errorf("local saving = %+v; want 4 requests, 2 unpriced, $0.073 (stand-ins and upstream answers left out)", got)
 	}
 }
 

@@ -104,6 +104,12 @@ By class
           status        30   71,033       80,902   1,390,115    1,021      90.1%    $0.9855
            total       412  175,050      725,354  62,323,231  231,946      98.6%  $21.2378
 
+Saved by answering locally
+  44 requests the local model answered would have cost about $1.2604 had
+  Claude answered them, at the list price of the model each asked for. The
+  local model counts and caches tokens differently from Claude, so read it as
+  the size of the saving, not an exact figure.
+
 Local first (the local model tried, with Claude as the fallback)
        class  tried  accepted  rejected  failed  accepted %  attempt time
     subagent     58        44         5       9         76%         31.2s
@@ -126,6 +132,11 @@ What to look for:
 - **`safety` and `status`.** In auto mode, Claude Code checks each tool
   call with a separate request (`safety`), and asks for short progress
   lines while subagents run (`status`). They can add up.
+- **Saved by answering locally**, if you route requests locally: what
+  the local model's answers would have cost had Claude given them. It is
+  a rough figure, since the local model counts tokens its own way, but it
+  is the saving routing made. Compare it with the time the local model
+  took, in the next table.
 - **The "Local first" table**, if you route subagents locally. `accepted`
   answers came from the local model at no cost. `rejected` ones came back
   whole and failed a check; `failed` ones never gave an answer to judge.
