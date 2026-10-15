@@ -237,6 +237,7 @@ janus stats                      # everything
 janus stats -since 24h           # an age: 90m, 24h, 7d
 janus stats -since 2026-10-01    # a local date, or an RFC 3339 time
 janus stats -since 7d -until 1d
+janus stats -since 7d -daily     # with a row per day
 janus stats -json                # the same report, for scripts
 ```
 
@@ -260,6 +261,14 @@ outcomes.
 - A cost marked `*` leaves out requests that could not be priced, and the
   report lists how many and why. An unpriced request is never counted as
   free.
+
+With `-daily`, a table follows with one row per local date: requests,
+how many **failed** (an error, an answer that broke off, or none at all;
+requests the client cancelled are not counted), cache hit, est. cost,
+local-first attempts **tried** and **accepted**, what local answers
+**saved** (below), and how many times the local model **stood in** for
+Claude. Read it to see whether a change made one day worse than the ones
+before. In `-json` it is `by_day`.
 
 When the local model answered requests, a section says what they would
 have cost had Claude answered them: each priced at the list price of the

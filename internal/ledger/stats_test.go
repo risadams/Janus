@@ -208,6 +208,42 @@ func TestLocalSavingPricesLocalAnswersAtTheModelAskedFor(t *testing.T) {
 	}
 }
 
+func TestByDaySplitsAtLocalMidnight(t *testing.T) {
+	u := &Usage{Input: 1_000_000}
+	failed := rec("failed", at(10, 5), "main", nil)
+	failed.Outcome = OutcomeAPIError
+	cancelled := rec("cancelled", at(10, 6), "main", nil)
+	cancelled.Outcome = OutcomeCancelled
+	tried := rec("tried", at(10, 7), "subagent", u)
+	tried.Attempt = &Attempt{Backend: "local", Verdict: VerdictRejected}
+	stoodIn := rec("stood in", at(10, 8), "main", u)
+	stoodIn.Backend, stoodIn.Attempt = "local", &Attempt{Backend: "upstream", Verdict: VerdictFailed}
+	records := []Record{
+		// 01:00 UTC on the 10th is still the 9th in New York.
+		rec("9th", at(10, 1), "main", u),
+		failed, cancelled, tried, stoodIn,
+		rec("11th", at(11, 12), "main", u),
+	}
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip("no time zone data:", err)
+	}
+
+	days := ByDay(records, DefaultPrices, ny)
+	if len(days) != 3 {
+		t.Fatalf("days = %+v, want the 9th, 10th, and 11th", days)
+	}
+	if d := days[0]; d.Day != "2026-10-09" || d.Requests != 1 || d.CostUSD != 4 {
+		t.Errorf("first day = %+v, want 2026-10-09 with one $4 request", d)
+	}
+	if d := days[1]; d.Day != "2026-10-10" || d.Requests != 4 || d.Failed != 1 || d.LocalTried != 1 || d.LocalAccepted != 0 || d.StoodIn != 1 {
+		t.Errorf("second day = %+v, want 4 requests, 1 failed (not the cancelled one), 1 tried locally, 1 stood in", d)
+	}
+	if d := days[2]; d.Day != "2026-10-11" || d.Requests != 1 {
+		t.Errorf("third day = %+v", d)
+	}
+}
+
 func TestSummariseOfNothing(t *testing.T) {
 	rep := Summarise(nil, DefaultPrices)
 	if rep.Total.Requests != 0 || !rep.From.IsZero() || len(rep.ByClass) != 0 || rep.PricesChecked != PricesChecked {
