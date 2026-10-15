@@ -1,6 +1,6 @@
 # Janus — Roadmap
 
-Status: draft for review · Last updated: 2026-10-11
+Status: draft for review · Last updated: 2026-10-15
 
 The roadmap is a sequence, not a schedule. Each milestone ends in something
 usable and has an exit test. Issues for each milestone are on the
@@ -12,10 +12,14 @@ usable and has an exit test. Issues for each milestone are on the
 M0 Foundations ─▶ M1 Observe ─▶ M2 Route ─▶ M3 Escalate ─▶ M4 Delegate ─▶ M5 Compress ─▶ M7 1.0
                                     │                                                      ▲
                                     └──────────────▶ M6 Guard ─────────────────────────────┘
+                                                    │
+                                                    └──────▶ M8 Pace (beside M7)
 ```
 
 M6 depends only on M2, so it can be pulled forward if privacy becomes the
-pressing goal. Everything else is ordered by two rules: measure before
+pressing goal. M8 depends on M3's fallback and runs beside M7: it does not
+hold up 1.0, and its first piece, recording the limits, starts at once so
+that the 1.0 report has the data. Everything else is ordered by two rules: measure before
 changing anything, and take the cheapest, safest savings first.
 
 ## Milestones
@@ -116,6 +120,48 @@ session edits a file containing a redacted secret correctly.
 
 **Exit:** tagged 1.0 with binaries, and a report that states, with data,
 how G1–G5 came out.
+
+### M8 — Pace
+
+On a subscription the limit, not the price, is what runs out. In the
+first three days of real use the five-hour limit was reached twice, and
+the local model answered main turns for an hour and a half. Every
+response from Claude says how much of each limit is used; Janus can read
+that and act before the limit is reached rather than after.
+
+- Record the five-hour and weekly utilization, and when each resets, on
+  every response.
+- Show the headroom in the console and in `janus stats`, and which kinds
+  of request use it up.
+- A rule condition that sends a class local once utilization passes a
+  threshold, so the cheap work moves first and the main conversation
+  keeps Claude for longer.
+- Hand back after a stand-in: when Claude answers again, the session is
+  marked and the turns the local model gave are listed, and what Claude
+  did with them is measured.
+
+Issues: #238 (record), #239 (show), #240 (route by headroom), #241 (hand
+back).
+
+**Exit:** a week of real use with utilization in the ledger; a threshold
+rule in daily use that, on the ledger's evidence, delays or avoids a limit
+without a regression; and stand-in turns accounted for when Claude
+returns.
+
+### Also in M7
+
+Found in the first days of real use:
+
+- A default log folder per user, not per working folder, so the ledger
+  is in one place however Janus is started; `janus stats` reading more
+  than one ledger.
+- `janus service install` and `uninstall`, writing and loading the
+  launchd or systemd unit that the install guide now has people write by
+  hand.
+- `janus stats -watch`: today's figures and the headroom, redrawn in the
+  terminal while a session runs.
+
+Issues: #242 (log folder), #243 (service), #244 (watch).
 
 ## What is deliberately late or absent
 
