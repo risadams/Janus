@@ -35,7 +35,8 @@ func mcpFixture(t *testing.T) (cfgPath, project string) {
 
 	home := t.TempDir()
 	cfg, _ := json.Marshal(map[string]any{
-		"local": map[string]any{"baseUrl": lms.URL, "models": map[string]any{"janus-local": map[string]any{"model": "qwen/qwen3.8-27b"}}},
+		"local":   map[string]any{"baseUrl": lms.URL, "models": map[string]any{"janus-local": map[string]any{"model": "qwen/qwen3.8-27b"}}},
+		"logging": map[string]any{"dir": "logs"},
 	})
 	cfgPath = filepath.Join(home, "janus.config.json")
 	os.WriteFile(cfgPath, cfg, 0o600)

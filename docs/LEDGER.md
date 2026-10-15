@@ -5,7 +5,7 @@ next to the config file).
 
 | | Ledger | Captures |
 | --- | --- | --- |
-| Where | `logs/ledger/<day>.jsonl` | `logs/captures/<day>/<id>_<path>.*` |
+| Where | `<logging.dir>/ledger/<day>.jsonl` | `<logging.dir>/captures/<day>/<id>_<path>.*` |
 | Holds | One line per request: what it was, what Janus did, what it cost | The full request and response |
 | Contains prompts or code | No | Yes |
 | Contains credentials | No | No (headers are redacted in the render and not stored elsewhere) |
@@ -242,6 +242,7 @@ janus stats -since 7d -until 1d
 janus stats -since 7d -daily     # with a row per day
 janus stats -json                # the same report, for scripts
 janus stats -watch               # today, redrawn every 5 seconds
+janus stats -dir old/ledger -dir new/ledger   # several ledgers as one
 ```
 
 ```
@@ -324,7 +325,9 @@ little on each request after. Saved catches up with expected as
 conversations go on. If it stays well below, the guard is too hopeful.
 
 It reads the ledger directory from the config file, without creating one;
-`-dir` points it elsewhere.
+`-dir` points it elsewhere. Give `-dir` more than once to read several
+ledgers as one, such as one from before the default log folder moved and
+one from after; a record in both is counted once.
 
 ### How cost is worked out
 

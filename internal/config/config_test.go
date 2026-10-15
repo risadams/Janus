@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,12 +20,11 @@ func TestDefaultIsValid(t *testing.T) {
 	}
 }
 
-// defaultsFor is Default as Read returns it for a config file at path: with
-// logging.dir resolved against the file's folder.
+// defaultsFor is Default as Read returns it for a config file at path.
+// The default logging.dir is already absolute, so the path does not
+// change it.
 func defaultsFor(path string) Config {
-	cfg := Default()
-	cfg.Logging.Dir = filepath.Join(filepath.Dir(path), "logs")
-	return cfg
+	return Default()
 }
 
 // A relative logging.dir is taken from the config file's folder, not the
@@ -35,7 +36,7 @@ func TestLogDirIsRelativeToTheConfigFile(t *testing.T) {
 	path := filepath.Join(home, "janus.config.json")
 	abs := filepath.Join(t.TempDir(), "kept-here")
 	cases := map[string]struct{ file, want string }{
-		"default":  {`{}`, filepath.Join(home, "logs")},
+		"default":  {`{}`, StateDir()},
 		"relative": {`{"logging":{"dir":"var/janus"}}`, filepath.Join(home, "var", "janus")},
 		"absolute": {`{"logging":{"dir":` + strconv.Quote(abs) + `}}`, abs},
 	}
@@ -63,6 +64,40 @@ func mustRel(t *testing.T, base, target string) string {
 	return rel
 }
 
+func TestStateDirIsPerUserOnEachPlatform(t *testing.T) {
+	home := func() (string, error) { return "/home/ris", nil }
+	noHome := func() (string, error) { return "", errors.New("no home") }
+	env := func(kv ...string) func(string) string {
+		return func(k string) string {
+			for i := 0; i+1 < len(kv); i += 2 {
+				if kv[i] == k {
+					return kv[i+1]
+				}
+			}
+			return ""
+		}
+	}
+	cases := []struct {
+		goos   string
+		getenv func(string) string
+		home   func() (string, error)
+		want   string
+	}{
+		{"darwin", env(), home, filepath.Join("/home/ris", "Library", "Application Support", "janus")},
+		{"darwin", env("XDG_STATE_HOME", "/x"), home, filepath.Join("/home/ris", "Library", "Application Support", "janus")},
+		{"linux", env(), home, filepath.Join("/home/ris", ".local", "state", "janus")},
+		{"linux", env("XDG_STATE_HOME", "/x"), home, filepath.Join("/x", "janus")},
+		{"windows", env("LocalAppData", `C:\Users\ris\AppData\Local`), home, filepath.Join(`C:\Users\ris\AppData\Local`, "janus")},
+		{"windows", env(), home, filepath.Join("/home/ris", "AppData", "Local", "janus")},
+		{"linux", env(), noHome, "logs"},
+	}
+	for _, c := range cases {
+		if got := stateDir(c.goos, c.getenv, c.home); got != c.want {
+			t.Errorf("stateDir(%s) = %q, want %q", c.goos, got, c.want)
+		}
+	}
+}
+
 func TestLoadCreatesStarterFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "janus.config.json")
 
@@ -73,9 +108,11 @@ func TestLoadCreatesStarterFile(t *testing.T) {
 	if !reflect.DeepEqual(cfg, defaultsFor(path)) {
 		t.Errorf("starter config = %+v, want defaults", cfg)
 	}
-	// The file keeps the relative default, so it still works if moved.
-	if data, _ := os.ReadFile(path); !strings.Contains(string(data), `"dir": "logs"`) {
-		t.Errorf("starter file does not hold the relative logging.dir:\n%s", data)
+	// The file names the per-user folder, so a config written in any
+	// folder keeps its logs in the same place.
+	want, _ := json.Marshal(StateDir())
+	if data, _ := os.ReadFile(path); !strings.Contains(string(data), `"dir": `+string(want)) {
+		t.Errorf("starter file does not hold the per-user logging.dir %s:\n%s", want, data)
 	}
 	info, err := os.Stat(path)
 	if err != nil {

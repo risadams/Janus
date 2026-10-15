@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/risadams/janus/internal/guard"
@@ -250,9 +251,10 @@ type Features struct {
 // Logging controls what janus writes to disk. Everything goes under Dir:
 // the ledger, which is always kept, in Dir/ledger; captures in
 // Dir/captures; and, with features.compress on, the originals of digested
-// tool results in Dir/originals. A relative Dir is relative to the folder
-// holding the config file, so the proxy and every command that reads its
-// logs find the same folder wherever they are run from.
+// tool results in Dir/originals. Dir defaults to StateDir. A relative Dir
+// is relative to the folder holding the config file, so the proxy and
+// every command that reads its logs find the same folder wherever they
+// are run from.
 type Logging struct {
 	Dir string `json:"dir"`
 	// Capture saves every request and response in full. Captures contain
@@ -263,16 +265,49 @@ type Logging struct {
 	MaxMegabytes int  `json:"maxMegabytes"`
 }
 
+// StateDir is the default logging.dir: a folder per user, where the
+// platform keeps such things, so the ledger is in one place whichever
+// folder janus is started in (#242). Before, the default was logs beside
+// the config file, and starting janus from two folders split one person's
+// use across two ledgers. It is "logs", beside the config, only when the
+// user's home cannot be found.
+func StateDir() string {
+	return stateDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+}
+
+func stateDir(goos string, getenv func(string) string, home func() (string, error)) string {
+	if goos == "windows" {
+		if dir := getenv("LocalAppData"); dir != "" {
+			return filepath.Join(dir, "janus")
+		}
+	}
+	if dir := getenv("XDG_STATE_HOME"); dir != "" && goos != "darwin" && goos != "windows" {
+		return filepath.Join(dir, "janus")
+	}
+	h, err := home()
+	if err != nil || h == "" {
+		return "logs"
+	}
+	switch goos {
+	case "darwin":
+		return filepath.Join(h, "Library", "Application Support", "janus")
+	case "windows":
+		return filepath.Join(h, "AppData", "Local", "janus")
+	default:
+		return filepath.Join(h, ".local", "state", "janus")
+	}
+}
+
 // Default is a pass-through proxy on loopback that keeps a ledger and a
-// week of captures: the Anthropic API upstream, LM Studio addressed by
-// hostname rather than localhost so the same config reaches the intended
-// instance from any machine, and every feature off.
+// week of captures in the user's StateDir: the Anthropic API upstream, LM
+// Studio addressed by hostname rather than localhost so the same config
+// reaches the intended instance from any machine, and every feature off.
 func Default() Config {
 	return Config{
 		Listen:   "127.0.0.1:8787",
 		Upstream: Backend{BaseURL: "https://api.anthropic.com"},
 		Local:    Local{BaseURL: "http://studio.local:1234"},
-		Logging:  Logging{Dir: "logs", Capture: true, RetainDays: 7, MaxMegabytes: 1024},
+		Logging:  Logging{Dir: StateDir(), Capture: true, RetainDays: 7, MaxMegabytes: 1024},
 	}
 }
 
