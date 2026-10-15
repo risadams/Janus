@@ -370,6 +370,14 @@ func (c Config) Validate() error {
 
 	errs = append(errs, checkURL("upstream.baseUrl", c.Upstream.BaseURL, "https://api.anthropic.com"))
 	errs = append(errs, checkURL("local.baseUrl", c.Local.BaseURL, "http://studio.local:1234"))
+	for _, b := range []struct{ field, raw string }{
+		{"upstream.baseUrl", c.Upstream.BaseURL},
+		{"local.baseUrl", c.Local.BaseURL},
+	} {
+		if pointsAtListen(c.Listen, b.raw) {
+			errs = append(errs, fmt.Errorf("%s %q is janus's own listen address, so janus would send each request back to itself without end; point it at the backend, or move listen to another port", b.field, b.raw))
+		}
+	}
 
 	for _, f := range []struct {
 		name string
@@ -510,6 +518,49 @@ func isLoopback(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// pointsAtListen reports whether a backend URL names janus's own listen
+// address, where janus would forward each request to itself, each hop
+// holding a connection, until something gives out (#216). It catches what
+// the addresses alone can show: the same port, and the same host or a
+// loopback name for a listen address on loopback or on every interface.
+func pointsAtListen(listen, raw string) bool {
+	listenHost, listenPort, err := net.SplitHostPort(listen)
+	if err != nil {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	port := u.Port()
+	if port == "" {
+		switch u.Scheme {
+		case "http":
+			port = "80"
+		case "https":
+			port = "443"
+		}
+	}
+	if port != listenPort {
+		return false
+	}
+	host := u.Hostname()
+	if strings.EqualFold(host, listenHost) {
+		return true
+	}
+	return isLoopback(host) && (isLoopback(listenHost) || isUnspecified(listenHost))
+}
+
+// isUnspecified reports whether host means every interface, as in
+// ":8787" or "0.0.0.0:8787".
+func isUnspecified(host string) bool {
+	if host == "" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsUnspecified()
 }
 
 func checkURL(field, raw, example string) error {
