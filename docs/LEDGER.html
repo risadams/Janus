@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">The ledger and captures | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/LEDGER"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="The ledger and captures | Janus"><meta data-rh="true" name="description" content="Janus writes two kinds of record under logging.dir (default logs/,"><meta data-rh="true" property="og:description" content="Janus writes two kinds of record under logging.dir (default logs/,"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/LEDGER"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/LEDGER" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/LEDGER" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"The ledger and captures","item":"https://risadams.github.io/Janus/docs/LEDGER"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.a0ead693.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.f1992b82.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.3c23d1a0.js" defer="defer"></script>
 </head>
 <body>
@@ -554,6 +554,16 @@ model counts tokens with its own tokenizer, and Claude would have cached a
 different share of each prompt, so read the figure as the size of the
 saving rather than an exact one. In <code>-json</code> it is <code>local_saving</code>:
 <code>requests</code>, <code>usd</code>, and <code>unpriced</code>.</p>
+<p>When Claude could not answer some requests, a section lists them as
+outages: runs of such requests none more than 15 minutes after the one
+before. Each gives when it began and ended, its most common cause
+(<code>rate_limited</code> for a <code>429</code>, <code>overloaded</code>, <code>server_error</code> for another
+<code>5xx</code>, <code>unreachable</code>), how many requests it held, how many the local model
+<strong>stood in</strong> for (the rest reached the client as errors), and, for a rate
+limit, the subscription limit reached and when Claude said it would answer
+again, from <code>limits</code> or <code>attempt.limits</code>. Claude Code&#x27;s start-up <code>quota</code>
+check is left out, since a <code>429</code> is its normal answer. In <code>-json</code> it is
+<code>outages</code>.</p>
 <p>When the guard was on, sections follow for what it did: secrets found and
 replaced, and content the local-only policy kept from Anthropic, by how
 (withheld with a notice, answered locally, or refused) and by its most
