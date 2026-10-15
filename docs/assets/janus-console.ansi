@@ -1,0 +1,8 @@
+[2m── Thursday 15 October 2026 ──[0m
+[2m10:33:50[0m  [1mmain     [0m  Opus 5.5                [32m✓[0m 3.4s    [2mtool call [0m  151k in · [32m98% cached[0m    2.3k out   [2m$0.087[0m
+[2m10:33:52[0m  [2mstatus   [0m  Haiku 4.5               [32m✓[0m 611ms   [2manswered  [0m  2.2k in · [2m99% cached[0m    9 out      [2m<$0.001[0m
+[2m10:34:02[0m  [36msubagent [0m  [35mqwen3.8-27b (local)   [0m  [32m✓[0m 12.3s   [2manswered  [0m  22k in · [33m0% cached[0m      412 out    [2mfree[0m
+[2m10:34:12[0m  [36msubagent [0m  [35mqwen3.8-27b (local)   [0m  [32m✓[0m 9.4s    [2manswered  [0m  22k in · [33m0% cached[0m      412 out    [2mfree[0m
+[2m10:34:24[0m  [36msubagent [0m  Sonnet 5.5              [32m✓[0m 11.9s   [2manswered  [0m  63k in · [32m97% cached[0m     880 out    [2m$0.025[0m
+          [36m↳ local tried for 7.8s first, then it went to Claude: the local answer has no text and no tool call; next: the model is not up to this work[0m
+[2m10:34:26[0m  [1mmain     [0m  Opus 5.5                [32m✓[0m 2.6s    [2manswered  [0m  155k in · [32m98% cached[0m    1.1k out   [2m$0.062[0m

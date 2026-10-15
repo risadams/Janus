@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="959" height="259" viewBox="0 0 959 259" role="img" aria-label="The Janus console: one line per request, with main-loop turns on Claude, subagent turns on a local model, and a note where the local answer failed its checks">
+<title>The Janus console: one line per request, with main-loop turns on Claude, subagent turns on a local model, and a note where the local answer failed its checks</title>
+<rect x="0.5" y="0.5" width="958" height="258" rx="10" fill="#1a1210" stroke="#3a2d26"/>
+<line x1="0.5" y1="34.5" x2="958" y2="34.5" stroke="#3a2d26"/>
+<circle cx="22" cy="17.5" r="5" fill="none" stroke="#a49a8e"/>
+<circle cx="40" cy="17.5" r="5" fill="none" stroke="#a49a8e"/>
+<circle cx="58" cy="17.5" r="5" fill="none" stroke="#a49a8e"/>
+<text x="479.5" y="22" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#a49a8e">janus</text>
+<g font-family="'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="14" xml:space="preserve">
+<text x="22.0" y="56" fill="#a49a8e">── Thursday 15 October 2026 ──</text>
+<text x="22.0" y="77" fill="#a49a8e">10:33:50</text>
+<text x="106.0" y="77" fill="#f0e6d2" font-weight="700">main</text>
+<text x="198.4" y="77" fill="#f0e6d2">Opus 5.5</text>
+<text x="400.0" y="77" fill="#5ba3b8">✓</text>
+<text x="416.8" y="77" fill="#f0e6d2">3.4s</text>
+<text x="484.0" y="77" fill="#a49a8e">tool call</text>
+<text x="584.8" y="77" fill="#f0e6d2">151k in ·</text>
+<text x="668.8" y="77" fill="#5ba3b8">98% cached</text>
+<text x="786.4" y="77" fill="#f0e6d2">2.3k out</text>
+<text x="878.8" y="77" fill="#a49a8e">$0.087</text>
+<text x="22.0" y="98" fill="#a49a8e">10:33:52</text>
+<text x="106.0" y="98" fill="#a49a8e">status</text>
+<text x="198.4" y="98" fill="#f0e6d2">Haiku 4.5</text>
+<text x="400.0" y="98" fill="#5ba3b8">✓</text>
+<text x="416.8" y="98" fill="#f0e6d2">611ms</text>
+<text x="484.0" y="98" fill="#a49a8e">answered</text>
+<text x="584.8" y="98" fill="#f0e6d2">2.2k in ·</text>
+<text x="668.8" y="98" fill="#a49a8e">99% cached</text>
+<text x="786.4" y="98" fill="#f0e6d2">9 out</text>
+<text x="878.8" y="98" fill="#a49a8e">&lt;$0.001</text>
+<text x="22.0" y="119" fill="#a49a8e">10:34:02</text>
+<text x="106.0" y="119" fill="#b8875f">subagent</text>
+<text x="198.4" y="119" fill="#b183b5">qwen3.8-27b (local)</text>
+<text x="400.0" y="119" fill="#5ba3b8">✓</text>
+<text x="416.8" y="119" fill="#f0e6d2">12.3s</text>
+<text x="484.0" y="119" fill="#a49a8e">answered</text>
+<text x="584.8" y="119" fill="#f0e6d2">22k in ·</text>
+<text x="660.4" y="119" fill="#c48a1e">0% cached</text>
+<text x="786.4" y="119" fill="#f0e6d2">412 out</text>
+<text x="878.8" y="119" fill="#a49a8e">free</text>
+<text x="22.0" y="140" fill="#a49a8e">10:34:12</text>
+<text x="106.0" y="140" fill="#b8875f">subagent</text>
+<text x="198.4" y="140" fill="#b183b5">qwen3.8-27b (local)</text>
+<text x="400.0" y="140" fill="#5ba3b8">✓</text>
+<text x="416.8" y="140" fill="#f0e6d2">9.4s</text>
+<text x="484.0" y="140" fill="#a49a8e">answered</text>
+<text x="584.8" y="140" fill="#f0e6d2">22k in ·</text>
+<text x="660.4" y="140" fill="#c48a1e">0% cached</text>
+<text x="786.4" y="140" fill="#f0e6d2">412 out</text>
+<text x="878.8" y="140" fill="#a49a8e">free</text>
+<text x="22.0" y="161" fill="#a49a8e">10:34:24</text>
+<text x="106.0" y="161" fill="#b8875f">subagent</text>
+<text x="198.4" y="161" fill="#f0e6d2">Sonnet 5.5</text>
+<text x="400.0" y="161" fill="#5ba3b8">✓</text>
+<text x="416.8" y="161" fill="#f0e6d2">11.9s</text>
+<text x="484.0" y="161" fill="#a49a8e">answered</text>
+<text x="584.8" y="161" fill="#f0e6d2">63k in ·</text>
+<text x="660.4" y="161" fill="#5ba3b8">97% cached</text>
+<text x="786.4" y="161" fill="#f0e6d2">880 out</text>
+<text x="878.8" y="161" fill="#a49a8e">$0.025</text>
+<text x="106.0" y="182" fill="#b8875f">↳ local tried for 7.8s first, then it went to Claude: the local answer has no text and no tool</text>
+<text x="122.8" y="203" fill="#b8875f">call; next: the model is not up to this work</text>
+<text x="22.0" y="224" fill="#a49a8e">10:34:26</text>
+<text x="106.0" y="224" fill="#f0e6d2" font-weight="700">main</text>
+<text x="198.4" y="224" fill="#f0e6d2">Opus 5.5</text>
+<text x="400.0" y="224" fill="#5ba3b8">✓</text>
+<text x="416.8" y="224" fill="#f0e6d2">2.6s</text>
+<text x="484.0" y="224" fill="#a49a8e">answered</text>
+<text x="584.8" y="224" fill="#f0e6d2">155k in ·</text>
+<text x="668.8" y="224" fill="#5ba3b8">98% cached</text>
+<text x="786.4" y="224" fill="#f0e6d2">1.1k out</text>
+<text x="878.8" y="224" fill="#a49a8e">$0.062</text>
+</g>
+</svg>

@@ -40,7 +40,13 @@ is stopped.
 
 ## Reading the console
 
-Each request gets one line when it finishes:
+Each request gets one line when it finishes. In color, it looks like this:
+
+![The Janus console: one line per request, with main-loop turns on Claude, subagent turns on a local model, and a note where the local answer failed its checks](../assets/janus-console.svg)
+
+<sub>Made-up requests against stand-in backends. Another example follows
+as plain text.</sub>
+
 
 ```
 main       Opus 5.5                ✓ 20.6s   tool call   151k in · 98% cached    2.3k out   $0.092

@@ -5,6 +5,8 @@ About ten minutes, most of it LM Studio loading a model.
 
 You need Claude Code working already, and for the second half,
 [LM Studio](https://lmstudio.ai) with a model downloaded.
+[Before you start](guide/before-you-start.md) says what each part needs
+and which settings differ from their defaults.
 
 ## 1. Install
 
