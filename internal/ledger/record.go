@@ -53,6 +53,9 @@ type Record struct {
 	Request  *Request  `json:"request,omitempty"`
 	Response *Response `json:"response,omitempty"`
 	Usage    *Usage    `json:"usage,omitempty"`
+	// Quota is what Claude's response said about the subscription's
+	// limits: how much of each is used and when it resets (#238).
+	Quota *anthropic.Quota `json:"quota,omitempty"`
 	// Unread says why a Messages response has no usage.
 	Unread string `json:"unread,omitempty"`
 	// Fault is what went wrong getting the response from the backend: it
@@ -323,6 +326,9 @@ func FromExchange(ex proxy.Exchange) Record {
 	if route.UpstreamDown(ex.Status) {
 		rec.Limits = Limits(ex.ResponseHeader)
 	}
+	if ex.Backend == "upstream" {
+		rec.Quota = anthropic.QuotaFrom(ex.ResponseHeader)
+	}
 	for _, e := range ex.Transforms {
 		rec.Transforms = append(rec.Transforms, Transform{
 			Name: e.Name, Blocks: e.Blocks, Rewritten: e.Rewritten, Revised: e.Revised, Declined: e.Declined,
@@ -333,6 +339,11 @@ func FromExchange(ex proxy.Exchange) Record {
 	if a := ex.Attempt; a != nil {
 		rec.Attempt = &Attempt{Backend: a.Backend, Model: a.Model, Why: a.Why, Cause: a.Cause, DurationMs: a.Duration.Milliseconds(),
 			Limits: Limits(a.ResponseHeader)}
+		// When Claude was tried first and the local model stood in,
+		// Claude's answer is still the latest word on the limits.
+		if a.Backend == "upstream" && rec.Quota == nil {
+			rec.Quota = anthropic.QuotaFrom(a.ResponseHeader)
+		}
 		switch {
 		case a.Accepted:
 			rec.Attempt.Verdict, rec.Attempt.Why, rec.Attempt.Cause = VerdictAccepted, "", ""
