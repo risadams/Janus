@@ -341,12 +341,14 @@ func TestStatsLocalFirstSection(t *testing.T) {
 	}
 }
 
-func TestStatsNotesWhenLocalStoodInForClaude(t *testing.T) {
+func TestStatsListsWhenClaudeCouldNotAnswer(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "ledger")
 	ledger.Open(dir).Append(ledger.Record{V: 1, ID: "a", Time: time.Now(), Class: "main", Backend: "local", Outcome: ledger.OutcomeOK,
 		Attempt: &ledger.Attempt{Backend: "upstream", Verdict: ledger.VerdictFailed}})
 	out, _, _ := stats(t, "-dir", dir)
-	if !strings.Contains(out, "NOTE: 1 requests were answered by the local model because Claude could not") || strings.Contains(out, "Local first") {
+	squeezed := strings.Join(strings.Fields(out), " ")
+	if !strings.Contains(squeezed, "When Claude could not answer from to cause requests stood in limit answering again") ||
+		!strings.Contains(squeezed, "unreachable 1 1 - -") || strings.Contains(out, "Local first") {
 		t.Errorf("report:\n%s", out)
 	}
 }

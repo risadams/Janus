@@ -211,11 +211,7 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		}
 		fmt.Fprintf(w, "  Content in a conversation is withheld again on every turn and counted each time.\n")
 	}
-	if rep.StoodIn > 0 {
-		fmt.Fprintf(w, "\nNOTE: %s requests were answered by the local model because Claude could not\n"+
-			"answer them (unreachable, rate limited, overloaded, or failing). Search the\n"+
-			"ledger for \"sent local\" to see which.\n", commas(rep.StoodIn))
-	}
+	printOutages(w, rep.Outages)
 	if rep.Unread > 0 {
 		fmt.Fprintf(w, "\nWARNING: %s responses were relayed but could not be read, so their tokens\n"+
 			"are missing from every figure above. Run janus stats -json, or search the\n"+
@@ -224,6 +220,43 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 	if rep.Malformed > 0 {
 		fmt.Fprintf(w, "\n%d ledger lines could not be read and were skipped.\n", rep.Malformed)
 	}
+}
+
+// printOutages lists the runs of requests Claude could not answer, and how
+// many the local model answered instead.
+func printOutages(w io.Writer, outages []ledger.Outage) {
+	if len(outages) == 0 {
+		return
+	}
+	const stamp, clock = "2006-01-02 15:04", "15:04"
+	when := func(t, since time.Time) string {
+		if !since.IsZero() && t.Local().Format(time.DateOnly) == since.Local().Format(time.DateOnly) {
+			return t.Local().Format(clock)
+		}
+		return t.Local().Format(stamp)
+	}
+	fmt.Fprintf(w, "\nWhen Claude could not answer\n")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "  from\tto\tcause\trequests\tstood in\tlimit\tanswering again\n")
+	stoodIn := 0
+	for _, o := range outages {
+		limit, lifts := o.Limit, "-"
+		if limit == "" {
+			limit = "-"
+		}
+		if !o.Lifts.IsZero() {
+			lifts = when(o.Lifts, o.End)
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\t%s\n", when(o.Start, time.Time{}), when(o.End, o.Start),
+			o.Cause, commas(o.Requests), commas(o.StoodIn), limit, lifts)
+		stoodIn += o.StoodIn
+	}
+	tw.Flush()
+	fmt.Fprintf(w, "  Requests no more than %d minutes apart are one row; times are local. \"Stood\n"+
+		"  in\" were answered by the local model, %s in all; the rest reached the client\n"+
+		"  as errors. \"Limit\" is the subscription limit reached, and \"answering\n"+
+		"  again\" when Claude said it would. Search the ledger for \"sent local\" to see\n"+
+		"  the stand-ins.\n", int(ledger.OutageGap.Minutes()), commas(stoodIn))
 }
 
 // printTable writes one breakdown. "cache hit" is the share of the prompt

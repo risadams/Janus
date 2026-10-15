@@ -163,6 +163,9 @@ type Report struct {
 	// Transforms is what each transform saved, set beside what the guard
 	// expected when it decided.
 	Transforms []TransformRow `json:"transforms,omitempty"`
+	// Outages are the runs of requests Claude could not answer, and how
+	// many of them the local model answered instead.
+	Outages []Outage `json:"outages,omitempty"`
 	// Unread counts Messages responses janus relayed but could not read.
 	// Their tokens are missing from every figure in the report.
 	Unread int `json:"unread,omitempty"`
@@ -289,6 +292,7 @@ func Summarise(records []Record, prices Prices) Report {
 	}
 
 	rep.ByClass, rep.ByModel, rep.ByBackend = sorted(byClass), sorted(byModel), sorted(byBackend)
+	rep.Outages = Outages(records)
 	for class, tally := range shadows {
 		rep.Shadow = append(rep.Shadow, tally.row(class))
 	}
