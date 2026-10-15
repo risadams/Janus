@@ -90,7 +90,8 @@ janus stats -since 24h
 
 `-since` and `-until` take an age (`24h`, `7d`), a date (`2026-10-01`),
 or a time.
-`-json` gives the same figures as JSON. A report looks like this:
+`-daily` adds a row per day, to compare one day with the next after a
+change. `-json` gives the same figures as JSON. A report looks like this:
 
 ```
 Ledger /Users/you/janus/logs/ledger

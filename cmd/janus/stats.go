@@ -28,6 +28,7 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 	since := fs.String("since", "", "only requests from this point: a date (2026-10-01), a time (RFC 3339), or an age (24h, 7d)")
 	until := fs.String("until", "", "only requests before this point; same forms as -since")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
+	daily := fs.Bool("daily", false, "add a breakdown by day")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -71,6 +72,9 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 
 	report := ledger.Summarise(records, prices(cfg))
 	report.Malformed = malformed
+	if *daily {
+		report.ByDay = ledger.ByDay(records, prices(cfg), time.Local)
+	}
 
 	if *asJSON {
 		enc := json.NewEncoder(stdout)
@@ -125,6 +129,7 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		printTable(w, "model", rep.ByModel, nil)
 		printTable(w, "backend", rep.ByBackend, nil)
 	}
+	printDays(w, rep.ByDay)
 
 	printLocalSaving(w, rep.LocalSaving)
 	printLocalFirst(w, rep.LocalFirst)
@@ -250,6 +255,31 @@ func printTable(w io.Writer, by string, rows []ledger.Row, total *ledger.Row) {
 		line(*total)
 	}
 	tw.Flush()
+}
+
+// printDays writes the breakdown by day, so a day that went worse than the
+// others stands out.
+func printDays(w io.Writer, rows []ledger.DayRow) {
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\nBy day\n")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintf(tw, "  day\trequests\tfailed\tcache hit\test. cost\tlocal tried\taccepted\tsaved locally\tstood in\t\n")
+	for _, r := range rows {
+		hit := "-"
+		if r.CacheHit >= 0 {
+			hit = fmt.Sprintf("%.1f%%", r.CacheHit*100)
+		}
+		cost := fmt.Sprintf("$%.4f", r.CostUSD)
+		if r.Unpriced > 0 {
+			cost += "*"
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\t%s\t$%.4f\t%s\t\n", r.Day, commas(r.Requests), commas(r.Failed),
+			hit, cost, commas(r.LocalTried), commas(r.LocalAccepted), r.LocalSavedUSD, commas(r.StoodIn))
+	}
+	tw.Flush()
+	fmt.Fprintf(w, "  Days are local dates. \"failed\" leaves out requests the client cancelled.\n")
 }
 
 // printLocalSaving reports what the local model's answers would have cost

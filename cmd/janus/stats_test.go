@@ -256,6 +256,28 @@ func TestStatsSaysWhatLocalAnswersSaved(t *testing.T) {
 	}
 }
 
+func TestStatsDaily(t *testing.T) {
+	dir := seedLedger(t)
+	out, _, _ := stats(t, "-dir", dir, "-daily")
+	squeezed := strings.Join(strings.Fields(out), " ")
+	day := time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC).Local().Format(time.DateOnly)
+	for _, want := range []string{
+		"By day day requests failed cache hit est. cost local tried accepted saved locally stood in",
+		day + " 5 0 1.5% $6.1956* 0 0 $0.0000 0",
+	} {
+		if !strings.Contains(squeezed, want) {
+			t.Errorf("report is missing %q:\n%s", want, out)
+		}
+	}
+	if plain, _, _ := stats(t, "-dir", dir); strings.Contains(plain, "By day") {
+		t.Errorf("by day was printed without -daily:\n%s", plain)
+	}
+	js, _, _ := stats(t, "-dir", dir, "-daily", "-json")
+	if !strings.Contains(js, `"by_day"`) {
+		t.Errorf("-json -daily has no by_day:\n%s", js)
+	}
+}
+
 func TestStatsShadowSection(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "ledger")
 	l := ledger.Open(dir)

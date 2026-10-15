@@ -149,6 +149,8 @@ type Report struct {
 	// LocalSaving is what the requests the local model answered by choice
 	// would have cost had Claude answered them (#227).
 	LocalSaving LocalSaving `json:"local_saving,omitzero"`
+	// ByDay is the range broken down by local date, when asked for.
+	ByDay []DayRow `json:"by_day,omitempty"`
 	// LocalFirst summarises, by class, requests where the local model was
 	// tried with Claude as the fallback.
 	LocalFirst []LocalFirstRow `json:"local_first,omitempty"`
@@ -312,6 +314,61 @@ func Summarise(records []Record, prices Prices) Report {
 	}
 	sort.Slice(rep.Transforms, func(i, j int) bool { return rep.Transforms[i].Name < rep.Transforms[j].Name })
 	return rep
+}
+
+// DayRow is one day's headline figures, so that a week of use can be read
+// day by day and a day that went worse than the rest stands out.
+type DayRow struct {
+	// Day is the local date, as 2006-01-02.
+	Day      string `json:"day"`
+	Requests int    `json:"requests"`
+	// Failed counts requests that did not end well, other than those the
+	// client cancelled: errors, broken-off answers, and no answer at all.
+	Failed   int     `json:"failed"`
+	CostUSD  float64 `json:"cost_usd"`
+	Unpriced int     `json:"unpriced"`
+	// CacheHit is the share of the prompt read from cache, or -1 when
+	// nothing was sent.
+	CacheHit float64 `json:"cache_hit"`
+	// LocalTried and LocalAccepted are local-first attempts and those
+	// whose answer was used.
+	LocalTried    int     `json:"local_tried"`
+	LocalAccepted int     `json:"local_accepted"`
+	LocalSavedUSD float64 `json:"local_saved_usd"`
+	StoodIn       int     `json:"stood_in"`
+}
+
+// ByDay summarises the records one day at a time, by their date in loc,
+// oldest first. The records must be in time order, as Read returns them.
+// Days with no requests are left out.
+func ByDay(records []Record, prices Prices, loc *time.Location) []DayRow {
+	var days []DayRow
+	start := 0
+	for i := range records {
+		day := records[i].Time.In(loc).Format(time.DateOnly)
+		if i+1 < len(records) && records[i+1].Time.In(loc).Format(time.DateOnly) == day {
+			continue
+		}
+		rep := Summarise(records[start:i+1], prices)
+		start = i + 1
+		if rep.Total.Requests == 0 {
+			continue
+		}
+		row := DayRow{Day: day, Requests: rep.Total.Requests, CostUSD: rep.Total.CostUSD,
+			Unpriced: rep.Total.Unpriced, CacheHit: rep.Total.CacheHitRatio(),
+			LocalSavedUSD: rep.LocalSaving.USD, StoodIn: rep.StoodIn}
+		for outcome, n := range rep.Outcomes {
+			if outcome != OutcomeOK && outcome != OutcomeCancelled {
+				row.Failed += n
+			}
+		}
+		for _, lf := range rep.LocalFirst {
+			row.LocalTried += lf.Tried
+			row.LocalAccepted += lf.Accepted
+		}
+		days = append(days, row)
+	}
+	return days
 }
 
 // LocalSaving is what the requests the local model answered by choice, by

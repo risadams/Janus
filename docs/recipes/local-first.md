@@ -55,6 +55,8 @@ or failed because the model was unavailable, and the median time an
 attempt took. Rejected and failed requests paid that time and then
 Claude's as well. Above it, "Saved by answering locally" prices the
 accepted answers at the Claude model each asked for: what the rule saved.
+Over a week, `janus stats -since 7d -daily` shows the same day by day,
+so a day the model did worse stands out.
 
 In one test session with a small model, one answer was rejected as empty
 and three passed the checks; two of those three were long and useless,
