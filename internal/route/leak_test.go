@@ -148,7 +148,7 @@ func TestNothingProtectedReachesTheUpstream(t *testing.T) {
 	slow := func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
-		case <-time.After(2 * time.Second):
+		case <-time.After(400 * time.Millisecond):
 		}
 	}
 	overloaded := func(w http.ResponseWriter, r *http.Request) {
