@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -306,6 +308,74 @@ func TestStatsSaysWhereTheLimitsStand(t *testing.T) {
 	if clean, _, _ := stats(t, "-dir", seedLedger(t)); strings.Contains(clean, "Usage limits") {
 		t.Errorf("limits reported with no quota in the ledger:\n%s", clean)
 	}
+}
+
+func TestStatsWatchShowsToday(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	now := time.Date(2026, 10, 15, 14, 30, 0, 0, time.Local)
+	l := ledger.Open(dir)
+	yesterday := ledger.Record{V: 1, ID: "y", Time: now.Add(-24 * time.Hour), Class: "main", Backend: "upstream", Outcome: ledger.OutcomeOK}
+	l.Append(yesterday)
+	l.Append(ledger.Record{V: 1, ID: "a", Time: now.Add(-time.Hour), Class: "main", Backend: "upstream", Outcome: ledger.OutcomeOK,
+		Response: &ledger.Response{Model: "claude-opus-5-5"}, Usage: &ledger.Usage{Input: 1_000_000},
+		Quota: &anthropic.Quota{Windows: map[string]anthropic.QuotaWindow{"5h": {Utilization: 0.35, Resets: now.Add(2 * time.Hour)}}}})
+	l.Append(ledger.Record{V: 1, ID: "b", Time: now.Add(-time.Minute), Class: "main", Backend: "upstream", Outcome: ledger.OutcomeAPIError})
+
+	var out bytes.Buffer
+	if code := watchStats(context.Background(), &out, dir, ledger.DefaultPrices, false, func() time.Time { return now }, time.Second); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	squeezed := strings.Join(strings.Fields(out.String()), " ")
+	for _, want := range []string{
+		"Janus today, Thursday 15 October, at 14:30:00",
+		"requests 2, 1 failed", // not yesterday's
+		"cost $4.0000 at list price",
+		"limits five-hour 35% used, resets at 16:30",
+	} {
+		if !strings.Contains(squeezed, want) {
+			t.Errorf("missing %q:\n%s", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "\x1b[") || strings.Contains(out.String(), "Ctrl+C") {
+		t.Errorf("drawn as if to a terminal:\n%q", out.String())
+	}
+
+	// Live, it redraws until stopped.
+	ctx, cancel := context.WithCancel(context.Background())
+	var live syncBuffer
+	done := make(chan int)
+	go func() {
+		done <- watchStats(ctx, &live, dir, ledger.DefaultPrices, true, func() time.Time { return now }, 10*time.Millisecond)
+	}()
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	<-done
+	if n := strings.Count(live.String(), "\x1b[H\x1b[2J"); n < 2 || !strings.Contains(live.String(), "Ctrl+C to stop") {
+		t.Errorf("live view drew %d times:\n%q", n, live.String())
+	}
+
+	if _, errOut, code := stats(t, "-dir", dir, "-watch", "-since", "1d"); code != 2 || !strings.Contains(errOut, "do not go with it") {
+		t.Errorf("-watch -since: exit %d, %q", code, errOut)
+	}
+}
+
+// syncBuffer is a bytes.Buffer safe to write from one goroutine and read
+// from another.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 func TestStatsShadowSection(t *testing.T) {

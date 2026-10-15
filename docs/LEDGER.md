@@ -240,6 +240,7 @@ janus stats -since 2026-10-01    # a local date, or an RFC 3339 time
 janus stats -since 7d -until 1d
 janus stats -since 7d -daily     # with a row per day
 janus stats -json                # the same report, for scripts
+janus stats -watch               # today, redrawn every 5 seconds
 ```
 
 ```

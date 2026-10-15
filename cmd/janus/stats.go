@@ -4,11 +4,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -29,6 +31,7 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 	until := fs.String("until", "", "only requests before this point; same forms as -since")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	daily := fs.Bool("daily", false, "add a breakdown by day")
+	watch := fs.Bool("watch", false, "show today's figures, redrawn every few seconds until stopped")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -50,6 +53,18 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 		if _, err := os.Stat(*configPath); os.IsNotExist(err) {
 			fmt.Fprintf(stderr, "janus stats: no config file at %s, so reading the default ledger folder; pass -config with the file janus runs with\n", *configPath)
 		}
+	}
+
+	if *watch {
+		if *since != "" || *until != "" || *asJSON || *daily {
+			fmt.Fprintf(stderr, "janus stats: -watch shows today as it goes; -since, -until, -json, and -daily do not go with it\n")
+			return 2
+		}
+		f, isFile := stdout.(*os.File)
+		live := isFile && wantColor(f, func(string) string { return "" })
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		return watchStats(ctx, stdout, *dir, prices(cfg), live, time.Now, watchEvery)
 	}
 
 	now := time.Now()
@@ -84,6 +99,108 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 	}
 	printReport(stdout, *dir, report)
 	return 0
+}
+
+// watchEvery is how often janus stats -watch redraws. The ledger grows a
+// line per request, a few a minute in a busy session.
+const watchEvery = 5 * time.Second
+
+// watchStats draws today's figures from the ledger, and while live keeps
+// redrawing them until ctx ends (#244). Not live, as when the output is a
+// file or a pipe, it draws once.
+func watchStats(ctx context.Context, w io.Writer, dir string, prices ledger.Prices, live bool, now func() time.Time, every time.Duration) int {
+	draw := func() {
+		t := now()
+		midnight := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+		records, _, err := ledger.Read(dir, midnight, time.Time{})
+		var b strings.Builder
+		if err != nil {
+			fmt.Fprintf(&b, "janus stats: %v\n", err)
+		} else {
+			printToday(&b, ledger.Summarise(records, prices), t, live, every)
+		}
+		if live {
+			fmt.Fprint(w, "\x1b[H\x1b[2J") // to the top, and clear
+		}
+		fmt.Fprint(w, b.String())
+	}
+	draw()
+	if !live {
+		return 0
+	}
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Fprintln(w)
+			return 0
+		case <-tick.C:
+			draw()
+		}
+	}
+}
+
+// printToday is the short summary janus stats -watch shows.
+func printToday(w io.Writer, rep ledger.Report, now time.Time, live bool, every time.Duration) {
+	fmt.Fprintf(w, "Janus today, %s, at %s", now.Format("Monday 2 January"), now.Format("15:04:05"))
+	if live {
+		fmt.Fprintf(w, " (every %s; Ctrl+C to stop)", every)
+	}
+	fmt.Fprintf(w, "\n\n")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	failed := 0
+	for outcome, n := range rep.Outcomes {
+		if outcome != ledger.OutcomeOK && outcome != ledger.OutcomeCancelled {
+			failed += n
+		}
+	}
+	fmt.Fprintf(tw, "  requests\t%s, %s failed\n", commas(rep.Total.Requests), commas(failed))
+	cost := fmt.Sprintf("$%.4f at list price", rep.Total.CostUSD)
+	if rep.Total.Unpriced > 0 {
+		cost += fmt.Sprintf(", %s not priced", commas(rep.Total.Unpriced))
+	}
+	fmt.Fprintf(tw, "  cost\t%s\n", cost)
+	if ratio := rep.Total.CacheHitRatio(); ratio >= 0 {
+		fmt.Fprintf(tw, "  cache hit\t%.1f%%\n", ratio*100)
+	}
+	tried, accepted := 0, 0
+	for _, lf := range rep.LocalFirst {
+		tried += lf.Tried
+		accepted += lf.Accepted
+	}
+	if s := rep.LocalSaving; s.Requests > 0 || tried > 0 {
+		line := fmt.Sprintf("%s answered, saving about $%.4f", commas(s.Requests), s.USD)
+		if tried > 0 {
+			line += fmt.Sprintf("; %s of %s tried first were accepted", commas(accepted), commas(tried))
+		}
+		fmt.Fprintf(tw, "  local\t%s\n", line)
+	}
+	if rep.StoodIn > 0 {
+		fmt.Fprintf(tw, "  stood in\t%s, for Claude\n", commas(rep.StoodIn))
+	}
+	if q := rep.Quota; q != nil && q.Latest != nil {
+		names := make([]string, 0, len(q.Latest.Windows))
+		for name := range q.Latest.Windows {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		var parts []string
+		for _, name := range names {
+			win := q.Latest.Windows[name]
+			label := limitNames[name]
+			if label == "" {
+				label = name
+			}
+			part := fmt.Sprintf("%s %.0f%% used", label, win.Utilization*100)
+			if !win.Resets.IsZero() && win.Resets.After(now) {
+				part += ", resets " + resetTime(win.Resets, now)
+			}
+			parts = append(parts, part)
+		}
+		fmt.Fprintf(tw, "  limits\t%s\n", strings.Join(parts, " · "))
+	}
+	tw.Flush()
 }
 
 // parseWhen reads a point in time given as a date, an RFC 3339 time, or an

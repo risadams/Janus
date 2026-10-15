@@ -171,6 +171,29 @@ What to look for:
   Mostly `rejected`: the model isn't up to the work. The full list is in
   [the ledger](../LEDGER.md#why-the-local-model-did-not-answer).
 
+### Keeping an eye on it while you work
+
+```bash
+janus stats -watch
+```
+
+shows today's figures in a terminal and redraws them every five seconds
+until you press Ctrl+C:
+
+```
+Janus today, Thursday 15 October, at 14:30:05 (every 5s; Ctrl+C to stop)
+
+  requests   412, 3 failed
+  cost       $21.2378 at list price
+  cache hit  98.6%
+  local      44 answered, saving about $1.2604; 44 of 58 tried first were accepted
+  limits     five-hour 35% used, resets at 16:30 · weekly 6% used, resets Mon 00:00
+```
+
+These figures are made up. Lines for local answers, stand-ins, and limits
+appear when there is something to say. Keep it open in a second terminal
+beside Claude Code. Piped or redirected, it prints once and exits.
+
 [The ledger](../LEDGER.md) explains each figure.
 
 ## What left your machine: `janus audit`
