@@ -92,6 +92,13 @@ remaining problem at once. An unknown field is an error, so a misspelt
 setting is caught and not ignored. `janus doctor` reports the same
 problems without starting anything.
 
+**`... is janus's own listen address`.** `upstream.baseUrl` or
+`local.baseUrl` points at Janus itself: for example, `ANTHROPIC_BASE_URL`
+was copied into `JANUS_UPSTREAM_URL` or `-upstream`. Janus would send each
+request back to itself without end, so it refuses to start. Set the
+upstream to the Anthropic API (`https://api.anthropic.com`) or your
+gateway, and `local.baseUrl` to LM Studio.
+
 ## Reaching LM Studio
 
 **`could not reach LM Studio at ...`.** Its server is not running, or not

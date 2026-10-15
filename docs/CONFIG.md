@@ -26,7 +26,7 @@ the defaults below and carries on.
 | --- | --- |
 | `listen` | Address Janus accepts connections on. Must be loopback unless `allowRemote` is true. |
 | `allowRemote` | Permit a non-loopback `listen`. Janus forwards whatever credentials clients send, so leave this off unless you mean it. While it is off, Janus also refuses requests from web pages: any whose `Host` is not this machine or whose `Origin` is a page from elsewhere. |
-| `upstream.baseUrl` | The Anthropic API, or a gateway in front of it. |
+| `upstream.baseUrl` | The Anthropic API, or a gateway in front of it. Janus refuses to start if this, or `local.baseUrl`, is its own `listen` address, where it would send each request back to itself. |
 | `local.baseUrl` | The LM Studio server. The default, `http://studio.local:1234`, is the developer's own machine: change it to yours. |
 | `local.models` | Optional. Model names that are answered locally; see below. |
 | `routing` | Optional. Rules that decide which requests go local; see below. |

@@ -158,6 +158,19 @@ func TestValidate(t *testing.T) {
 		{"listen without port", func(c *Config) { c.Listen = "127.0.0.1" }, "host:port"},
 		{"upstream missing", func(c *Config) { c.Upstream.BaseURL = "" }, "upstream.baseUrl is not set"},
 		{"local not a url", func(c *Config) { c.Local.BaseURL = "studio.local:1234" }, "local.baseUrl"},
+		{"upstream is janus itself", func(c *Config) { c.Upstream.BaseURL = "http://127.0.0.1:8787" }, "upstream.baseUrl \"http://127.0.0.1:8787\" is janus's own listen address"},
+		{"upstream is janus by another loopback name", func(c *Config) { c.Upstream.BaseURL = "http://localhost:8787/v1" }, "janus's own listen address"},
+		{"local is janus listening on every interface", func(c *Config) {
+			c.Listen = "0.0.0.0:8787"
+			c.AllowRemote = true
+			c.Local.BaseURL = "http://[::1]:8787"
+		}, "local.baseUrl \"http://[::1]:8787\" is janus's own listen address"},
+		{"listen on port 80 and upstream with no port", func(c *Config) {
+			c.Listen = "127.0.0.1:80"
+			c.Upstream.BaseURL = "http://127.0.0.1"
+		}, "janus's own listen address"},
+		{"a backend on loopback, another port", func(c *Config) { c.Local.BaseURL = "http://127.0.0.1:1234" }, ""},
+		{"a backend on another host, the same port", func(c *Config) { c.Local.BaseURL = "http://studio.local:8787" }, ""},
 		{"unbuilt feature switched on", func(c *Config) { c.Features.Escalate = true }, "features.escalate is not available"},
 		{"compress with no local model", func(c *Config) { c.Features.Compress = true }, "features.compress needs a local model"},
 		{"compress with the only local model", func(c *Config) {
