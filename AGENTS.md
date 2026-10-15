@@ -86,7 +86,10 @@ regression case. Seeds are built by hand, never taken from captures.
   fails without it; check that it does.
 - The user docs are in `docs/`: CONFIG, LEDGER, GUARD,
   WHAT-JANUS-CHANGES, TROUBLESHOOTING, and `recipes/`. A change in
-  behaviour updates the doc that describes it, in the same PR.
+  behaviour updates the doc that describes it, in the same PR. The picture
+  of the console in the README and the user guide is made by
+  `go run ./scripts/consoleshot`, from made-up requests; a change to what
+  the console prints reruns it.
 
 ## Tracking work
 
