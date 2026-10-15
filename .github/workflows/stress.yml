@@ -1,0 +1,65 @@
+name: stress
+
+# Loops tests on CI's runners, to catch a hang or a flake that shows only
+# there (#211, #215). It runs only when started by hand, so a hunt never
+# holds a pull request's checks open:
+#
+#   gh workflow run stress.yml --ref my-branch \
+#     -f packages=./internal/proxy -f flags="-count=200 -cpu=1 -v"
+#
+# --ref picks the branch, for both this file and the code tested. The whole
+# go test output is kept as an artifact: -v output is too large to read in
+# the job log, and the log can only be fetched once the job has ended.
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: Packages to test, as go test takes them
+        default: ./internal/proxy
+      flags:
+        description: Flags for go test, such as -count=200 -cpu=1 -race -run ^TestName$ -v
+        default: -count=200
+      minutes:
+        description: Minutes before go test stops with a goroutine dump (at most 50)
+        default: "25"
+      os:
+        description: Runner to use
+        type: choice
+        options: [ubuntu-latest, macos-latest, windows-latest]
+        default: ubuntu-latest
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    runs-on: ${{ inputs.os }}
+    # Past go test's own limit, with room for the dump and the upload.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27"
+      # The inputs reach the shell as variables, never pasted into the
+      # script, so nothing in them runs as a command. They are split into
+      # words unquoted, as go test needs.
+      - name: go test
+        shell: bash
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          FLAGS: ${{ inputs.flags }}
+          MINUTES: ${{ inputs.minutes }}
+        run: |
+          set -o pipefail
+          set -f # split the inputs into words, but expand no wildcards
+          # The log shows only the outcome; the artifact has the rest.
+          # shellcheck disable=SC2086
+          go test $PACKAGES $FLAGS -timeout "${MINUTES}m" 2>&1 | tee stress.log | { grep -a -E -- "^(--- FAIL|FAIL|ok |panic:)" || true; }
+      - name: Keep the output
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: stress-log
+          path: stress.log
+          retention-days: 14
