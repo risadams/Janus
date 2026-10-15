@@ -36,7 +36,8 @@ GitHub.
   rather than edited in the Markdown.
 - Broken links and anchors fail the build. The `docs` workflow builds the
   site on pull requests that touch it and publishes it to the `gh-pages`
-  branch on pushes to `main`.
+  branch on pushes to `main` and on release tags, so the version it shows
+  is the newest release (#212).
 
 ## Consequences
 
