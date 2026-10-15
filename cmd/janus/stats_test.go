@@ -378,6 +378,16 @@ func (s *syncBuffer) String() string {
 	return s.b.String()
 }
 
+func TestStatsCountsHandbacks(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	ledger.Open(dir).Append(ledger.Record{V: 1, ID: "h", Time: time.Now(), Class: "main", Backend: "upstream", Outcome: ledger.OutcomeOK,
+		Handback: &ledger.Handback{LocalTurns: 12, Since: time.Now().Add(-3 * time.Hour)}})
+	out, _, _ := stats(t, "-dir", dir)
+	if !strings.Contains(strings.Join(strings.Fields(out), " "), "Claude took a conversation back 1 times, after 12 main-loop turns") {
+		t.Errorf("no handback in:\n%s", out)
+	}
+}
+
 func TestStatsShadowSection(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "ledger")
 	l := ledger.Open(dir)

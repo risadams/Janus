@@ -56,6 +56,9 @@ type Record struct {
 	// Quota is what Claude's response said about the subscription's
 	// limits: how much of each is used and when it resets (#238).
 	Quota *anthropic.Quota `json:"quota,omitempty"`
+	// Handback is present on Claude's first answer to a conversation's
+	// main loop after the local model stood in for it (#241).
+	Handback *Handback `json:"handback,omitempty"`
 	// Unread says why a Messages response has no usage.
 	Unread string `json:"unread,omitempty"`
 	// Fault is what went wrong getting the response from the backend: it
@@ -295,6 +298,13 @@ func Limits(h http.Header) map[string]string {
 		out[name] = strings.Join(v, ", ")
 	}
 	return out
+}
+
+// Handback says how many main-loop turns the local model gave in Claude's
+// place, from when, before Claude answered the conversation again.
+type Handback struct {
+	LocalTurns int       `json:"local_turns"`
+	Since      time.Time `json:"since"`
 }
 
 // FromExchange builds the record for one proxied request.

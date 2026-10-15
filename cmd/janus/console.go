@@ -39,6 +39,10 @@ type Console struct {
 	// limits are the account's, not a conversation's, so this is one for
 	// the whole console.
 	quotaStep map[string]int
+	// handback is, per conversation, the stand-in turns of its main loop
+	// since Claude last answered it. It outlives forgetAfter: a person
+	// who reached a limit often waits hours for it to reset.
+	handback map[string]*standIns
 }
 
 type said struct {
@@ -227,6 +231,59 @@ func resetTime(at, now time.Time) string {
 		return "at " + at.Format("15:04")
 	}
 	return at.Format("Mon 15:04")
+}
+
+// standIns counts a conversation's main-loop turns the local model gave
+// in Claude's place.
+type standIns struct {
+	turns int
+	since time.Time
+	last  time.Time
+}
+
+// keepStandInsFor is how long the console remembers stand-in turns that
+// Claude has not yet taken over from: longer than the five-hour limit.
+const keepStandInsFor = 24 * time.Hour
+
+// StoodInTurn counts a main-loop turn the local model gave because Claude
+// could not.
+func (c *Console) StoodInTurn(session string) {
+	if session == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.now()
+	if c.handback == nil {
+		c.handback = map[string]*standIns{}
+	}
+	for id, s := range c.handback {
+		if now.Sub(s.last) > keepStandInsFor {
+			delete(c.handback, id)
+		}
+	}
+	s := c.handback[session]
+	if s == nil {
+		s = &standIns{since: now}
+		c.handback[session] = s
+	}
+	s.turns++
+	s.last = now
+}
+
+// HandBack is called when Claude answers a conversation's main loop. If
+// the local model stood in for it since Claude last did, it returns how
+// many turns and from when, and forgets them (#241).
+func (c *Console) HandBack(session string) (turns int, since time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	s := c.handback[session]
+	if s == nil || c.now().Sub(s.last) > keepStandInsFor {
+		delete(c.handback, session)
+		return 0, time.Time{}
+	}
+	delete(c.handback, session)
+	return s.turns, s.since
 }
 
 // note is something about a request worth a line of its own.

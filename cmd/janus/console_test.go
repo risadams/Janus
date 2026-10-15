@@ -538,3 +538,41 @@ func TestConsoleSaysTheLimitsAsTheyFill(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudeTakingAConversationBackIsMarked(t *testing.T) {
+	c := NewConsole(io.Discard, false, ledger.DefaultPrices)
+	now := time.Date(2026, 10, 14, 9, 54, 0, 0, time.Local)
+	c.now = func() time.Time { return now }
+	header := http.Header{}
+	header.Set("X-Claude-Code-Session-Id", "s1")
+	main := func(backend string, status int, standIn bool) (proxy.Exchange, ledger.Record) {
+		ex := proxy.Exchange{ID: "x", Start: now, Method: "POST", Path: "/v1/messages", Header: header, Backend: backend, Status: status}
+		if standIn {
+			ex.Attempt = &proxy.Attempt{Backend: "upstream", Why: "upstream answered HTTP 429", Fault: true}
+		}
+		rec := ledger.FromExchange(ex)
+		rec.Class = "main"
+		return ex, rec
+	}
+
+	for range 3 {
+		ex, rec := main("local", 200, true)
+		autoModeNotes(ex, rec, c)
+		now = now.Add(10 * time.Minute)
+	}
+	// Claude refusing again is not a handback.
+	if ex, rec := main("upstream", 429, false); handBack(ex, &rec, c) != nil || rec.Handback != nil {
+		t.Error("a refusal was taken for Claude answering")
+	}
+	// Hours later, after the reset, Claude answers.
+	now = now.Add(3 * time.Hour)
+	ex, rec := main("upstream", 200, false)
+	n := handBack(ex, &rec, c)
+	if n == nil || rec.Handback == nil || rec.Handback.LocalTurns != 3 ||
+		!strings.Contains(n.text, "after 3 turns from the local model since 09:54") {
+		t.Fatalf("note %+v, record %+v; want 3 turns since 09:54", n, rec.Handback)
+	}
+	if ex, rec := main("upstream", 200, false); handBack(ex, &rec, c) != nil {
+		t.Error("the handback was marked twice")
+	}
+}
