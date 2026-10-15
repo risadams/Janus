@@ -130,6 +130,7 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		printTable(w, "backend", rep.ByBackend, nil)
 	}
 	printDays(w, rep.ByDay)
+	printQuota(w, rep.Quota, time.Now())
 
 	printLocalSaving(w, rep.LocalSaving)
 	printLocalFirst(w, rep.LocalFirst)
@@ -288,6 +289,47 @@ func printTable(w io.Writer, by string, rows []ledger.Row, total *ledger.Row) {
 		line(*total)
 	}
 	tw.Flush()
+}
+
+// printQuota says where the subscription's limits stood at the end of the
+// range, and which kinds of request used the five-hour limit.
+func printQuota(w io.Writer, q *ledger.QuotaSummary, now time.Time) {
+	if q == nil || q.Latest == nil {
+		return
+	}
+	fmt.Fprintf(w, "\nUsage limits, as of %s\n", q.At.Local().Format("2006-01-02 15:04"))
+	windows := make([]string, 0, len(q.Latest.Windows))
+	for name := range q.Latest.Windows {
+		windows = append(windows, name)
+	}
+	sort.Strings(windows)
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	for _, name := range windows {
+		win := q.Latest.Windows[name]
+		label := limitNames[name]
+		if label == "" {
+			label = name
+		}
+		resets := ""
+		switch {
+		case win.Resets.IsZero():
+		case win.Resets.Before(now):
+			resets = "reset since, at " + win.Resets.Local().Format("2006-01-02 15:04")
+		default:
+			resets = "resets " + resetTime(win.Resets, now)
+		}
+		fmt.Fprintf(tw, "  %s\t%.0f%% used\t%s\n", label, win.Utilization*100, resets)
+	}
+	tw.Flush()
+	if len(q.ByClass) > 0 {
+		parts := make([]string, 0, len(q.ByClass))
+		for _, c := range q.ByClass {
+			parts = append(parts, fmt.Sprintf("%s %.0f%%", c.Class, c.Share*100))
+		}
+		fmt.Fprintf(w, "  The five-hour limit used in this range, by class: %s.\n"+
+			"  Each rise in use is put down to the request that reported it, and the API\n"+
+			"  reports use in whole percents, so read the shares as rough.\n", strings.Join(parts, ", "))
+	}
 }
 
 // printDays writes the breakdown by day, so a day that went worse than the

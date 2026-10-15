@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -496,5 +498,43 @@ func TestConsoleNamesTheNextStepWhenTheLocalModelDoesNotAnswer(t *testing.T) {
 	}
 	if again := busy(); strings.Contains(again, "↳") {
 		t.Errorf("the busy note was repeated:\n%s", again)
+	}
+}
+
+func TestConsoleSaysTheLimitsAsTheyFill(t *testing.T) {
+	c := NewConsole(io.Discard, false, ledger.DefaultPrices)
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.Local)
+	c.now = func() time.Time { return now }
+	resets := now.Add(3 * time.Hour)
+	quota := func(fiveHour, weekly float64) *anthropic.Quota {
+		return &anthropic.Quota{Windows: map[string]anthropic.QuotaWindow{
+			"5h": {Utilization: fiveHour, Resets: resets},
+			"7d": {Utilization: weekly, Resets: now.Add(4 * 24 * time.Hour)},
+		}}
+	}
+	texts := func(notes []note) (out []string) {
+		for _, n := range notes {
+			out = append(out, fmt.Sprintf("%d %s", n.level, n.text))
+		}
+		return out
+	}
+	steps := []struct {
+		q    *anthropic.Quota
+		want []string
+	}{
+		// The first answer says where both limits stand.
+		{quota(0.19, 0.06), []string{"0 five-hour limit 19% used, resets at 15:00", "0 weekly limit 6% used, resets " + now.Add(4*24*time.Hour).Format("Mon 15:04")}},
+		{quota(0.19, 0.06), nil},
+		{quota(0.20, 0.06), []string{"0 five-hour limit 20% used, resets at 15:00"}},
+		{quota(0.19, 0.06), nil}, // wavering at the boundary
+		{quota(0.83, 0.07), []string{"1 five-hour limit 83% used, resets at 15:00"}},
+		{quota(1.01, 0.07), []string{"2 five-hour limit 101% used, resets at 15:00; Claude is refusing requests until then"}},
+		{quota(0.02, 0.08), []string{"0 five-hour limit reset: 2% used, resets at 15:00"}},
+		{nil, nil},
+	}
+	for i, s := range steps {
+		if got := texts(c.QuotaNotes(s.q)); !slices.Equal(got, s.want) {
+			t.Errorf("step %d: notes = %q, want %q", i, got, s.want)
+		}
 	}
 }

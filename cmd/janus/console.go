@@ -6,10 +6,12 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/proxy"
 )
@@ -33,6 +35,10 @@ type Console struct {
 	// said is, per conversation, the notes already printed that need not
 	// be repeated, and when the conversation was last seen.
 	said map[string]*said
+	// quotaStep is, per limit, the tenth of it last reported as used. The
+	// limits are the account's, not a conversation's, so this is one for
+	// the whole console.
+	quotaStep map[string]int
 }
 
 type said struct {
@@ -155,6 +161,72 @@ func (c *Console) StandingIn(session string) bool {
 	defer c.mu.Unlock()
 	s := c.conversation(session)
 	return !s.standIn.IsZero() && c.now().Sub(s.standIn) <= standingInFor
+}
+
+// quotaNear is the share of a limit from which the console warns.
+const quotaNear = 0.8
+
+// limitNames are the API's names for its windows, as a person says them.
+var limitNames = map[string]string{"5h": "five-hour", "7d": "weekly"}
+
+// QuotaNotes says how much of the subscription's limits is used, each
+// time a limit's use crosses another tenth, and when one resets (#239).
+// Saying it on every request would bury everything else.
+func (c *Console) QuotaNotes(q *anthropic.Quota) []note {
+	if q == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.quotaStep == nil {
+		c.quotaStep = map[string]int{}
+	}
+	windows := make([]string, 0, len(q.Windows))
+	for w := range q.Windows {
+		windows = append(windows, w)
+	}
+	sort.Strings(windows)
+	var notes []note
+	for _, w := range windows {
+		win := q.Windows[w]
+		step := int(win.Utilization * 10)
+		last, seen := c.quotaStep[w]
+		// A small drop is the figure wavering at a boundary; a reset drops
+		// it further.
+		if seen && (step == last || (step < last && last-step < 2)) {
+			continue
+		}
+		c.quotaStep[w] = step
+		name := limitNames[w]
+		if name == "" {
+			name = w
+		}
+		text := fmt.Sprintf("%s limit %.0f%% used", name, win.Utilization*100)
+		if !win.Resets.IsZero() {
+			text += ", resets " + resetTime(win.Resets, c.now())
+		}
+		lvl := info
+		switch {
+		case win.Utilization >= 1 || win.Status == "rejected":
+			lvl, text = bad, text+"; Claude is refusing requests until then"
+		case win.Utilization >= quotaNear:
+			lvl = warn
+		case seen && step < last:
+			text = name + " limit reset: " + strings.TrimPrefix(text, name+" limit ")
+		}
+		notes = append(notes, note{level: lvl, text: text})
+	}
+	return notes
+}
+
+// resetTime writes when a limit resets: a time of day if it is within a
+// day, a weekday and time if later.
+func resetTime(at, now time.Time) string {
+	at = at.In(now.Location())
+	if at.Sub(now) < 20*time.Hour {
+		return "at " + at.Format("15:04")
+	}
+	return at.Format("Mon 15:04")
 }
 
 // note is something about a request worth a line of its own.

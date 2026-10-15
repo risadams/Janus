@@ -78,6 +78,18 @@ Here the local model tried a subagent turn, its answer failed the checks,
 and Claude answered. Notes in yellow or red are the ones to read. Notes
 about the guard are said once per conversation, not on every turn.
 
+On a subscription, notes also say how much of its usage limits is used:
+once at the first answer, then each time a limit passes another tenth,
+and when one resets.
+
+```
+main       Opus 5.5                ✓ 4.1s    tool call   188k in · 99% cached    310 out    $0.041
+          ↳ five-hour limit 80% used, resets at 15:30
+```
+
+From 80% the note is yellow; at the limit it is red, and Claude refuses
+requests until it resets. The weekly limit is reported the same way.
+
 On a subscription the cost column is not a bill. It is what the same
 usage would cost through the API, which is useful for comparing one day,
 or one setup, with another.
@@ -136,6 +148,11 @@ What to look for:
 - **`safety` and `status`.** In auto mode, Claude Code checks each tool
   call with a separate request (`safety`), and asks for short progress
   lines while subagents run (`status`). They can add up.
+- **Usage limits**, on a subscription: how much of the five-hour and
+  weekly limits was used at the last answer, when each resets, and which
+  kinds of request used the five-hour limit in the range. The shares are
+  rough, but they say where to look: if `safety` is a large share, auto
+  mode's checks are using up your limit.
 - **Saved by answering locally**, if you route requests locally: what
   the local model's answers would have cost had Claude given them. It is
   a rough figure, since the local model counts tokens its own way, but it
