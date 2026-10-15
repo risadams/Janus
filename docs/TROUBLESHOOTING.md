@@ -5,7 +5,8 @@
 When something is wrong, these five things find most problems:
 
 1. **`janus doctor`.** It checks the config, the port, Anthropic, LM
-   Studio, and the log folder, and says what to fix.
+   Studio, and the log folder, when the ledger last recorded a request,
+   and whether Claude Code is pointed at Janus, and says what to fix.
 2. **The console.** Janus prints a line for every request. No lines at
    all means Claude Code is not using Janus. A `↳` note under a line says
    what happened to that request and why.
@@ -34,6 +35,7 @@ The problems below are ones met while building and testing Janus.
 | Local answers are empty, wrong, or slow | [Local answers](#local-answers) |
 | A `403` or `500` from Janus, or something withheld | [The guard](#the-guard) |
 | `janus stats` is empty or costs look wrong | [The books](#the-books) |
+| `janus doctor` warns about `ledger` or `claude` | [The books](#the-books) |
 
 ## Installing
 
@@ -300,6 +302,18 @@ original is in `<logging.dir>/originals` for `logging.retainDays`.
 is the folder it read. Run it where the config is, or pass the same
 `-config` Janus runs with; with no config file it says so and reads the
 default folder.
+
+**`janus doctor` says the last request was recorded days ago.** Janus is
+set up, but Claude Code has not been sending requests through it: a
+session started without `ANTHROPIC_BASE_URL` goes straight to Anthropic
+and leaves nothing in the ledger. The `claude` line says what doctor can
+see: `ANTHROPIC_BASE_URL` in the shell doctor ran in, and under `env` in
+Claude Code's settings file (`~/.claude/settings.json`, or under
+`CLAUDE_CONFIG_DIR`). It warns when either points somewhere other than
+Janus's `listen` address, and when neither is set while the ledger is
+quiet. It cannot see a shell alias, so with an alias and recent requests
+it says `ok`. Check too that doctor read the config Janus runs with: the
+ledger is under that config's `logging.dir`.
 
 **Costs do not match the bill.** `janus stats` prices tokens at list
 price. On a subscription there is no per-token bill; the figure is what

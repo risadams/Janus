@@ -13,6 +13,34 @@ import (
 	"github.com/risadams/janus/internal/proxy"
 )
 
+// Newest is the time of the latest record in dir, or zero when there is
+// none. It reads only the newest day's file.
+func Newest(dir string) (time.Time, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, fmt.Errorf("ledger: %w", err)
+	}
+	// ReadDir sorts by name, and the names are dates, so search from the end.
+	for i := len(entries) - 1; i >= 0; i-- {
+		name := entries[i].Name()
+		day, err := time.Parse("2006-01-02", strings.TrimSuffix(name, ".jsonl"))
+		if err != nil || entries[i].IsDir() || !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+		records, _, err := Read(dir, day, day.Add(24*time.Hour))
+		if err != nil {
+			return time.Time{}, err
+		}
+		if len(records) > 0 {
+			return records[len(records)-1].Time, nil
+		}
+	}
+	return time.Time{}, nil
+}
+
 // Read returns the records whose time falls in [since, until), oldest
 // first. A zero since or until leaves that end open. Lines that are not
 // records are skipped and counted: one bad line must not hide a day.

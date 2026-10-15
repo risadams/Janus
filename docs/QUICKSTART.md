@@ -27,8 +27,9 @@ janus doctor
 ```
 
 `doctor` checks the config, the port, that Anthropic is reachable, LM
-Studio, and the log directory, and says what to fix. It changes nothing. A
-warning about LM Studio does not matter yet.
+Studio, and the log directory, and says what to fix. It changes nothing.
+Warnings about LM Studio, and about Claude Code not being pointed at Janus
+yet, do not matter now.
 
 ```bash
 janus
