@@ -17,6 +17,9 @@ Then name it as the stand-in on a rule that sends requests upstream:
 "features": { "route": true, "escalate": false, "compress": false, "guard": false }
 ```
 
+To move some work local *before* the limit is reached, see
+[pacing](pace.md).
+
 A rule with no `class` matches every request. Put it last if you have
 other rules; the first rule that matches decides.
 

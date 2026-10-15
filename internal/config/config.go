@@ -217,6 +217,13 @@ type Rule struct {
 	// waiting all the while, so this is the most a poor local answer can
 	// cost it.
 	MaxSeconds int `json:"maxSeconds,omitempty"`
+	// IfUsageAbove makes the rule match only once one of the
+	// subscription's usage limits is used past a share, from 0 to 1, as
+	// Claude last reported it: {"5h": 0.8} for the five-hour limit, "7d"
+	// for the weekly one. It moves work to the local model before a limit
+	// is reached (#240). With no report yet, or after a limit's reset, it
+	// does not match.
+	IfUsageAbove map[string]float64 `json:"ifUsageAbove,omitempty"`
 }
 
 // DefaultTrialSeconds is how long a local-then-escalate attempt may take
@@ -463,6 +470,14 @@ func (c Config) Validate() error {
 			if rule.Route != "upstream" && rule.Route != "shadow" {
 				errs = append(errs, fmt.Errorf("%s.ifDown only applies when route is upstream or shadow; the other routes already try the local model", where))
 			}
+		}
+		for window, share := range rule.IfUsageAbove {
+			if window == "" || share <= 0 || share > 1 {
+				errs = append(errs, fmt.Errorf("%s.ifUsageAbove %q: %v is not a share above 0 and at most 1; use, say, {\"5h\": 0.8}", where, window, share))
+			}
+		}
+		if len(rule.IfUsageAbove) > 0 && rule.Route == "upstream" {
+			errs = append(errs, fmt.Errorf("%s.ifUsageAbove sends nothing anywhere new with route upstream; use a route that tries the local model", where))
 		}
 		switch {
 		case rule.MaxSeconds < 0:

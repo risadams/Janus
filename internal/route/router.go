@@ -70,6 +70,10 @@ type Rule struct {
 	// answer on the escalate route. It applies as well as the model's own
 	// Timeout; whichever is shorter wins.
 	TrialTimeout time.Duration
+	// IfUsageAbove, when set, matches only once one of the subscription's
+	// usage limits, by the API's name for its window ("5h", "7d"), is
+	// used past the share given, from 0 to 1, as Claude last reported.
+	IfUsageAbove map[string]float64
 }
 
 // Facts is what a rule is matched against.
@@ -78,6 +82,9 @@ type Facts struct {
 	Model  string
 	Tokens int // estimated
 	Tools  bool
+	// Usage is each usage limit's share used, as Claude last reported it;
+	// a limit missing from it is not known.
+	Usage map[string]float64
 }
 
 // FactsOf gathers the facts about a request.
@@ -106,6 +113,11 @@ func (rule Rule) mismatch(f Facts) string {
 			return "the request offers tools"
 		}
 		return "the request offers no tools"
+	}
+	if len(rule.IfUsageAbove) > 0 {
+		if why, _ := rule.usageMismatch(f.Usage); why != "" {
+			return why
+		}
 	}
 	return ""
 }
@@ -139,6 +151,9 @@ type Router struct {
 	// down decides when Claude has been down long enough for an ifDown
 	// stand-in (#150).
 	down outage
+	// limits is Claude's latest word on the usage limits, for rules with
+	// IfUsageAbove (#240).
+	limits headroom
 }
 
 // slots counts the requests in flight to each local model, so that rules
@@ -273,6 +288,12 @@ func (r *Router) Report(ex proxy.Exchange) {
 		r.down.recovered() // Claude answered
 	}
 	switch {
+	case ex.Backend == "upstream":
+		r.limits.observe(anthropic.QuotaFrom(ex.ResponseHeader))
+	case ex.Attempt != nil && ex.Attempt.Backend == "upstream":
+		r.limits.observe(anthropic.QuotaFrom(ex.Attempt.ResponseHeader))
+	}
+	switch {
 	case ex.Attempt != nil && ex.Attempt.Backend == "local":
 		r.health.record(!ex.Attempt.Fault)
 	case ex.Backend == "local":
@@ -331,6 +352,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		return plan
 	}
 	facts := FactsOf(header, req)
+	facts.Usage = r.limits.used(time.Now())
 	// The request as it arrived, kept for a fallback that is planned
 	// later, after the request itself may have been repaired for upstream.
 	arrived := bytes.Clone(req.Bytes())
@@ -434,6 +456,10 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		if why := rule.mismatch(facts); why != "" {
 			trace = append(trace, fmt.Sprintf("%s: no match (%s)", label, why))
 			continue
+		}
+		// The decision says which limit made a usage rule match.
+		if _, matched := rule.usageMismatch(facts.Usage); len(rule.IfUsageAbove) > 0 {
+			label += " (" + matched + ")"
 		}
 		switch rule.Route {
 		case RouteLocal, RouteEscalate:

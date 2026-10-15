@@ -267,6 +267,17 @@ func TestValidate(t *testing.T) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
 			c.Routing = []Rule{{Route: "local", Local: "janus-local", IfDown: "janus-local"}}
 		}, "ifDown only applies"},
+		{"a rule that waits for the five-hour limit", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Class: "subagent", Route: "local-then-escalate", Local: "janus-local", IfUsageAbove: map[string]float64{"5h": 0.8}}}
+		}, ""},
+		{"ifUsageAbove past the whole limit", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Route: "local", Local: "janus-local", IfUsageAbove: map[string]float64{"5h": 80}}}
+		}, `routing[0].ifUsageAbove "5h": 80 is not a share`},
+		{"ifUsageAbove on an upstream rule", func(c *Config) {
+			c.Routing = []Rule{{Route: "upstream", IfUsageAbove: map[string]float64{"5h": 0.8}}}
+		}, "ifUsageAbove sends nothing anywhere new"},
 		{"an unknown check", func(c *Config) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
 			c.Routing = []Rule{{Route: "local-then-escalate", Local: "janus-local", SkipChecks: []string{"vibes"}}}
