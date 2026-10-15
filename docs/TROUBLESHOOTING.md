@@ -58,10 +58,13 @@ Janus, and Janus isn't running. If you set it in
 a service ([installing](guide/install.md#6-run-janus-in-the-background-optional)),
 or remove the setting to go straight to Anthropic.
 
-**The service doesn't start.** Run the same command it runs, with the
-same `-config`, in a terminal; Janus prints why it stopped. A relative
-`-config` path is the usual cause, since a service doesn't start in your
-Janus folder.
+**The service doesn't start.** `janus service status` says whether it
+is running. Run the command it runs, which `janus service install`
+printed (`Runs ...`), in a terminal; Janus prints why it stopped. On
+macOS its console is in `janus.log` in the log folder. Moving the binary
+or the config breaks a service: run `janus service install` again. In a
+unit you wrote yourself, a relative `-config` path is the usual cause,
+since a service doesn't start in your Janus folder.
 
 ## Getting started
 

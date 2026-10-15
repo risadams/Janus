@@ -259,67 +259,33 @@ Nothing goes to the local model until you turn on a feature that uses it.
 ## 6. Run Janus in the background (optional)
 
 Running Janus in a terminal is fine for trying it. To have it start when
-you log in, run it as a service. Give it the config file in full, since a
-service does not start in your Janus folder.
-
-### macOS: launchd
-
-Save as `~/Library/LaunchAgents/com.github.risadams.janus.plist`, with
-your own paths:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.github.risadams.janus</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/Users/you/.local/bin/janus</string>
-    <string>-config</string>
-    <string>/Users/you/janus/janus.config.json</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/Users/you/janus/janus.out.log</string>
-  <key>StandardErrorPath</key><string>/Users/you/janus/janus.log</string>
-</dict>
-</plist>
-```
-
-Then load it:
+you log in, and again if it stops, run it as a service. From your Janus
+folder:
 
 ```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.github.risadams.janus.plist
+janus service install            # or: janus service install -config ~/janus/janus.config.json
+janus service status
+janus service uninstall
 ```
 
-The console lines Janus would print go to `janus.log`; follow them with
-`tail -f ~/janus/janus.log`. To stop it, `launchctl bootout
-gui/$(id -u)/com.github.risadams.janus`.
+`install` writes the unit with the full paths of the janus binary and
+the config file, since a service starts in no particular folder, and
+starts it. It refuses a config file that does not exist, or has
+problems, and a binary from `go run`, which is deleted when it exits:
+install janus first. Run `install` again after moving either.
 
-### Linux: systemd
+On macOS it writes a launchd agent,
+`~/Library/LaunchAgents/com.github.risadams.janus.plist`, and the
+console lines Janus would print go to `janus.log` in its log folder; the
+command prints how to follow them. On Linux it writes a systemd user
+unit, `~/.config/systemd/user/janus.service`, and the console goes to
+the journal: `journalctl --user -u janus -f`.
 
-Save as `~/.config/systemd/user/janus.service`:
-
-```ini
-[Unit]
-Description=Janus proxy for Claude Code
-
-[Service]
-ExecStart=%h/.local/bin/janus -config %h/janus/janus.config.json
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
-```
-
-Then:
-
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now janus
-journalctl --user -u janus -f    # the console lines
-```
+To write one yourself instead, the plist runs the binary with `-config`
+and the config's full path, with `RunAtLoad` and `KeepAlive` set, and is
+loaded with `launchctl bootstrap gui/$(id -u) <plist>`; the systemd unit
+has `ExecStart=<binary> -config <config>` and `Restart=on-failure`, and
+is started with `systemctl --user enable --now janus`.
 
 ### Windows
 
@@ -340,9 +306,8 @@ have, and the console prints it at the top when Janus starts.
 
 ## Removing Janus
 
-1. Stop Janus, and remove its service if you made one (`launchctl
-   bootout ...`, then delete the plist; or `systemctl --user disable --now
-   janus`, then delete the unit file).
+1. Stop Janus, and remove its service if you made one (`janus service
+   uninstall`).
 2. Remove the setting that points Claude Code at Janus: the alias, or the
    `env` entries in `~/.claude/settings.json`.
 3. If you added the worker tools, `claude mcp remove janus`.
