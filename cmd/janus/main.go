@@ -363,7 +363,7 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 	if err := led.Append(rec); err != nil {
 		console.Printf("janus: %v", err)
 	}
-	console.Request(ex, rec, slices.Concat(exchangeNotes(ex), guardNotes, outageNotes))
+	console.Request(ex, rec, slices.Concat(exchangeNotes(ex), guardNotes, outageNotes, console.QuotaNotes(rec.Quota)))
 	return rec
 }
 

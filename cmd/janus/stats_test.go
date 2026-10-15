@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/ledger"
 )
 
@@ -275,6 +276,35 @@ func TestStatsDaily(t *testing.T) {
 	js, _, _ := stats(t, "-dir", dir, "-daily", "-json")
 	if !strings.Contains(js, `"by_day"`) {
 		t.Errorf("-json -daily has no by_day:\n%s", js)
+	}
+}
+
+func TestStatsSaysWhereTheLimitsStand(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	l := ledger.Open(dir)
+	when := time.Now().Add(-time.Hour)
+	for i, used := range []float64{0.10, 0.30, 0.35} {
+		class := []string{"main", "main", "safety"}[i]
+		l.Append(ledger.Record{V: 1, ID: string(rune('a' + i)), Time: when.Add(time.Duration(i) * time.Minute), Class: class,
+			Backend: "upstream", Outcome: ledger.OutcomeOK, Quota: &anthropic.Quota{Windows: map[string]anthropic.QuotaWindow{
+				"5h": {Utilization: used, Resets: when.Add(2 * time.Hour)},
+				"7d": {Utilization: 0.06},
+			}}})
+	}
+	out, _, _ := stats(t, "-dir", dir)
+	squeezed := strings.Join(strings.Fields(out), " ")
+	for _, want := range []string{
+		"Usage limits, as of",
+		"five-hour 35% used resets at " + when.Add(2*time.Hour).Format("15:04"),
+		"weekly 6% used",
+		"The five-hour limit used in this range, by class: main 80%, safety 20%.",
+	} {
+		if !strings.Contains(squeezed, want) {
+			t.Errorf("report is missing %q:\n%s", want, out)
+		}
+	}
+	if clean, _, _ := stats(t, "-dir", seedLedger(t)); strings.Contains(clean, "Usage limits") {
+		t.Errorf("limits reported with no quota in the ledger:\n%s", clean)
 	}
 }
 

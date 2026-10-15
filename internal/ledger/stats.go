@@ -191,6 +191,9 @@ type Report struct {
 	// Transforms is what each transform saved, set beside what the guard
 	// expected when it decided.
 	Transforms []TransformRow `json:"transforms,omitempty"`
+	// Quota is where the subscription's limits stood, and which kinds of
+	// request used them.
+	Quota *QuotaSummary `json:"quota,omitempty"`
 	// Outages are the runs of requests Claude could not answer, and how
 	// many of them the local model answered instead.
 	Outages []Outage `json:"outages,omitempty"`
@@ -321,6 +324,7 @@ func Summarise(records []Record, prices Prices) Report {
 
 	rep.ByClass, rep.ByModel, rep.ByBackend = sorted(byClass), sorted(byModel), sorted(byBackend)
 	rep.Outages = Outages(records)
+	rep.Quota = summariseQuota(records)
 	for class, tally := range shadows {
 		rep.Shadow = append(rep.Shadow, tally.row(class))
 	}

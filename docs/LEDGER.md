@@ -271,6 +271,16 @@ local-first attempts **tried** and **accepted**, what local answers
 Claude. Read it to see whether a change made one day worse than the ones
 before. In `-json` it is `by_day`.
 
+On a subscription, a section follows on its usage limits: each limit's
+utilization and reset at the last record that had a `quota`, and each
+kind of request's share of the five-hour limit used in the range. A
+share is the rise in five-hour utilization reported after that kind's
+requests; the API reports utilization in hundredths and for the whole
+account, so over a few requests the shares are rough and over a day they
+say which kinds use the limit. A fall is a reset and is not counted. In
+`-json` it is `quota`: `at`, `latest`, and `by_class` (`class`, `added`,
+`share`).
+
 When the local model answered requests, a section says what they would
 have cost had Claude answered them: each priced at the list price of the
 Claude model it asked for (`request.model`), with the local model's token
