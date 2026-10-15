@@ -119,6 +119,49 @@ func TestLimitsAreKeptForRateLimitsAndServerErrors(t *testing.T) {
 	}
 }
 
+func TestQuotaIsRecordedOnEveryUpstreamResponse(t *testing.T) {
+	h := http.Header{}
+	h.Set("Anthropic-Ratelimit-Unified-5h-Utilization", "0.19")
+	h.Set("Anthropic-Ratelimit-Unified-5h-Status", "allowed")
+	h.Set("Anthropic-Ratelimit-Unified-5h-Reset", "1792114200")
+	h.Set("Anthropic-Ratelimit-Unified-7d-Utilization", "0.06")
+	h.Set("Anthropic-Ratelimit-Unified-7d-Reset", "1792195200")
+	h.Set("Anthropic-Ratelimit-Unified-Status", "allowed")
+	h.Set("Anthropic-Ratelimit-Unified-Representative-Claim", "five_hour")
+	h.Set("Anthropic-Ratelimit-Unified-Overage-Disabled-Reason", "org_level_disabled")
+	want := &Quota{Status: "allowed", Binding: "five_hour", Windows: map[string]QuotaWindow{
+		"5h": {Utilization: 0.19, Status: "allowed", Resets: time.Unix(1792114200, 0).UTC()},
+		"7d": {Utilization: 0.06, Resets: time.Unix(1792195200, 0).UTC()},
+	}}
+
+	ok := exchange()
+	ok.ResponseHeader = h
+	if got := FromExchange(ok).Quota; !reflect.DeepEqual(got, want) {
+		t.Errorf("quota on a 200 = %+v, want %+v", got, want)
+	}
+
+	// When the local model stood in, Claude's refusal still says where
+	// the limits are.
+	stoodIn := exchange()
+	stoodIn.Backend = "local"
+	stoodIn.Attempt = &proxy.Attempt{Backend: "upstream", Why: "upstream answered HTTP 429", Fault: true, ResponseHeader: h}
+	if got := FromExchange(stoodIn).Quota; !reflect.DeepEqual(got, want) {
+		t.Errorf("quota on a stand-in = %+v, want %+v", got, want)
+	}
+
+	local := exchange()
+	local.Backend = "local"
+	local.ResponseHeader = h
+	if got := FromExchange(local).Quota; got != nil {
+		t.Errorf("a local answer has a quota: %+v", got)
+	}
+	plain := exchange()
+	plain.ResponseHeader = http.Header{"Retry-After": {"5"}}
+	if got := FromExchange(plain).Quota; got != nil {
+		t.Errorf("a response without the headers has a quota: %+v", got)
+	}
+}
+
 func TestRecordHoldsNoContentOrCredentials(t *testing.T) {
 	line, err := json.Marshal(FromExchange(exchange()))
 	if err != nil {

@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,6 +54,9 @@ type Record struct {
 	Request  *Request  `json:"request,omitempty"`
 	Response *Response `json:"response,omitempty"`
 	Usage    *Usage    `json:"usage,omitempty"`
+	// Quota is what Claude's response said about the subscription's
+	// limits: how much of each is used and when it resets (#238).
+	Quota *Quota `json:"quota,omitempty"`
 	// Unread says why a Messages response has no usage.
 	Unread string `json:"unread,omitempty"`
 	// Fault is what went wrong getting the response from the backend: it
@@ -294,6 +298,64 @@ func Limits(h http.Header) map[string]string {
 	return out
 }
 
+// Quota is what one response said about the subscription's usage limits,
+// read from its Anthropic-Ratelimit-Unified-* headers. A subscription has
+// several limits at once, each over its own window; the API reports each
+// one's share used and names the one that binds.
+type Quota struct {
+	// Windows is each limit by the API's own name for its window, such as
+	// "5h" and "7d".
+	Windows map[string]QuotaWindow `json:"windows"`
+	// Status is the account's overall status: allowed, allowed_warning,
+	// or rejected.
+	Status string `json:"status,omitempty"`
+	// Binding is the limit the API named as the one that counts now,
+	// such as five_hour or seven_day.
+	Binding string `json:"binding,omitempty"`
+}
+
+// QuotaWindow is one limit's state.
+type QuotaWindow struct {
+	// Utilization is the share of the limit used, from 0; above 1 means
+	// it was exceeded.
+	Utilization float64   `json:"utilization"`
+	Status      string    `json:"status,omitempty"`
+	Resets      time.Time `json:"resets,omitzero"`
+}
+
+const unifiedPrefix = "anthropic-ratelimit-unified-"
+
+// QuotaFrom reads the subscription's limits from a response's headers. It
+// is nil when there are none, as for an API key, which has rate limits of
+// another kind, or for any backend but Anthropic's.
+func QuotaFrom(h http.Header) *Quota {
+	var q *Quota
+	get := func(name string) string { return h.Get(unifiedPrefix + name) }
+	for k := range h {
+		name := strings.ToLower(k)
+		window, ok := strings.CutSuffix(strings.TrimPrefix(name, unifiedPrefix), "-utilization")
+		if !ok || !strings.HasPrefix(name, unifiedPrefix) || window == "" {
+			continue
+		}
+		used, err := strconv.ParseFloat(h.Get(k), 64)
+		if err != nil {
+			continue
+		}
+		w := QuotaWindow{Utilization: used, Status: get(window + "-status")}
+		if epoch, err := strconv.ParseInt(get(window+"-reset"), 10, 64); err == nil {
+			w.Resets = time.Unix(epoch, 0).UTC()
+		}
+		if q == nil {
+			q = &Quota{Windows: map[string]QuotaWindow{}}
+		}
+		q.Windows[window] = w
+	}
+	if q != nil {
+		q.Status, q.Binding = get("status"), get("representative-claim")
+	}
+	return q
+}
+
 // FromExchange builds the record for one proxied request.
 func FromExchange(ex proxy.Exchange) Record {
 	rec := Record{
@@ -323,6 +385,9 @@ func FromExchange(ex proxy.Exchange) Record {
 	if route.UpstreamDown(ex.Status) {
 		rec.Limits = Limits(ex.ResponseHeader)
 	}
+	if ex.Backend == "upstream" {
+		rec.Quota = QuotaFrom(ex.ResponseHeader)
+	}
 	for _, e := range ex.Transforms {
 		rec.Transforms = append(rec.Transforms, Transform{
 			Name: e.Name, Blocks: e.Blocks, Rewritten: e.Rewritten, Revised: e.Revised, Declined: e.Declined,
@@ -333,6 +398,11 @@ func FromExchange(ex proxy.Exchange) Record {
 	if a := ex.Attempt; a != nil {
 		rec.Attempt = &Attempt{Backend: a.Backend, Model: a.Model, Why: a.Why, Cause: a.Cause, DurationMs: a.Duration.Milliseconds(),
 			Limits: Limits(a.ResponseHeader)}
+		// When Claude was tried first and the local model stood in,
+		// Claude's answer is still the latest word on the limits.
+		if a.Backend == "upstream" && rec.Quota == nil {
+			rec.Quota = QuotaFrom(a.ResponseHeader)
+		}
 		switch {
 		case a.Accepted:
 			rec.Attempt.Verdict, rec.Attempt.Why, rec.Attempt.Cause = VerdictAccepted, "", ""
