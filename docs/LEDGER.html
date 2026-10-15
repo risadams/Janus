@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">The ledger and captures | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/LEDGER"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="The ledger and captures | Janus"><meta data-rh="true" name="description" content="Janus writes two kinds of record under logging.dir (default logs/,"><meta data-rh="true" property="og:description" content="Janus writes two kinds of record under logging.dir (default logs/,"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/LEDGER"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/LEDGER" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/LEDGER" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"The ledger and captures","item":"https://risadams.github.io/Janus/docs/LEDGER"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.18a7db86.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.ef09ee88.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.3c23d1a0.js" defer="defer"></script>
 </head>
 <body>
@@ -536,6 +536,17 @@ not billed per token, so on one it is a measure of usage, not a bill.</li>
 report lists how many and why. An unpriced request is never counted as
 free.</li>
 </ul>
+<p>When the local model answered requests, a section says what they would
+have cost had Claude answered them: each priced at the list price of the
+Claude model it asked for (<code>request.model</code>), with the local model&#x27;s token
+counts. It counts answers the local model gave by choice, by a rule or an
+accepted local-first attempt. Stand-ins are left out, since Claude could
+not answer those. A request that asked for a model with no price, such as
+the <code>janus-local</code> alias, is counted separately, never as free. The local
+model counts tokens with its own tokenizer, and Claude would have cached a
+different share of each prompt, so read the figure as the size of the
+saving rather than an exact one. In <code>-json</code> it is <code>local_saving</code>:
+<code>requests</code>, <code>usd</code>, and <code>unpriced</code>.</p>
 <p>When the guard was on, sections follow for what it did: secrets found and
 replaced, and content the local-only policy kept from Anthropic, by how
 (withheld with a notice, answered locally, or refused) and by its most

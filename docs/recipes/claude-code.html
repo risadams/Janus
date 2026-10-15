@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Recipe: run Claude Code&#x27;s subagents on the local model | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/recipes/claude-code"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Recipe: run Claude Code&#x27;s subagents on the local model | Janus"><meta data-rh="true" name="description" content="Claude stays the brain: the main conversation goes to Anthropic as usual."><meta data-rh="true" property="og:description" content="Claude stays the brain: the main conversation goes to Anthropic as usual."><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/recipes/claude-code"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/recipes/claude-code" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/recipes/claude-code" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Subagents on a local model","item":"https://risadams.github.io/Janus/docs/recipes/claude-code"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.18a7db86.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.ef09ee88.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.3c23d1a0.js" defer="defer"></script>
 </head>
 <body>
@@ -96,7 +96,8 @@ warning and the session carries on. With a rule there is no warning.</li>
 <li class=""><strong>Claude Code&#x27;s own cost figure is no longer right.</strong> With the alias it
 does not know what <code>janus-local</code> costs; with a rule it prices local
 answers as if Claude had given them. Use <code>janus stats</code>, which counts
-local answers as zero upstream cost.</li>
+local answers as zero upstream cost, and says separately what they
+would have cost had Claude answered them.</li>
 <li class=""><strong>With the alias, a request too large for the local model is refused,
 not rerouted.</strong> An alias has no upstream model behind it, so Janus
 returns an error saying how large the request was and what the model&#x27;s
