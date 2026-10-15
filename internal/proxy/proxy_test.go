@@ -39,6 +39,16 @@ func start(t *testing.T, upstream http.Handler, basePath string) string {
 // janus actually sent.
 var plainClient = &http.Client{Transport: &http.Transport{DisableCompression: true}}
 
+// unreachable is the address of an upstream that refuses every connection.
+// Nothing listens on port 1, and it is never given to a test server. A port
+// freed by closing a server is not safe: the next server started can be
+// given it, and a janus whose upstream is itself forwards to itself until
+// the test hangs (#211).
+func unreachable() *url.URL {
+	u, _ := url.Parse("http://127.0.0.1:1")
+	return u
+}
+
 func TestForwardsRequestUntouched(t *testing.T) {
 	var got *http.Request
 	var gotBody []byte
@@ -201,9 +211,7 @@ func TestClientDisconnectCancelsUpstream(t *testing.T) {
 }
 
 func TestUpstreamUnreachable(t *testing.T) {
-	dead := httptest.NewServer(http.NotFoundHandler())
-	u, _ := url.Parse(dead.URL)
-	dead.Close()
+	u := unreachable()
 	front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: quiet}))
 	defer front.Close()
 
@@ -231,9 +239,7 @@ func TestUpstreamUnreachable(t *testing.T) {
 // The ledger and the capture must say why janus answered 502, which no
 // backend did: on 2026-10-12 nine of them said nothing (#95).
 func TestUpstreamUnreachableIsExplained(t *testing.T) {
-	dead := httptest.NewServer(http.NotFoundHandler())
-	u, _ := url.Parse(dead.URL)
-	dead.Close()
+	u := unreachable()
 	reported := make(chan Exchange, 1)
 	front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: func(ex Exchange) { reported <- ex }, KeepBodies: true}))
 	defer front.Close()

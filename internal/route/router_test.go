@@ -82,6 +82,16 @@ func answerLoad(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"type":"llm","instance_id":%q,"load_time_seconds":0.1,"status":"loaded","load_config":{"context_length":%d}}`, asked.Model, asked.ContextLength)
 }
 
+// unreachable is the address of a backend that refuses every connection.
+// Nothing listens on port 1, and it is never given to a test server. A port
+// freed by closing a server is not safe: the next server started can be
+// given it, and a request meant for nobody reaches that server instead,
+// or janus itself (#211).
+func unreachable() *url.URL {
+	u, _ := url.Parse("http://127.0.0.1:1")
+	return u
+}
+
 func router(local *backend.Local, aliases map[string]LocalModel) *Router {
 	up, _ := url.Parse("https://api.anthropic.com")
 	return &Router{Upstream: backend.NewUpstream(up, nil), Local: local, Aliases: aliases}
@@ -140,9 +150,7 @@ func TestPlanSendsAnAliasLocal(t *testing.T) {
 
 func TestPlanRefusals(t *testing.T) {
 	local, _ := lmStudio(t, nil)
-	dead := httptest.NewServer(http.NotFoundHandler())
-	deadURL, _ := url.Parse(dead.URL)
-	dead.Close()
+	deadURL := unreachable()
 
 	big := `{"model":"janus-local","messages":[{"role":"user","content":"` + strings.Repeat("word ", 40000) + `"}]}` // 200 kB, about 66,700 tokens by estimate
 	small := `{"model":"janus-local","messages":[{"role":"user","content":"hi"}]}`
@@ -521,9 +529,7 @@ func TestNoRuleMatchesGoesUpstream(t *testing.T) {
 // the request must go to that real model untouched, not fail.
 func TestRuleFallsBackUpstreamWhenLocalCannotTakeIt(t *testing.T) {
 	local, _ := lmStudio(t, nil)
-	dead := httptest.NewServer(http.NotFoundHandler())
-	deadURL, _ := url.Parse(dead.URL)
-	dead.Close()
+	deadURL := unreachable()
 	big := `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"` + strings.Repeat("word ", 40000) + `"}]}`
 
 	cases := map[string]struct {
@@ -720,9 +726,7 @@ func TestReportCountsDirectLocalFailures(t *testing.T) {
 
 // LM Studio being unreachable when the plan is made counts as a fault too.
 func TestUnreachableAtPlanTimeFeedsTheBreaker(t *testing.T) {
-	dead := httptest.NewServer(http.NotFoundHandler())
-	deadURL, _ := url.Parse(dead.URL)
-	dead.Close()
+	deadURL := unreachable()
 	r := router(backend.NewLocal(deadURL, nil), nil)
 	r.Rules = []Rule{{Name: "s", Route: RouteLocal, Local: qwen["janus-local"]}}
 
@@ -773,9 +777,7 @@ func TestSubagentRuleEndToEnd(t *testing.T) {
 }
 
 func TestSubagentRuleFallsBackEndToEnd(t *testing.T) {
-	dead := httptest.NewServer(http.NotFoundHandler())
-	deadURL, _ := url.Parse(dead.URL)
-	dead.Close()
+	deadURL := unreachable()
 	rules := []Rule{{Name: "subagents", Class: Subagent, Route: RouteLocal, Local: qwen["janus-local"]}}
 	var upstreamBody string
 
@@ -830,9 +832,7 @@ const mixedHistory = `{"model":"claude-opus-5-5","messages":[` +
 // had a turn in.
 func TestUpstreamPlansRepairMixedHistory(t *testing.T) {
 	local, _ := lmStudio(t, nil)
-	dead := httptest.NewServer(http.NotFoundHandler())
-	deadURL, _ := url.Parse(dead.URL)
-	dead.Close()
+	deadURL := unreachable()
 
 	cases := map[string]*Router{
 		"no rule matches":              router(local, nil),
@@ -1226,9 +1226,7 @@ func TestOverrideHeaderBeatsTheRules(t *testing.T) {
 
 func TestOverrideRefusals(t *testing.T) {
 	local, _ := lmStudio(t, nil)
-	dead := httptest.NewServer(http.NotFoundHandler())
-	deadURL, _ := url.Parse(dead.URL)
-	dead.Close()
+	deadURL := unreachable()
 	two := map[string]LocalModel{"small": {ID: "gemma-4-e4b"}, "large": {ID: "qwen/qwen3.8-27b"}}
 
 	cases := map[string]struct {
