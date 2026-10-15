@@ -655,7 +655,9 @@ func TestNarrowsAcceptEncodingOnMessagesOnly(t *testing.T) {
 
 // A plan's Release is how a planner limits the requests in flight to a
 // backend (#128): it must run exactly once, and as soon as the backend is
-// done with the request, not when the fallback is.
+// done with the request, not when the fallback is. It runs before the
+// exchange is reported, so the count is read inside Done: read after Done,
+// it raced with a Release that ran later (#211).
 func TestPlanReleaseRunsOnceAndEarly(t *testing.T) {
 	answer := `{"type":"message","model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":1}}`
 	for _, c := range []struct {
@@ -690,8 +692,8 @@ func TestPlanReleaseRunsOnceAndEarly(t *testing.T) {
 			}
 			return p, nil
 		}
-		reported := make(chan Exchange, 1)
-		front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(firstURL, nil), Plan: plan, Done: func(ex Exchange) { reported <- ex }}))
+		reported := make(chan int32, 1)
+		front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(firstURL, nil), Plan: plan, Done: func(Exchange) { reported <- released.Load() }}))
 
 		resp, err := plainClient.Post(front.URL+"/v1/messages", "application/json", strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
 		if err != nil {
@@ -699,10 +701,9 @@ func TestPlanReleaseRunsOnceAndEarly(t *testing.T) {
 		}
 		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
-		<-reported
 
-		if n := released.Load(); n != 1 {
-			t.Errorf("%s: Release ran %d times, want once", c.name, n)
+		if n := <-reported; n != 1 {
+			t.Errorf("%s: Release ran %d times before the exchange was reported, want once", c.name, n)
 		}
 		if c.trial && !c.accept && releasedWhenFallbackAsked != 1 {
 			t.Errorf("%s: the fallback was asked before Release ran (released %d)", c.name, releasedWhenFallbackAsked)
