@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"github.com/risadams/janus/internal/backend"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -25,6 +26,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -190,6 +192,11 @@ func perform(t *testing.T, target string, c fidelityCase) got {
 }
 
 func tryPerform(target string, c fidelityCase) (got, error) {
+	return tryPerformWith(plainClient, target, c)
+}
+
+// tryPerformWith is tryPerform with the client given.
+func tryPerformWith(client *http.Client, target string, c fidelityCase) (got, error) {
 	// A stalled transfer fails here rather than holding up the whole run.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -203,7 +210,7 @@ func tryPerform(target string, c fidelityCase) (got, error) {
 	if req.Header.Get("User-Agent") == "" {
 		req.Header.Set("User-Agent", "fidelity-test")
 	}
-	resp, err := plainClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return got{}, fmt.Errorf("sending: %w", err)
 	}
@@ -445,6 +452,40 @@ func BenchmarkMessagesThroughJanus(b *testing.B) { benchmarkMessages(b, true) }
 // client gets a truncated response. It happened about once in several
 // hundred large requests on Linux and never on macOS, which is why this
 // repeats: one pass of the fidelity suite is not enough to see it.
+// testReceiveBuffer is the receive buffer the large-body test fixes on
+// its sockets.
+//
+// On Linux, a loopback socket whose receive buffer the kernel sizes for
+// itself can shrink while a reader without the CPU to keep up falls behind
+// a large body arriving in pieces. The kernel then drops data and the
+// sender crawls on zero-window probes, so a 1 MB transfer that takes
+// milliseconds takes about five seconds, and does again on every transfer
+// over that connection. Janus relays in pieces, so through Janus is where
+// it showed; a plain server writing in pieces stalls the same way. Fixing
+// the buffer keeps the test about Janus rather than the kernel
+// (docs/research/loopback-stall.md, #215).
+const testReceiveBuffer = 4 << 20
+
+// fixBuffer is a dialer or listener Control that fixes the socket's
+// receive buffer at testReceiveBuffer.
+func fixBuffer(network, address string, c syscall.RawConn) error {
+	return c.Control(func(fd uintptr) { fixReceiveBuffer(fd, testReceiveBuffer) })
+}
+
+// fixedBufferServer is httptest.NewServer on a listener whose receive
+// buffer is fixed; connections it accepts inherit the buffer.
+func fixedBufferServer(h http.Handler) *httptest.Server {
+	l, err := (&net.ListenConfig{Control: fixBuffer}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(fmt.Sprintf("listening for a test server: %v", err))
+	}
+	s := httptest.NewUnstartedServer(h)
+	s.Listener.Close()
+	s.Listener = l
+	s.Start()
+	return s
+}
+
 func TestLargeBodiesRepeatedly(t *testing.T) {
 	if testing.Short() {
 		t.Skip("repetition test")
@@ -459,7 +500,7 @@ func TestLargeBodiesRepeatedly(t *testing.T) {
 		t.Fatal("the large-body case is missing from fidelityCases")
 	}
 
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := fixedBufferServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if n, err := io.Copy(io.Discard, r.Body); err != nil {
 			t.Errorf("upstream could not read the request after %d bytes: %v", n, err)
 		}
@@ -469,7 +510,7 @@ func TestLargeBodiesRepeatedly(t *testing.T) {
 	u, _ := url.Parse(upstream.URL)
 	var mu sync.Mutex
 	var faults []string
-	janus := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), KeepBodies: true, Done: func(ex Exchange) {
+	janus := fixedBufferServer(New(Options{Upstream: backend.NewUpstream(u, nil), KeepBodies: true, Done: func(ex Exchange) {
 		if ex.Fault != "" || ex.Status != 200 || ex.Cancelled {
 			mu.Lock()
 			faults = append(faults, fmt.Sprintf("status %d, cancelled %v, fault %q, %d response bytes kept", ex.Status, ex.Cancelled, ex.Fault, len(ex.ResponseBody)))
@@ -477,10 +518,13 @@ func TestLargeBodiesRepeatedly(t *testing.T) {
 		}
 	}}))
 
+	dialer := &net.Dialer{Control: fixBuffer}
+	client := &http.Client{Transport: &http.Transport{DisableCompression: true, DialContext: dialer.DialContext}}
+
 	want := 1 << 20
 	for i := 0; i < 400; i++ {
 		for leg, target := range map[string]string{"direct": upstream.URL, "through janus": janus.URL} {
-			g, err := tryPerform(target, large)
+			g, err := tryPerformWith(client, target, large)
 			if err != nil || len(g.Body) != want {
 				t.Errorf("run %d, %s: %d of %d bytes, err: %v", i, leg, len(g.Body), want, err)
 			}
