@@ -157,7 +157,8 @@ Both are described in [Configuration](../CONFIG.md#keep-working-when-claude-is-d
 - **Claude Code's own cost figure is no longer right.** With the alias it
   does not know what `janus-local` costs; with a rule it prices local
   answers as if Claude had given them. Use `janus stats`, which counts
-  local answers as zero upstream cost.
+  local answers as zero upstream cost, and says separately what they
+  would have cost had Claude answered them.
 - **With the alias, a request too large for the local model is refused,
   not rerouted.** An alias has no upstream model behind it, so Janus
   returns an error saying how large the request was and what the model's

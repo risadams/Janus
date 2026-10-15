@@ -126,6 +126,7 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		printTable(w, "backend", rep.ByBackend, nil)
 	}
 
+	printLocalSaving(w, rep.LocalSaving)
 	printLocalFirst(w, rep.LocalFirst)
 	printLocalFirstCause(w, rep.LocalFirstCause)
 	printDelegated(w, rep.Delegated)
@@ -249,6 +250,26 @@ func printTable(w io.Writer, by string, rows []ledger.Row, total *ledger.Row) {
 		line(*total)
 	}
 	tw.Flush()
+}
+
+// printLocalSaving reports what the local model's answers would have cost
+// had Claude given them, which is what routing to it saved.
+func printLocalSaving(w io.Writer, s ledger.LocalSaving) {
+	if s.Requests == 0 {
+		return
+	}
+	priced := s.Requests - s.Unpriced
+	fmt.Fprintf(w, "\nSaved by answering locally\n")
+	if priced > 0 {
+		fmt.Fprintf(w, "  %s requests the local model answered would have cost about $%.4f had\n"+
+			"  Claude answered them, at the list price of the model each asked for. The\n"+
+			"  local model counts and caches tokens differently from Claude, so read it as\n"+
+			"  the size of the saving, not an exact figure.\n", commas(priced), s.USD)
+	}
+	if s.Unpriced > 0 {
+		fmt.Fprintf(w, "  %s local answers are not in it: they reported no usage, or asked for a\n"+
+			"  model with no price, such as a local alias.\n", commas(s.Unpriced))
+	}
 }
 
 // printLocalFirst reports how often trying the local model first paid off.

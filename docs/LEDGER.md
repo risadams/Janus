@@ -261,6 +261,18 @@ outcomes.
   report lists how many and why. An unpriced request is never counted as
   free.
 
+When the local model answered requests, a section says what they would
+have cost had Claude answered them: each priced at the list price of the
+Claude model it asked for (`request.model`), with the local model's token
+counts. It counts answers the local model gave by choice, by a rule or an
+accepted local-first attempt. Stand-ins are left out, since Claude could
+not answer those. A request that asked for a model with no price, such as
+the `janus-local` alias, is counted separately, never as free. The local
+model counts tokens with its own tokenizer, and Claude would have cached a
+different share of each prompt, so read the figure as the size of the
+saving rather than an exact one. In `-json` it is `local_saving`:
+`requests`, `usd`, and `unpriced`.
+
 When the guard was on, sections follow for what it did: secrets found and
 replaced, and content the local-only policy kept from Anthropic, by how
 (withheld with a notice, answered locally, or refused) and by its most

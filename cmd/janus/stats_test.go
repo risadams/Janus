@@ -230,6 +230,32 @@ func TestStatsWarnsAboutUnreadResponses(t *testing.T) {
 	}
 }
 
+func TestStatsSaysWhatLocalAnswersSaved(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ledger")
+	l := ledger.Open(dir)
+	when := time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC)
+	for _, asked := range []string{"claude-opus-5-5", "janus-local"} {
+		l.Append(ledger.Record{V: 1, ID: asked, Time: when, Class: "subagent", Route: "local", Backend: "local",
+			Outcome: ledger.OutcomeOK, Request: &ledger.Request{Model: asked},
+			Response: &ledger.Response{Model: "qwen/qwen3.8-27b"}, Usage: &ledger.Usage{Input: 10_000, Output: 1000}})
+	}
+
+	out, _, _ := stats(t, "-dir", dir)
+	squeezed := strings.Join(strings.Fields(out), " ")
+	for _, want := range []string{
+		// 10,000 x 4 + 1,000 x 20 = 60,000 millionths
+		"Saved by answering locally 1 requests the local model answered would have cost about $0.0600 had Claude answered them",
+		"1 local answers are not in it",
+	} {
+		if !strings.Contains(squeezed, want) {
+			t.Errorf("report is missing %q:\n%s", want, out)
+		}
+	}
+	if clean, _, _ := stats(t, "-dir", seedLedger(t)); strings.Contains(clean, "Saved by answering locally") {
+		t.Errorf("a saving was reported with nothing answered locally:\n%s", clean)
+	}
+}
+
 func TestStatsShadowSection(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "ledger")
 	l := ledger.Open(dir)
