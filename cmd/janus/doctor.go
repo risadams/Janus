@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/config"
+	"github.com/risadams/janus/internal/ledger"
 )
 
 // finding is the result of one check. A failure means janus will not work
@@ -57,6 +59,8 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 			checkLogs(cfg.Logging.Dir),
 		)
 		findings = append(findings, checkLocal(client, cfg)...)
+		ledgerCheck, recent := checkLedger(filepath.Join(cfg.Logging.Dir, "ledger"), time.Now())
+		findings = append(findings, ledgerCheck, checkClaude(cfg.Listen, os.Getenv, claudeSettingsPath(os.Getenv), recent))
 	}
 
 	fmt.Fprintf(stdout, "%s doctor\n\n", versionLine())
@@ -276,4 +280,102 @@ func checkLogs(dir string) finding {
 		return finding{"ok", "logs", dir + " will be created when janus runs"}
 	}
 	return finding{"ok", "logs", dir + " is writable"}
+}
+
+// quietAfter is how long the ledger can go without a request before doctor
+// asks whether Claude Code is still using janus.
+const quietAfter = 24 * time.Hour
+
+// checkLedger says when janus last recorded a request. A setup that works
+// but that Claude Code no longer goes through looks healthy in every other
+// check, so a quiet ledger is the sign of it (#231). recent reports
+// whether a request was recorded within quietAfter.
+func checkLedger(dir string, now time.Time) (f finding, recent bool) {
+	newest, err := ledger.Newest(dir)
+	switch {
+	case err != nil:
+		return finding{"warn", "ledger", fmt.Sprintf("cannot read %s: %v", dir, err)}, false
+	case newest.IsZero():
+		return finding{"ok", "ledger", "nothing recorded yet in " + dir}, false
+	}
+	when := fmt.Sprintf("%s (%s)", newest.Local().Format("2006-01-02 15:04"), ago(now.Sub(newest)))
+	if now.Sub(newest) > quietAfter {
+		return finding{"warn", "ledger", "the last request was recorded " + when + ".\n" +
+			"If Claude Code has been used since, it is not going through janus; see claude below."}, false
+	}
+	return finding{"ok", "ledger", "the last request was recorded " + when}, true
+}
+
+// ago writes a duration the way a person would say it.
+func ago(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%d minutes ago", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%d hours ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+	}
+}
+
+// claudeSettingsPath is Claude Code's user settings file, under
+// CLAUDE_CONFIG_DIR when that is set and ~/.claude otherwise.
+func claudeSettingsPath(getenv func(string) string) string {
+	dir := getenv("CLAUDE_CONFIG_DIR")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		dir = filepath.Join(home, ".claude")
+	}
+	return filepath.Join(dir, "settings.json")
+}
+
+// checkClaude says whether Claude Code is pointed at janus, by
+// ANTHROPIC_BASE_URL in doctor's own environment or in Claude Code's user
+// settings. Neither is the only way: a shell alias, or a variable set only
+// where Claude Code is started, cannot be seen from here. So an unset
+// variable is a warning only when the ledger is quiet too; one that points
+// somewhere else always is.
+func checkClaude(listen string, getenv func(string) string, settingsPath string, recent bool) finding {
+	type source struct{ where, value string }
+	var set []source
+	if v := getenv("ANTHROPIC_BASE_URL"); v != "" {
+		set = append(set, source{"ANTHROPIC_BASE_URL in this shell", v})
+	}
+	if settingsPath != "" {
+		var settings struct {
+			Env map[string]string `json:"env"`
+		}
+		data, err := os.ReadFile(settingsPath)
+		switch {
+		case err == nil && json.Unmarshal(data, &settings) != nil:
+			return finding{"warn", "claude", settingsPath + " is not valid JSON, so whether it points Claude Code at janus is unknown"}
+		case err == nil && settings.Env["ANTHROPIC_BASE_URL"] != "":
+			set = append(set, source{"env.ANTHROPIC_BASE_URL in " + settingsPath, settings.Env["ANTHROPIC_BASE_URL"]})
+		}
+	}
+
+	var at []string
+	for _, s := range set {
+		if !config.PointsAtListen(listen, s.value) {
+			return finding{"warn", "claude", fmt.Sprintf("%s is %s, which is not janus (listening on %s),\n"+
+				"so Claude Code sessions that use it do not go through janus", s.where, s.value, listen)}
+		}
+		at = append(at, s.where)
+	}
+	if len(at) > 0 {
+		return finding{"ok", "claude", strings.Join(at, " and ") + " points at janus"}
+	}
+	unset := "ANTHROPIC_BASE_URL is not set in this shell or in " + settingsPath
+	if recent {
+		return finding{"ok", "claude", unset + ";\nsessions reach janus some other way, such as an alias"}
+	}
+	return finding{"warn", "claude", unset + ",\n" +
+		"so Claude Code goes straight to Anthropic unless started with it (as below).\n" +
+		"To send every session through janus, set it under \"env\" in that file; see\n" +
+		"docs/guide/install.md for the catch"}
 }

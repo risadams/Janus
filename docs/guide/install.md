@@ -125,7 +125,10 @@ janus doctor
 ```
 
 `doctor` checks the config, the port, that Anthropic answers, LM Studio,
-and the log folder, and says what to fix. It changes nothing. Before you
+and the log folder, and says what to fix. It changes nothing. Its last
+two lines say when the ledger last recorded a request and whether Claude
+Code is pointed at Janus; until you have used Janus, `claude` warns that
+it isn't. Before you
 set up LM Studio it will warn about it; that is fine for now.
 
 ```bash

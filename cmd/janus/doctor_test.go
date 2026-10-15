@@ -16,6 +16,9 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
+
+	"github.com/risadams/janus/internal/ledger"
 )
 
 const lmStudioModels = `{"data":[
@@ -57,6 +60,12 @@ func doctor(t *testing.T, upstream, local string, extra map[string]any) (out str
 	data, _ := json.Marshal(cfg)
 	path := filepath.Join(dir, "janus.config.json")
 	os.WriteFile(path, data, 0o600)
+	// Keep the real Claude Code settings out of it, and point the
+	// environment at janus as a working setup would.
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	if listen, ok := cfg["listen"].(string); ok {
+		t.Setenv("ANTHROPIC_BASE_URL", "http://"+listen)
+	}
 
 	var stdout, stderr bytes.Buffer
 	code = run([]string{"doctor", "-config", path}, &stdout, &stderr)
@@ -154,7 +163,7 @@ func TestDoctorUpstreamDownFails(t *testing.T) {
 		t.Errorf("exit code = %d, want 1", code)
 	}
 	wantLines(t, out, "fail upstream", "did not answer", "Something above needs fixing")
-	if strings.Contains(out, "ANTHROPIC_BASE_URL") {
+	if strings.Contains(out, "ENABLE_TOOL_SEARCH=true claude") {
 		t.Error("the Claude Code command was printed for a setup that will not work")
 	}
 }
@@ -321,5 +330,61 @@ func TestDoctorChecksRoutedModels(t *testing.T) {
 	out, _, _ := doctor(t, up.URL, lms.URL, map[string]any{"local": map[string]any{"baseUrl": lms.URL, "models": map[string]any{"x": map[string]any{"model": "no-such-model"}}}})
 	if strings.Contains(out, "route") && strings.Contains(out, "no-such-model") {
 		t.Errorf("a model was checked with routing off:\n%s", out)
+	}
+}
+
+func TestDoctorSaysWhenTheLedgerWentQuiet(t *testing.T) {
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	dir := t.TempDir()
+	if f, recent := checkLedger(dir, now); f.level != "ok" || recent || !strings.Contains(f.detail, "nothing recorded yet") {
+		t.Errorf("empty ledger: %+v, recent %v", f, recent)
+	}
+
+	ledger.Open(dir).Append(ledger.Record{V: 1, ID: "a", Time: now.Add(-3 * time.Hour), Class: "main"})
+	if f, recent := checkLedger(dir, now); f.level != "ok" || !recent || !strings.Contains(f.detail, "3 hours ago") {
+		t.Errorf("recent ledger: %+v, recent %v", f, recent)
+	}
+	if f, recent := checkLedger(dir, now.Add(3*24*time.Hour)); f.level != "warn" || recent ||
+		!strings.Contains(f.detail, "3 days ago") || !strings.Contains(f.detail, "not going through janus") {
+		t.Errorf("quiet ledger: %+v, recent %v", f, recent)
+	}
+}
+
+func TestDoctorSaysWhetherClaudeCodeIsPointedAtJanus(t *testing.T) {
+	const listen = "127.0.0.1:8787"
+	settings := func(t *testing.T, body string) string {
+		path := filepath.Join(t.TempDir(), "settings.json")
+		if body != "" {
+			os.WriteFile(path, []byte(body), 0o600)
+		}
+		return path
+	}
+	env := func(v string) func(string) string {
+		return func(k string) string {
+			if k == "ANTHROPIC_BASE_URL" {
+				return v
+			}
+			return ""
+		}
+	}
+	cases := []struct {
+		name, env, settings string
+		recent              bool
+		level, says         string
+	}{
+		{"shell points at janus", "http://localhost:8787", "", false, "ok", "in this shell points at janus"},
+		{"settings point at janus", "", `{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8787"}}`, false, "ok", "settings.json points at janus"},
+		{"settings point elsewhere", "http://127.0.0.1:8787", `{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:9999"}}`, true, "warn", "is http://127.0.0.1:9999, which is not janus"},
+		{"unset, but traffic arrives", "", `{"model":"opus"}`, true, "ok", "some other way, such as an alias"},
+		{"unset and quiet", "", "", false, "warn", "goes straight to Anthropic"},
+		{"settings unreadable", "", "{", false, "warn", "is not valid JSON"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := checkClaude(listen, env(c.env), settings(t, c.settings), c.recent)
+			if f.level != c.level || !strings.Contains(f.detail, c.says) {
+				t.Errorf("got %s %q; want %s saying %q", f.level, f.detail, c.level, c.says)
+			}
+		})
 	}
 }

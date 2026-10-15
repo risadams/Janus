@@ -374,7 +374,7 @@ func (c Config) Validate() error {
 		{"upstream.baseUrl", c.Upstream.BaseURL},
 		{"local.baseUrl", c.Local.BaseURL},
 	} {
-		if pointsAtListen(c.Listen, b.raw) {
+		if PointsAtListen(c.Listen, b.raw) {
 			errs = append(errs, fmt.Errorf("%s %q is janus's own listen address, so janus would send each request back to itself without end; point it at the backend, or move listen to another port", b.field, b.raw))
 		}
 	}
@@ -520,12 +520,13 @@ func isLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// pointsAtListen reports whether a backend URL names janus's own listen
-// address, where janus would forward each request to itself, each hop
-// holding a connection, until something gives out (#216). It catches what
-// the addresses alone can show: the same port, and the same host or a
-// loopback name for a listen address on loopback or on every interface.
-func pointsAtListen(listen, raw string) bool {
+// PointsAtListen reports whether a URL names janus's own listen address:
+// the same port, and the same host or a loopback name for a listen address
+// on loopback or on every interface. Validate uses it to refuse a backend
+// that is janus itself, where janus would forward each request to itself
+// until something gave out (#216); doctor uses it to tell whether Claude
+// Code is pointed at janus (#231).
+func PointsAtListen(listen, raw string) bool {
 	listenHost, listenPort, err := net.SplitHostPort(listen)
 	if err != nil {
 		return false
