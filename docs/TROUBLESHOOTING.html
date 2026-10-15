@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Troubleshooting | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/TROUBLESHOOTING"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Troubleshooting | Janus"><meta data-rh="true" name="description" content="First steps"><meta data-rh="true" property="og:description" content="First steps"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/TROUBLESHOOTING"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/TROUBLESHOOTING" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/TROUBLESHOOTING" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"User guide","item":"https://risadams.github.io/Janus/docs/guide/"},{"@type":"ListItem","position":2,"name":"Troubleshooting","item":"https://risadams.github.io/Janus/docs/TROUBLESHOOTING"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.f1992b82.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.0c629f28.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.3c23d1a0.js" defer="defer"></script>
 </head>
 <body>
@@ -16,7 +16,8 @@
 <p>When something is wrong, these five things find most problems:</p>
 <ol>
 <li class=""><strong><code>janus doctor</code>.</strong> It checks the config, the port, Anthropic, LM
-Studio, and the log folder, and says what to fix.</li>
+Studio, and the log folder, when the ledger last recorded a request,
+and whether Claude Code is pointed at Janus, and says what to fix.</li>
 <li class=""><strong>The console.</strong> Janus prints a line for every request. No lines at
 all means Claude Code is not using Janus. A <code>↳</code> note under a line says
 what happened to that request and why.</li>
@@ -80,7 +81,11 @@ why.</li>
 
 
 
-<table><thead><tr><th>Symptom</th><th>Where to look</th></tr></thead><tbody><tr><td><code>janus: command not found</code>, or the binary won&#x27;t run</td><td><a href="#installing" class="">Installing</a></td></tr><tr><td>Janus won&#x27;t start</td><td><a href="#getting-started" class="">Getting started</a></td></tr><tr><td>Janus prints nothing when Claude Code runs</td><td><a href="#getting-started" class="">Getting started</a></td></tr><tr><td>Claude Code can&#x27;t connect at all</td><td><a href="#installing" class="">Installing</a></td></tr><tr><td><code>could not reach LM Studio</code>, or a model is missing</td><td><a href="#reaching-lm-studio" class="">Reaching LM Studio</a></td></tr><tr><td>Hit the usage limit and the local model didn&#x27;t take over</td><td><a href="#when-claude-is-down" class="">When Claude is down</a></td></tr><tr><td>Every tool call refused as &quot;temporarily unavailable&quot;</td><td><a href="#when-claude-is-down" class="">When Claude is down</a></td></tr><tr><td>Local answers are empty, wrong, or slow</td><td><a href="#local-answers" class="">Local answers</a></td></tr><tr><td>A <code>403</code> or <code>500</code> from Janus, or something withheld</td><td><a href="#the-guard" class="">The guard</a></td></tr><tr><td><code>janus stats</code> is empty or costs look wrong</td><td><a href="#the-books" class="">The books</a></td></tr></tbody></table>
+
+
+
+
+<table><thead><tr><th>Symptom</th><th>Where to look</th></tr></thead><tbody><tr><td><code>janus: command not found</code>, or the binary won&#x27;t run</td><td><a href="#installing" class="">Installing</a></td></tr><tr><td>Janus won&#x27;t start</td><td><a href="#getting-started" class="">Getting started</a></td></tr><tr><td>Janus prints nothing when Claude Code runs</td><td><a href="#getting-started" class="">Getting started</a></td></tr><tr><td>Claude Code can&#x27;t connect at all</td><td><a href="#installing" class="">Installing</a></td></tr><tr><td><code>could not reach LM Studio</code>, or a model is missing</td><td><a href="#reaching-lm-studio" class="">Reaching LM Studio</a></td></tr><tr><td>Hit the usage limit and the local model didn&#x27;t take over</td><td><a href="#when-claude-is-down" class="">When Claude is down</a></td></tr><tr><td>Every tool call refused as &quot;temporarily unavailable&quot;</td><td><a href="#when-claude-is-down" class="">When Claude is down</a></td></tr><tr><td>Local answers are empty, wrong, or slow</td><td><a href="#local-answers" class="">Local answers</a></td></tr><tr><td>A <code>403</code> or <code>500</code> from Janus, or something withheld</td><td><a href="#the-guard" class="">The guard</a></td></tr><tr><td><code>janus stats</code> is empty or costs look wrong</td><td><a href="#the-books" class="">The books</a></td></tr><tr><td><code>janus doctor</code> warns about <code>ledger</code> or <code>claude</code></td><td><a href="#the-books" class="">The books</a></td></tr></tbody></table>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="installing">Installing<a href="#installing" class="hash-link" aria-label="Direct link to Installing" title="Direct link to Installing" translate="no">​</a></h2>
 <p><strong><code>janus: command not found</code>.</strong> The binary is not in a folder on your
 <code>PATH</code>. With <code>go install</code> it is in <code>$(go env GOPATH)/bin</code>, usually
@@ -286,6 +291,17 @@ original is in <code>&lt;logging.dir&gt;/originals</code> for <code>logging.reta
 is the folder it read. Run it where the config is, or pass the same
 <code>-config</code> Janus runs with; with no config file it says so and reads the
 default folder.</p>
+<p><strong><code>janus doctor</code> says the last request was recorded days ago.</strong> Janus is
+set up, but Claude Code has not been sending requests through it: a
+session started without <code>ANTHROPIC_BASE_URL</code> goes straight to Anthropic
+and leaves nothing in the ledger. The <code>claude</code> line says what doctor can
+see: <code>ANTHROPIC_BASE_URL</code> in the shell doctor ran in, and under <code>env</code> in
+Claude Code&#x27;s settings file (<code>~/.claude/settings.json</code>, or under
+<code>CLAUDE_CONFIG_DIR</code>). It warns when either points somewhere other than
+Janus&#x27;s <code>listen</code> address, and when neither is set while the ledger is
+quiet. It cannot see a shell alias, so with an alias and recent requests
+it says <code>ok</code>. Check too that doctor read the config Janus runs with: the
+ledger is under that config&#x27;s <code>logging.dir</code>.</p>
 <p><strong>Costs do not match the bill.</strong> <code>janus stats</code> prices tokens at list
 price. On a subscription there is no per-token bill; the figure is what
 the same usage would cost through the API, which is useful for comparing
