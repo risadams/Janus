@@ -5,7 +5,7 @@
 // and transforms that send fewer tokens.
 //
 // Run with no arguments, it serves. The subcommands are version, stats,
-// doctor, route, replay, audit, and mcp; each answers -h.
+// doctor, route, replay, audit, mcp, and claude; each answers -h.
 package main
 
 import (
@@ -70,6 +70,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return runAudit(args[1:], stdout, stderr)
 		case "mcp":
 			return runMCP(args[1:], os.Stdin, stdout, stderr)
+		case "claude":
+			return runClaude(args[1:], os.Stdin, stdout, stderr)
 		}
 	}
 

@@ -165,12 +165,13 @@ The [configuration reference](docs/CONFIG.md) has every setting.
 | Command | What it does |
 | --- | --- |
 | `janus` | Runs the proxy |
-| `janus doctor` | Checks the config, port, upstream, LM Studio, and log directory, and says what to fix |
+| `janus doctor` | Checks the config, port, upstream, LM Studio, log directory, and whether Claude Code is using Janus, and says what to fix |
 | `janus stats` | Tokens and estimated cost from the ledger; `-since 24h`, `-json` |
 | `janus audit` | What left this machine, request by request; `-verify` re-reads what was sent |
 | `janus route` | Where a saved request would go, and why |
 | `janus replay` | Runs saved requests on the local model and compares its answers with Claude's |
 | `janus mcp` | The MCP server for Claude Code's worker tools |
+| `janus claude` | Starts Claude Code through Janus, after checking Janus is running |
 | `janus version` | Prints the version |
 
 Each one takes `-h`.

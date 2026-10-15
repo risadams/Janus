@@ -164,8 +164,34 @@ Janus.
 
 ### Making it stick
 
-Typing both variables every time gets old. Two ways to make it
+Typing both variables every time gets old. Three ways to make it
 permanent:
+
+**`janus claude`** starts Claude Code through Janus, setting both
+variables for that session only. Run it in your Janus folder, or pass
+`-config` with the file Janus runs with:
+
+```bash
+janus claude                                # instead of claude
+janus claude --resume                       # Claude Code's own arguments follow
+janus claude -config ~/janus/janus.config.json -- -p "hello"
+```
+
+It first checks that Janus is answering on its `listen` address. If it
+isn't:
+
+- With the guard on (`features.guard`), it refuses and says to start
+  Janus. Going straight to Anthropic would send what the guard keeps back.
+- With `-require`, it refuses too.
+- Otherwise it says so and starts Claude Code going straight to
+  Anthropic, so the session works but is not in the ledger.
+
+Janus's own flags (`-config`, `-require`) come first; the first argument
+that isn't one of them, or everything after `--`, goes to Claude Code
+unchanged. `janus claude -h` is Janus's help; `janus claude -- -h` is
+Claude Code's. Don't combine it with the settings file below: `janus
+claude` cannot change what that file sets, so a stopped Janus would still
+cut Claude Code off.
 
 **A shell alias** keeps plain `claude` going straight to Anthropic, and
 gives you a second command that goes through Janus. In `~/.zshrc` or

@@ -113,6 +113,9 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:8787 ENABLE_TOOL_SEARCH=true \
   CLAUDE_CODE_SUBAGENT_MODEL=janus-local claude
 ```
 
+or, with [`janus claude`](../guide/install.md#making-it-stick) setting
+the other two, `CLAUDE_CODE_SUBAGENT_MODEL=janus-local janus claude`.
+
 **One subagent**, in its definition (`.claude/agents/<name>.md`):
 
 ```markdown
