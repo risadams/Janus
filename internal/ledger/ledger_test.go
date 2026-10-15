@@ -129,7 +129,7 @@ func TestQuotaIsRecordedOnEveryUpstreamResponse(t *testing.T) {
 	h.Set("Anthropic-Ratelimit-Unified-Status", "allowed")
 	h.Set("Anthropic-Ratelimit-Unified-Representative-Claim", "five_hour")
 	h.Set("Anthropic-Ratelimit-Unified-Overage-Disabled-Reason", "org_level_disabled")
-	want := &Quota{Status: "allowed", Binding: "five_hour", Windows: map[string]QuotaWindow{
+	want := &anthropic.Quota{Status: "allowed", Binding: "five_hour", Windows: map[string]anthropic.QuotaWindow{
 		"5h": {Utilization: 0.19, Status: "allowed", Resets: time.Unix(1792114200, 0).UTC()},
 		"7d": {Utilization: 0.06, Resets: time.Unix(1792195200, 0).UTC()},
 	}}
