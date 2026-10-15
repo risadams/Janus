@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Using Janus | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/guide/use"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Using Janus | Janus"><meta data-rh="true" name="description" content="Once Janus is installed and configured,"><meta data-rh="true" property="og:description" content="Once Janus is installed and configured,"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/guide/use"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/guide/use" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/guide/use" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"User guide","item":"https://risadams.github.io/Janus/docs/guide/"},{"@type":"ListItem","position":2,"name":"Using","item":"https://risadams.github.io/Janus/docs/guide/use"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.ed4a467b.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.46bfc437.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.3c23d1a0.js" defer="defer"></script>
 </head>
 <body>
@@ -72,6 +72,12 @@ request:</p>
 <p>Here the local model tried a subagent turn, its answer failed the checks,
 and Claude answered. Notes in yellow or red are the ones to read. Notes
 about the guard are said once per conversation, not on every turn.</p>
+<p>On a subscription, notes also say how much of its usage limits is used:
+once at the first answer, then each time a limit passes another tenth,
+and when one resets.</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#ebdbb2;--prism-background-color:#292828"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#ebdbb2;background-color:#292828"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#ebdbb2"><span class="token plain">main       Opus 5.5                ✓ 4.1s    tool call   188k in · 99% cached    310 out    $0.041</span><br></div><div class="token-line" style="color:#ebdbb2"><span class="token plain">          ↳ five-hour limit 80% used, resets at 15:30</span><br></div></code></pre></div></div>
+<p>From 80% the note is yellow; at the limit it is red, and Claude refuses
+requests until it resets. The weekly limit is reported the same way.</p>
 <p>On a subscription the cost column is not a bill. It is what the same
 usage would cost through the API, which is useful for comparing one day,
 or one setup, with another.</p>
@@ -95,6 +101,11 @@ change means something is making requests differ from turn to turn.</li>
 <li class=""><strong><code>safety</code> and <code>status</code>.</strong> In auto mode, Claude Code checks each tool
 call with a separate request (<code>safety</code>), and asks for short progress
 lines while subagents run (<code>status</code>). They can add up.</li>
+<li class=""><strong>Usage limits</strong>, on a subscription: how much of the five-hour and
+weekly limits was used at the last answer, when each resets, and which
+kinds of request used the five-hour limit in the range. The shares are
+rough, but they say where to look: if <code>safety</code> is a large share, auto
+mode&#x27;s checks are using up your limit.</li>
 <li class=""><strong>Saved by answering locally</strong>, if you route requests locally: what
 the local model&#x27;s answers would have cost had Claude given them. It is
 a rough figure, since the local model counts tokens its own way, but it
