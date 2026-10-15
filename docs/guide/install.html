@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Installing Janus | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/guide/install"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Installing Janus | Janus"><meta data-rh="true" name="description" content="This page takes you from nothing to Claude Code talking to Anthropic"><meta data-rh="true" property="og:description" content="This page takes you from nothing to Claude Code talking to Anthropic"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/guide/install"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/guide/install" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/guide/install" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"User guide","item":"https://risadams.github.io/Janus/docs/guide/"},{"@type":"ListItem","position":2,"name":"Installing","item":"https://risadams.github.io/Janus/docs/guide/install"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.0c629f28.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.dbf8fcd3.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.3c23d1a0.js" defer="defer"></script>
 </head>
 <body>
@@ -117,8 +117,26 @@ Claude Code turns tool search off and sends every tool&#x27;s definition with
 every request. Setting it keeps requests the size they would be without
 Janus.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="making-it-stick">Making it stick<a href="#making-it-stick" class="hash-link" aria-label="Direct link to Making it stick" title="Direct link to Making it stick" translate="no">​</a></h3>
-<p>Typing both variables every time gets old. Two ways to make it
+<p>Typing both variables every time gets old. Three ways to make it
 permanent:</p>
+<p><strong><code>janus claude</code></strong> starts Claude Code through Janus, setting both
+variables for that session only. Run it in your Janus folder, or pass
+<code>-config</code> with the file Janus runs with:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#ebdbb2;--prism-background-color:#292828"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#ebdbb2;background-color:#292828"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#ebdbb2"><span class="token plain">janus claude                                </span><span class="token comment" style="color:#a89984"># instead of claude</span><span class="token plain"></span><br></div><div class="token-line" style="color:#ebdbb2"><span class="token plain">janus claude </span><span class="token parameter variable" style="color:#ea6962">--resume</span><span class="token plain">                       </span><span class="token comment" style="color:#a89984"># Claude Code&#x27;s own arguments follow</span><span class="token plain"></span><br></div><div class="token-line" style="color:#ebdbb2"><span class="token plain">janus claude </span><span class="token parameter variable" style="color:#ea6962">-config</span><span class="token plain"> ~/janus/janus.config.json -- </span><span class="token parameter variable" style="color:#ea6962">-p</span><span class="token plain"> </span><span class="token string" style="color:#89b482">&quot;hello&quot;</span><br></div></code></pre></div></div>
+<p>It first checks that Janus is answering on its <code>listen</code> address. If it
+isn&#x27;t:</p>
+<ul>
+<li class="">With the guard on (<code>features.guard</code>), it refuses and says to start
+Janus. Going straight to Anthropic would send what the guard keeps back.</li>
+<li class="">With <code>-require</code>, it refuses too.</li>
+<li class="">Otherwise it says so and starts Claude Code going straight to
+Anthropic, so the session works but is not in the ledger.</li>
+</ul>
+<p>Janus&#x27;s own flags (<code>-config</code>, <code>-require</code>) come first; the first argument
+that isn&#x27;t one of them, or everything after <code>--</code>, goes to Claude Code
+unchanged. <code>janus claude -h</code> is Janus&#x27;s help; <code>janus claude -- -h</code> is
+Claude Code&#x27;s. Don&#x27;t combine it with the settings file below: <code>janus claude</code> cannot change what that file sets, so a stopped Janus would still
+cut Claude Code off.</p>
 <p><strong>A shell alias</strong> keeps plain <code>claude</code> going straight to Anthropic, and
 gives you a second command that goes through Janus. In <code>~/.zshrc</code> or
 <code>~/.bashrc</code>:</p>
