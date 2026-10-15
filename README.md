@@ -173,6 +173,7 @@ The [configuration reference](docs/CONFIG.md) has every setting.
 | `janus replay` | Runs saved requests on the local model and compares its answers with Claude's |
 | `janus mcp` | The MCP server for Claude Code's worker tools |
 | `janus claude` | Starts Claude Code through Janus, after checking Janus is running |
+| `janus service` | Installs, removes, or checks Janus as a service that starts at log in (macOS, Linux) |
 | `janus version` | Prints the version |
 
 Each one takes `-h`.
