@@ -26,6 +26,17 @@ flowchart LR
   janus --> logs[("logs/<br/>ledger and captures")]
 ```
 
+While Claude Code works, Janus prints a line for each request: who answered,
+how long it took, how it ended, the tokens and how many came from the
+prompt cache, and what it would cost at list price. Here subagents are
+answered by a local model, and one local answer fails Janus's checks and
+goes to Claude instead:
+
+<img src="docs/assets/janus-console.svg" alt="The Janus console: one line per request, with main-loop turns on Claude, subagent turns on a local model, and a note where the local answer failed its checks">
+
+<sub>Made-up requests against stand-in backends; [reading the
+console](docs/guide/use.md#reading-the-console) explains each column.</sub>
+
 ## Why
 
 Claude Code is easy to run and hard to see into. A long session makes
@@ -47,7 +58,8 @@ running out of usage looks like, a rule can have the local model stand in.
 ## Quick start
 
 You need Claude Code. LM Studio is only needed for the local-model
-features.
+features. [Before you start](docs/guide/before-you-start.md) says what each
+feature needs and which settings differ from their defaults.
 
 With Go 1.27 or later, install the newest release:
 

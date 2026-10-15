@@ -7,17 +7,20 @@ and keep a session going when Claude is down.
 
 Read these in order the first time:
 
-1. **[Installing](install.md).** Getting the binary on macOS, Linux, or
+1. **[Before you start](before-you-start.md).** What to have in place
+   first, by feature: Claude Code, LM Studio and a model, and the settings
+   in each that differ from their defaults; one machine or two.
+2. **[Installing](install.md).** Getting the binary on macOS, Linux, or
    Windows; pointing Claude Code at Janus for good; setting up LM Studio;
    running Janus in the background; updating and removing it.
-2. **[Configuring](configure.md).** Where the config file is and how it is
+3. **[Configuring](configure.md).** Where the config file is and how it is
    laid out, how to change it safely, and complete configs for the common
    setups: just the books, subagents on a local model, keeping working
    through an outage, keeping secrets in.
-3. **[Using](use.md).** Reading the console, and what `janus stats`,
+4. **[Using](use.md).** Reading the console, and what `janus stats`,
    `audit`, `route`, `replay`, and `mcp` tell you. What an outage looks
    like.
-4. **[Troubleshooting](../TROUBLESHOOTING.md).** First steps when
+5. **[Troubleshooting](../TROUBLESHOOTING.md).** First steps when
    something is wrong, then problems by symptom.
 
 In a hurry? The [quick start](../QUICKSTART.md) gets you running in ten

@@ -13,6 +13,7 @@ const sidebars = {
       label: 'User guide',
       link: { type: 'doc', id: 'guide/README' },
       items: [
+        { type: 'doc', id: 'guide/before-you-start', label: 'Before you start' },
         { type: 'doc', id: 'guide/install', label: 'Installing' },
         { type: 'doc', id: 'guide/configure', label: 'Configuring' },
         { type: 'doc', id: 'guide/use', label: 'Using' },

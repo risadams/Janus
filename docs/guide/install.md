@@ -6,7 +6,8 @@ for the local-model features, making the Claude Code setting stick,
 running Janus in the background, and updating or removing it.
 
 You need Claude Code working already. LM Studio is optional: without it Janus still keeps the
-books and runs the guard.
+books and runs the guard. [Before you start](before-you-start.md) lists
+what each feature needs, and the settings that differ from the defaults.
 
 ## 1. Get the binary
 
@@ -200,7 +201,9 @@ local model. Janus uses [LM Studio](https://lmstudio.ai) for that.
    rambling.
 2. Start LM Studio's local server, from the app. It listens on port 1234.
    To use LM Studio on another machine, turn on serving on the local
-   network in its server settings.
+   network in its server settings; [Before you
+   start](before-you-start.md#lm-studio) has the settings, and how to check
+   it can be reached.
 3. Tell Janus where it is, in `janus.config.json`:
 
    ```json
