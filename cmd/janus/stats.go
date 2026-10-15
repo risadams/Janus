@@ -330,6 +330,11 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		fmt.Fprintf(w, "  Content in a conversation is withheld again on every turn and counted each time.\n")
 	}
 	printOutages(w, rep.Outages)
+	if rep.Handbacks > 0 {
+		fmt.Fprintf(w, "\nClaude took a conversation back %s times, after %s main-loop turns from the\n"+
+			"local model. Claude reads those turns as its own; search the ledger for\n"+
+			"\"handback\" to find where each one ended.\n", commas(rep.Handbacks), commas(rep.HandedBackTurns))
+	}
 	if rep.Unread > 0 {
 		fmt.Fprintf(w, "\nWARNING: %s responses were relayed but could not be read, so their tokens\n"+
 			"are missing from every figure above. Run janus stats -json, or search the\n"+

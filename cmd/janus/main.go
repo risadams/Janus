@@ -349,6 +349,9 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 		guardNotes = append(guardNotes, note{level: info, text: text, once: text})
 	}
 	outageNotes := autoModeNotes(ex, rec, console)
+	if n := handBack(ex, &rec, console); n != nil {
+		outageNotes = append(outageNotes, *n)
+	}
 	if captures != nil {
 		name, err := captures.Write(ex)
 		if err != nil {
@@ -377,6 +380,9 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 func autoModeNotes(ex proxy.Exchange, rec ledger.Record, console *Console) []note {
 	if a := ex.Attempt; a != nil && !a.Accepted && a.Backend == "upstream" && ex.Backend == "local" {
 		console.StoodIn(rec.Session)
+		if rec.Class == string(route.Main) {
+			console.StoodInTurn(rec.Session)
+		}
 		return nil
 	}
 	if rec.Class != string(route.Safety) || ex.Backend != "upstream" || !claudeCouldNotAnswer(ex) || !console.StandingIn(rec.Session) {
@@ -384,6 +390,24 @@ func autoModeNotes(ex proxy.Exchange, rec ledger.Record, console *Console) []not
 	}
 	text := "auto mode's safety check could not reach Claude, so Claude Code will refuse tool calls; press Shift+Tab to leave auto mode and approve them yourself while the local model stands in"
 	return []note{{level: warn, text: text, once: text}}
+}
+
+// handBack marks the first answer Claude gives a conversation's main loop
+// after the local model stood in for it (#241). Claude reads the local
+// turns as its own, so they are said, and recorded, rather than left
+// mixed in unremarked.
+func handBack(ex proxy.Exchange, rec *ledger.Record, console *Console) *note {
+	if rec.Class != string(route.Main) || rec.Session == "" || ex.Backend != "upstream" ||
+		ex.Status <= 0 || ex.Status >= 400 || claudeCouldNotAnswer(ex) {
+		return nil
+	}
+	turns, since := console.HandBack(rec.Session)
+	if turns == 0 {
+		return nil
+	}
+	rec.Handback = &ledger.Handback{LocalTurns: turns, Since: since.UTC()}
+	return &note{level: warn, text: fmt.Sprintf("Claude is answering again, after %d turns from the local model since %s; it reads them as its own, so check what they did",
+		turns, since.Local().Format("15:04"))}
 }
 
 // claudeCouldNotAnswer reports whether Claude's response says it could not

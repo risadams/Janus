@@ -93,6 +93,7 @@ ignore fields they do not know.
 | `usage` | object | Messages responses only; see below |
 | `unread` | string | Why a Messages response has no `usage`, e.g. `content-encoding br` |
 | `quota` | object | On a response from Claude through a subscription: how much of each usage limit is used. `windows` holds each limit by the API's name for its window (`5h`, `7d`), with `utilization` (the share used, from 0; above 1 is over), `status`, and `resets` (when it starts again); `status` is the account's overall status (`allowed`, `allowed_warning`, `rejected`), and `binding` the limit the API says counts now (`five_hour`, `seven_day`). Read from the `anthropic-ratelimit-unified-*` headers; nothing else in them is kept. When the local model stood in, it is what Claude's refusal said. Absent with an API key, and on local answers. |
+| `handback` | object | On Claude's first answer to a conversation's main loop after the local model stood in for it: `local_turns`, how many main-loop turns the local model gave, and `since`, when the first of them was. `janus stats` counts them. |
 | `fault` | string | What went wrong getting the response from the backend: it could not be reached or did not answer in time, with no fallback (Janus then answered with an error of its own), or its response broke off part-way, e.g. a dropped connection. Absent for a response that arrived whole, and for one the client abandoned. |
 | `capture` | string | The capture's path under `captures/`, without extension |
 | `attempt` | object | Present when one backend was tried and another may have answered: `backend`, `model`, `verdict`, `why`, `cause`, `check`, `duration_ms`, and for a rejected attempt its `usage`. See below. |
@@ -303,7 +304,9 @@ before. Each gives when it began and ended, its most common cause
 limit, the subscription limit reached and when Claude said it would answer
 again, from `limits` or `attempt.limits`. Claude Code's start-up `quota`
 check is left out, since a `429` is its normal answer. In `-json` it is
-`outages`.
+`outages`. After it, a line counts the times Claude took a conversation
+back after the local model stood in (`handbacks` and `handed_back_turns`
+in `-json`).
 
 When the guard was on, sections follow for what it did: secrets found and
 replaced, and content the local-only policy kept from Anthropic, by how

@@ -70,6 +70,17 @@ fix them.
 - **Picking up again is safe.** When Claude is back, the conversation
   goes upstream with the local model's turns in it. Janus removes the one
   thing Anthropic would reject, the local model's unsigned thinking.
+- **Janus says when Claude takes over again.** Claude reads the local
+  model's turns as its own, so the first answer it gives the main
+  conversation afterwards gets a note:
+
+  ```
+  ↳ Claude is answering again, after 12 turns from the local model since 09:54; it reads them as its own, so check what they did
+  ```
+
+  The ledger marks that answer with `handback`, and `janus stats` counts
+  them. It is a good moment to ask Claude to review what was done in the
+  meantime.
 
 ## Trying it
 
