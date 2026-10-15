@@ -786,6 +786,10 @@ func New(opts Options) http.Handler {
 		// Deferred because the reverse proxy aborts a response that fails
 		// part-way by panicking; the exchange still has to be reported.
 		defer func() {
+			// The backend is done with the request by now, so its place is
+			// freed before the exchange is reported, not after: this defer
+			// runs before the releaseNow deferred above it.
+			state.releaseNow()
 			ex := Exchange{
 				ID:             newID(start),
 				Start:          start,

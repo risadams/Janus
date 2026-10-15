@@ -29,7 +29,7 @@ jobs:
           fi
       # The full suite, stress tests included, has already passed on this
       # commit in the test workflow; here the tests only confirm the build.
-      - run: go test -short ./...
+      - run: go test -short -timeout 5m ./...
       - run: scripts/release.sh "${{ steps.version.outputs.version }}"
       - name: Run the binary that was built
         run: |
