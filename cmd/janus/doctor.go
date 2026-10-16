@@ -63,18 +63,19 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		findings = append(findings, ledgerCheck, checkClaude(cfg.Listen, os.Getenv, claudeSettingsPath(os.Getenv), recent))
 	}
 
-	fmt.Fprintf(stdout, "%s doctor\n\n", versionLine())
+	p := newPainter(stdout)
+	fmt.Fprintf(stdout, "%s\n\n", p.paint(bold, versionLine()+" doctor"))
 	failed := false
 	for _, f := range findings {
 		failed = failed || f.level == "fail"
 		// Continuation lines are indented to sit under the detail.
 		detail := strings.ReplaceAll(f.detail, "\n", "\n"+strings.Repeat(" ", 18))
-		fmt.Fprintf(stdout, "  %-4s  %-8s  %s\n", f.level, f.name, detail)
+		fmt.Fprintf(stdout, "  %s  %-8s  %s\n", p.level(f.level, pad(f.level, 4)), f.name, detail)
 	}
 	fmt.Fprintln(stdout)
 
 	if failed {
-		fmt.Fprintln(stdout, "Something above needs fixing before janus will work.")
+		fmt.Fprintln(stdout, p.paint(red, "Something above needs fixing before janus will work."))
 		return 1
 	}
 	fmt.Fprintf(stdout, "Start janus, then point Claude Code at it:\n\n")

@@ -226,11 +226,12 @@ func serviceStatus(host serviceHost, stdout io.Writer) int {
 		out, _ := host.run("systemctl", "--user", "is-active", serviceUnit)
 		running = out == "active"
 	}
+	p := newPainter(stdout)
 	if running {
-		fmt.Fprintf(stdout, "janus is running as a service (%s).\n", path)
+		fmt.Fprintf(stdout, "janus is %s as a service (%s).\n", p.paint(green, "running"), path)
 		return 0
 	}
-	fmt.Fprintf(stdout, "The janus service is installed (%s) but not running.\n", path)
+	fmt.Fprintf(stdout, "The janus service is installed (%s) but %s.\n", path, p.paint(yellow, "not running"))
 	return 1
 }
 

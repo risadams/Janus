@@ -159,11 +159,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	printBanner(stdout, cfg, ln.Addr().String())
 
-	color := false
-	if f, ok := stderr.(*os.File); ok {
-		color = wantColor(f, os.Getenv)
-	}
-	console := NewConsole(stderr, color, prices(cfg))
+	console := NewConsole(stderr, bool(newPainter(stderr)), prices(cfg))
 	logger := console.Logger()
 	led := ledger.Open(filepath.Join(cfg.Logging.Dir, "ledger"))
 	var captures *capture.Writer

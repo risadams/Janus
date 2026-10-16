@@ -65,7 +65,7 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 		live := isFile && wantColor(f, func(string) string { return "" })
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
-		return watchStats(ctx, stdout, dirs, prices(cfg), live, time.Now, watchEvery)
+		return watchStats(ctx, stdout, dirs, prices(cfg), live, newPainter(stdout), time.Now, watchEvery)
 	}
 
 	now := time.Now()
@@ -98,7 +98,7 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 		enc.Encode(report)
 		return 0
 	}
-	printReport(stdout, strings.Join(dirs, ", "), report)
+	printReport(stdout, newPainter(stdout), strings.Join(dirs, ", "), report)
 	return 0
 }
 
@@ -109,7 +109,7 @@ const watchEvery = 5 * time.Second
 // watchStats draws today's figures from the ledger, and while live keeps
 // redrawing them until ctx ends (#244). Not live, as when the output is a
 // file or a pipe, it draws once.
-func watchStats(ctx context.Context, w io.Writer, dirs []string, prices ledger.Prices, live bool, now func() time.Time, every time.Duration) int {
+func watchStats(ctx context.Context, w io.Writer, dirs []string, prices ledger.Prices, live bool, p painter, now func() time.Time, every time.Duration) int {
 	draw := func() {
 		t := now()
 		midnight := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
@@ -118,7 +118,7 @@ func watchStats(ctx context.Context, w io.Writer, dirs []string, prices ledger.P
 		if err != nil {
 			fmt.Fprintf(&b, "janus stats: %v\n", err)
 		} else {
-			printToday(&b, ledger.Summarise(records, prices), t, live, every)
+			printToday(&b, p, ledger.Summarise(records, prices), t, live, every)
 		}
 		if live {
 			fmt.Fprint(w, "\x1b[H\x1b[2J") // to the top, and clear
@@ -143,8 +143,8 @@ func watchStats(ctx context.Context, w io.Writer, dirs []string, prices ledger.P
 }
 
 // printToday is the short summary janus stats -watch shows.
-func printToday(w io.Writer, rep ledger.Report, now time.Time, live bool, every time.Duration) {
-	fmt.Fprintf(w, "Janus today, %s, at %s", now.Format("Monday 2 January"), now.Format("15:04:05"))
+func printToday(w io.Writer, p painter, rep ledger.Report, now time.Time, live bool, every time.Duration) {
+	fmt.Fprint(w, p.paint(bold, fmt.Sprintf("Janus today, %s, at %s", now.Format("Monday 2 January"), now.Format("15:04:05"))))
 	if live {
 		fmt.Fprintf(w, " (every %s; Ctrl+C to stop)", every)
 	}
@@ -156,7 +156,12 @@ func printToday(w io.Writer, rep ledger.Report, now time.Time, live bool, every 
 			failed += n
 		}
 	}
-	fmt.Fprintf(tw, "  requests\t%s, %s failed\n", commas(rep.Total.Requests), commas(failed))
+	// Only the last cell of a row is painted, so the table still lines up.
+	failures := commas(failed) + " failed"
+	if failed > 0 {
+		failures = p.paint(red, failures)
+	}
+	fmt.Fprintf(tw, "  requests\t%s, %s\n", commas(rep.Total.Requests), failures)
 	cost := fmt.Sprintf("$%.4f at list price", rep.Total.CostUSD)
 	if rep.Total.Unpriced > 0 {
 		cost += fmt.Sprintf(", %s not priced", commas(rep.Total.Unpriced))
@@ -175,7 +180,7 @@ func printToday(w io.Writer, rep ledger.Report, now time.Time, live bool, every 
 		if tried > 0 {
 			line += fmt.Sprintf("; %s of %s tried first were accepted", commas(accepted), commas(tried))
 		}
-		fmt.Fprintf(tw, "  local\t%s\n", line)
+		fmt.Fprintf(tw, "  local\t%s\n", p.paint(magenta, line))
 	}
 	if rep.StoodIn > 0 {
 		fmt.Fprintf(tw, "  stood in\t%s, for Claude\n", commas(rep.StoodIn))
@@ -197,7 +202,7 @@ func printToday(w io.Writer, rep ledger.Report, now time.Time, live bool, every 
 			if !win.Resets.IsZero() && win.Resets.After(now) {
 				part += ", resets " + resetTime(win.Resets, now)
 			}
-			parts = append(parts, part)
+			parts = append(parts, p.used(win.Utilization, part))
 		}
 		fmt.Fprintf(tw, "  limits\t%s\n", strings.Join(parts, " · "))
 	}
@@ -256,8 +261,8 @@ func parseWhen(s string, now time.Time) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("%q is not a date (2026-10-01), a time (2026-10-01T09:00:00Z), or an age (24h, 7d)", s)
 }
 
-func printReport(w io.Writer, dir string, rep ledger.Report) {
-	fmt.Fprintf(w, "Ledger %s\n", dir)
+func printReport(w io.Writer, p painter, dir string, rep ledger.Report) {
+	fmt.Fprintln(w, p.paint(bold, "Ledger "+dir))
 	if rep.Total.Requests == 0 && len(rep.Delegated) == 0 && len(rep.Shadow) == 0 {
 		fmt.Fprintln(w, "No requests recorded in this range.")
 		if rep.Malformed > 0 {
@@ -275,7 +280,7 @@ func printReport(w io.Writer, dir string, rep ledger.Report) {
 		printTable(w, "backend", rep.ByBackend, nil)
 	}
 	printDays(w, rep.ByDay)
-	printQuota(w, rep.Quota, time.Now())
+	printQuota(w, p, rep.Quota, time.Now())
 
 	printLocalSaving(w, rep.LocalSaving)
 	printLocalFirst(w, rep.LocalFirst)
@@ -443,23 +448,28 @@ func printTable(w io.Writer, by string, rows []ledger.Row, total *ledger.Row) {
 
 // printQuota says where the subscription's limits stood at the end of the
 // range, and which kinds of request used the five-hour limit.
-func printQuota(w io.Writer, q *ledger.QuotaSummary, now time.Time) {
+func printQuota(w io.Writer, p painter, q *ledger.QuotaSummary, now time.Time) {
 	if q == nil || q.Latest == nil {
 		return
 	}
 	fmt.Fprintf(w, "\nUsage limits, as of %s\n", q.At.Local().Format("2006-01-02 15:04"))
 	windows := make([]string, 0, len(q.Latest.Windows))
+	labels := map[string]string{}
+	width := 0
 	for name := range q.Latest.Windows {
 		windows = append(windows, name)
-	}
-	sort.Strings(windows)
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	for _, name := range windows {
-		win := q.Latest.Windows[name]
 		label := limitNames[name]
 		if label == "" {
 			label = name
 		}
+		labels[name] = label
+		width = max(width, len([]rune(label)))
+	}
+	sort.Strings(windows)
+	// Laid out by hand rather than with a tabwriter, which would count the
+	// color codes in the share used as part of its width.
+	for _, name := range windows {
+		win := q.Latest.Windows[name]
 		resets := ""
 		switch {
 		case win.Resets.IsZero():
@@ -468,9 +478,12 @@ func printQuota(w io.Writer, q *ledger.QuotaSummary, now time.Time) {
 		default:
 			resets = "resets " + resetTime(win.Resets, now)
 		}
-		fmt.Fprintf(tw, "  %s\t%.0f%% used\t%s\n", label, win.Utilization*100, resets)
+		used := fmt.Sprintf("%.0f%% used", win.Utilization*100)
+		if resets != "" {
+			used = pad(used, len("100% used")) + "  "
+		}
+		fmt.Fprintf(w, "  %s  %s%s\n", pad(labels[name], width), p.used(win.Utilization, used), resets)
 	}
-	tw.Flush()
 	if len(q.ByClass) > 0 {
 		parts := make([]string, 0, len(q.ByClass))
 		for _, c := range q.ByClass {

@@ -91,24 +91,28 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "  %s\n", line)
 	}
 	fmt.Fprintln(stdout)
+	// The decision is colored as the console colors where a request went:
+	// local in magenta, refused in red.
+	p := newPainter(stdout)
+	decision := p.paint(bold, "Decision") + "  "
 	switch {
 	case refusal != nil:
-		fmt.Fprintf(stdout, "Decision  refused with HTTP %d: %s\n", refusal.Status, refusal.Message)
+		fmt.Fprintf(stdout, "%s%s: %s\n", decision, p.paint(red, fmt.Sprintf("refused with HTTP %d", refusal.Status)), refusal.Message)
 	case plan.Backend.Name() == "local" && plan.Accept != nil:
-		fmt.Fprintf(stdout, "Decision  local first: %s answers, and its whole answer is checked before the client\n", plan.BackendModel)
+		fmt.Fprintf(stdout, "%s%s: %s answers, and its whole answer is checked before the client\n", decision, p.paint(magenta, "local first"), plan.BackendModel)
 		fmt.Fprintf(stdout, "          sees any of it. If it passes it is reported as %s; if not, Claude answers.\n", plan.ResponseModel)
 		fmt.Fprintf(stdout, "          changes on the way: %s\n", strings.Join(plan.Stages, ", "))
 	case plan.Backend.Name() == "local":
-		fmt.Fprintf(stdout, "Decision  local: %s answers, reported to the client as %s\n", plan.BackendModel, plan.ResponseModel)
+		fmt.Fprintf(stdout, "%s%s: %s answers, reported to the client as %s\n", decision, p.paint(magenta, "local"), plan.BackendModel, plan.ResponseModel)
 		fmt.Fprintf(stdout, "          changes on the way: %s\n", strings.Join(plan.Stages, ", "))
 		if plan.Else != nil || plan.Fallback != nil {
 			fmt.Fprintf(stdout, "          if it cannot be reached or answers with an error, Claude answers instead\n")
 		}
 	default:
 		if plan.Body != nil {
-			fmt.Fprintf(stdout, "Decision  upstream, after: %s\n", strings.Join(plan.Stages, ", "))
+			fmt.Fprintf(stdout, "%supstream, after: %s\n", decision, strings.Join(plan.Stages, ", "))
 		} else {
-			fmt.Fprintf(stdout, "Decision  upstream, untouched\n")
+			fmt.Fprintf(stdout, "%supstream, untouched\n", decision)
 		}
 		if plan.Fallback != nil {
 			fmt.Fprintf(stdout, "          if Claude cannot answer (unreachable, rate limited, overloaded, failing),\n          the local model answers instead\n")

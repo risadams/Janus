@@ -239,6 +239,9 @@ func replayOne(ctx context.Context, local *backend.Local, path, model string, co
 	say := func(format string, args ...any) {
 		fmt.Fprintf(stdout, "%s  %-8s  %s\n", id, o.class, fmt.Sprintf(format, args...))
 	}
+	// Each outcome is colored for how it went: failed in red, a different
+	// answer in yellow, the same in green.
+	p := newPainter(stdout)
 
 	// Claude's answer, if the capture has it. Without it the local answer
 	// is still saved, but there is nothing to compare it with.
@@ -255,11 +258,11 @@ func replayOne(ctx context.Context, local *backend.Local, path, model string, co
 	switch {
 	case out.Skipped != "":
 		o.state = "skipped"
-		say("skipped: %s", out.Skipped)
+		say("%s: %s", p.paint(dim, "skipped"), out.Skipped)
 		return o, true
 	case out.Err != nil:
 		o.state = "failed"
-		say("failed: %v", out.Err)
+		say("%s: %v", p.paint(red, "failed"), out.Err)
 		return o, true
 	}
 
@@ -275,12 +278,12 @@ func replayOne(ctx context.Context, local *backend.Local, path, model string, co
 	switch outcome := ledger.FromExchange(*out.Exchange).Outcome; {
 	case outcome != ledger.OutcomeOK:
 		o.state = "failed"
-		say("%s after %s", outcome, took)
+		say("%s after %s", p.paint(red, string(outcome)), took)
 	case len(answer.Blocks) == 0:
 		// Well-formed and empty: what a small model produces when its tool
 		// call is lost on the way out.
 		o.state = "failed"
-		say("empty answer after %s", took)
+		say("%s after %s", p.paint(red, "empty answer"), took)
 	case real == nil:
 		o.state = "uncompared"
 		say("%s  local %s (no saved answer from Claude to compare with)", took, describe(answer.StopReason, answer.Tools))
@@ -290,7 +293,11 @@ func replayOne(ctx context.Context, local *backend.Local, path, model string, co
 		if c.StopMatch && c.ToolsMatch {
 			o.state = "same"
 		}
-		say("%s  %s: local %s; Claude %s", took, o.state, describe(answer.StopReason, answer.Tools), describe(real.StopReason, real.Tools))
+		state := p.paint(green, o.state)
+		if o.state == "differs" {
+			state = p.paint(yellow, o.state)
+		}
+		say("%s  %s: local %s; Claude %s", took, state, describe(answer.StopReason, answer.Tools), describe(real.StopReason, real.Tools))
 	}
 	return o, true
 }

@@ -79,12 +79,12 @@ func runAudit(args []string, stdout, stderr io.Writer) int {
 	}
 
 	a := tally(records)
-	printAudit(stdout, *dir, a)
+	printAudit(stdout, newPainter(stdout), *dir, a)
 	if !*verify {
 		return 0
 	}
 	detector, policy := newDetector(cfg), newPolicy(cfg)
-	leaks := verifySent(stdout, a.sent, captures, func(req *anthropic.Request) guard.Report {
+	leaks := verifySent(stdout, newPainter(stdout), a.sent, captures, func(req *anthropic.Request) guard.Report {
 		report := detector.ScanRequest(req)
 		if policy == nil {
 			return report
@@ -209,8 +209,8 @@ func tally(records []ledger.Record) audit {
 	return a
 }
 
-func printAudit(w io.Writer, dir string, a audit) {
-	fmt.Fprintf(w, "Audit of %s\n", dir)
+func printAudit(w io.Writer, p painter, dir string, a audit) {
+	fmt.Fprintln(w, p.paint(bold, "Audit of "+dir))
 	if a.requests == 0 {
 		fmt.Fprintln(w, "No requests carrying content were recorded in this range.")
 		return
@@ -255,12 +255,16 @@ func printAudit(w io.Writer, dir string, a audit) {
 		sort.Strings(kinds)
 		fmt.Fprintf(w, "  %s requests bound for Anthropic carried something that looks like a secret\n  (%s).\n", commas(a.carried), strings.Join(kinds, ", "))
 		fmt.Fprintf(w, "  %6s  had them replaced with placeholders before sending\n", commas(a.replaced))
-		fmt.Fprintf(w, "  %6s  were SENT WITH THE SECRETS IN THEM\n", commas(len(a.exposed)))
+		exposed := fmt.Sprintf("  %6s  were SENT WITH THE SECRETS IN THEM", commas(len(a.exposed)))
+		if len(a.exposed) > 0 {
+			exposed = p.paint(red, exposed)
+		}
+		fmt.Fprintln(w, exposed)
 		for _, rec := range a.exposed {
-			fmt.Fprintf(w, "            %s  %s  in %s\n", rec.ID, kindList(rec.Guard.Kinds), strings.Join(rec.Guard.Where, "; "))
+			fmt.Fprintf(w, "            %s  %s  in %s\n", p.paint(red, rec.ID), kindList(rec.Guard.Kinds), strings.Join(rec.Guard.Where, "; "))
 		}
 		if len(a.exposed) > 0 {
-			fmt.Fprintf(w, "  Treat those secrets as disclosed and rotate them. Set guard.redact to stop it\n  happening again.\n")
+			fmt.Fprintln(w, p.paint(red, "  Treat those secrets as disclosed and rotate them.")+" Set guard.redact to stop it\n  happening again.")
 		}
 	}
 	if len(a.blocked) > 0 {
@@ -302,7 +306,7 @@ func sentPath(captures string, rec ledger.Record) (path string, ok bool) {
 //
 // This is the check that does not take the ledger's word for it: it looks
 // at the bytes that were sent.
-func verifySent(w io.Writer, sent []ledger.Record, captures string, scan func(*anthropic.Request) guard.Report) (leaks int) {
+func verifySent(w io.Writer, p painter, sent []ledger.Record, captures string, scan func(*anthropic.Request) guard.Report) (leaks int) {
 	clean, unchecked := 0, 0
 	var lines []string
 	for _, rec := range sent {
@@ -327,12 +331,16 @@ func verifySent(w io.Writer, sent []ledger.Record, captures string, scan func(*a
 			continue
 		}
 		leaks++
-		lines = append(lines, fmt.Sprintf("            %s  %s  in %s", rec.ID, report.Summary(), strings.Join(report.Where, "; ")))
+		lines = append(lines, fmt.Sprintf("            %s  %s  in %s", p.paint(red, rec.ID), report.Summary(), strings.Join(report.Where, "; ")))
 	}
 
 	fmt.Fprintf(w, "\nVerification: re-read %s requests as they were sent to Anthropic\n", commas(len(sent)))
 	fmt.Fprintf(w, "  %6s  contain nothing that looks like a secret\n", commas(clean))
-	fmt.Fprintf(w, "  %6s  STILL CONTAIN SOMETHING THAT LOOKS LIKE A SECRET\n", commas(leaks))
+	still := fmt.Sprintf("  %6s  STILL CONTAIN SOMETHING THAT LOOKS LIKE A SECRET", commas(leaks))
+	if leaks > 0 {
+		still = p.paint(red, still)
+	}
+	fmt.Fprintln(w, still)
 	for _, line := range lines {
 		fmt.Fprintln(w, line)
 	}
