@@ -108,7 +108,10 @@ regression case. Seeds are built by hand, never taken from captures.
   in a stack merges, retarget each child to `main`
   (`gh pr edit <child> --base main`): deleting the parent's branch closes
   its children instead of retargeting them. After it merges, rebase each
-  child with `git rebase --onto main <old parent tip>`.
+  child with `git rebase --onto main <old parent tip>`. `main` takes a
+  PR only once it is up to date, so after anything merges, bring the
+  others up with `gh pr update-branch <n> --rebase`; the ruleset binds
+  the owner too, so nothing merges past a failing check.
 - **Commit titles are plain sentences** saying what the change does
   ("Plan a local attempt's upstream fallback only when it is needed"); the
   body says why. Commits are SSH-signed; if signing asks for a passphrase,
