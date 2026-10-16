@@ -115,9 +115,10 @@ jobs:
 
   # Each SBOM gets a signed attestation binding it to its archive, so
   # gh attestation verify can check what went into a build (#263). One
-  # job per platform, since the action takes one SBOM at a time.
+  # job per platform, since the action takes one SBOM at a time. It runs
+  # on pull requests too, attesting nothing, so that a mistake in finding
+  # the files fails a pull request rather than a release.
   attest-sbom:
-    if: github.ref_type == 'tag'
     needs: [build, reproduce]
     runs-on: ubuntu-latest
     permissions:
@@ -137,12 +138,16 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: |
-          archive="$(ls dist/janus_*_"${TARGET}".tar.gz dist/janus_*_"${TARGET}".zip 2>/dev/null)"
-          base="${archive%.tar.gz}"
-          base="${base%.zip}"
-          echo "path=${archive}" >> "$GITHUB_OUTPUT"
-          echo "sbom=${base}.cdx.json" >> "$GITHUB_OUTPUT"
-      - uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+          ext=tar.gz
+          case "$TARGET" in windows_*) ext=zip ;; esac
+          set -- dist/janus_*_"${TARGET}.${ext}"
+          [ $# -eq 1 ] && [ -f "$1" ] || { echo "expected one archive for ${TARGET}, found: $*"; exit 1; }
+          sbom="${1%."${ext}"}.cdx.json"
+          [ -f "$sbom" ] || { echo "no SBOM for ${TARGET} at ${sbom}"; exit 1; }
+          echo "path=$1" >> "$GITHUB_OUTPUT"
+          echo "sbom=${sbom}" >> "$GITHUB_OUTPUT"
+      - if: github.ref_type == 'tag'
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-path: ${{ steps.archive.outputs.path }}
           sbom-path: ${{ steps.archive.outputs.sbom }}
