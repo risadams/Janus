@@ -57,6 +57,13 @@ jobs:
           { printf '\060\052\060\005\006\003\053\145\160\003\041\000'; printf '%s' "$key" | base64 -d; } > "${RUNNER_TEMP}/janus-release.der"
           openssl pkeyutl -verify -pubin -keyform DER -inkey "${RUNNER_TEMP}/janus-release.der" \
             -rawin -in dist/checksums.txt -sigfile dist/checksums.txt.sig
+      # Every installed Janus updates itself from a release laid out like
+      # this one; a change to the layout would break them all (ADR-004).
+      - name: Check janus update can install every build
+        env:
+          KEYS: ${{ steps.sign.outputs.keys }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: go run ./scripts/checklayout -keys "$KEYS" dist "$VERSION"
       - name: Run the binary that was built
         run: |
           cd dist
