@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-[![test](https://github.com/risadams/Janus/actions/workflows/test.yml/badge.svg)](https://github.com/risadams/Janus/actions/workflows/test.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/risadams/Janus/badge)](https://scorecard.dev/viewer/?uri=github.com/risadams/Janus)
+[![test](https://github.com/risadams/Janus/actions/workflows/test.yml/badge.svg)](https://github.com/risadams/Janus/actions/workflows/test.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/risadams/Janus/badge)](https://scorecard.dev/viewer/?uri=github.com/risadams/Janus) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15550/badge)](https://www.bestpractices.dev/projects/15550)
 
 **Documentation: [risadams.github.io/Janus](https://risadams.github.io/Janus/)**
 

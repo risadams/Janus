@@ -193,5 +193,12 @@ jobs:
         run: |
           prerelease=""
           case "${GITHUB_REF_NAME}" in *-*) prerelease="--prerelease" ;; esac
+          # The notes open with the tag's message, the summary for people
+          # that tag-release.sh asks for, above the list of pull requests
+          # GitHub generates. The tag is signed, so its message ends in the
+          # signature, which is left off.
+          tag="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${GITHUB_REF_NAME}" --jq .object.sha)"
+          summary="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag}" --jq .message | sed '/-----BEGIN SSH SIGNATURE-----/,$d')"
           gh release create "${GITHUB_REF_NAME}" dist/* \
-            --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --generate-notes $prerelease
+            --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" \
+            --notes "$summary" --generate-notes $prerelease
