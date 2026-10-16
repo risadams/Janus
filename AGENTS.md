@@ -56,6 +56,13 @@ regression case. Seeds are built by hand, never taken from captures.
 - **Captured traffic, configs, and logs stay out of git.** They hold
   prompts, code, account identifiers, and secrets. Test fixtures are built
   by hand in the shape of real requests.
+- **Old configs and ledgers keep working.** People skip versions.
+  Renaming, moving, or changing the meaning of a config setting adds a
+  migration in `internal/config/version.go`, with a note saying what
+  changed; adding one does not. Changing what a ledger field means, or
+  removing one, raises `ledger.SchemaVersion`, upgrades older records in
+  `ledger.Read`, and adds a fixture in the old shape to
+  `internal/ledger/testdata/releases`.
 - **Standard library first.** A third-party module needs an ADR
   ([docs/adr/001-dependencies.md](docs/adr/001-dependencies.md)).
 

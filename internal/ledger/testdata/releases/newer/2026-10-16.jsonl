@@ -1,0 +1,2 @@
+{"v":1,"id":"now-a","time":"2026-10-16T09:00:00Z","method":"POST","path":"/v1/messages","class":"main","route":"upstream","reason":"passthrough","backend":"upstream","status":200,"outcome":"ok","ttfb_ms":800,"duration_ms":3000,"usage":{"input":10,"output":100}}
+{"v":2,"id":"future-a","time":"2026-10-16T09:01:00Z","method":"POST","path":"/v1/messages","class":"main","backend":"upstream","status":200,"outcome":"ok","usage":{"input":"ten thousand","output":100}}

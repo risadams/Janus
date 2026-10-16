@@ -6,6 +6,7 @@ the defaults below and carries on.
 
 ```json
 {
+  "version": 1,
   "listen": "127.0.0.1:8787",
   "allowRemote": false,
   "upstream": { "baseUrl": "https://api.anthropic.com" },
@@ -24,6 +25,7 @@ the defaults below and carries on.
 
 | Field | Meaning |
 | --- | --- |
+| `version` | The config's format, which a starter file names. Leave it as it is. A config without one is version 1. One written for an older Janus works as it is: Janus reads it in its own form each time, says what that changed (on the console and in `janus doctor`), and leaves the file alone until you run `janus config upgrade`, which rewrites it and keeps the old one as `.bak`. One written for a newer Janus, or with a setting this Janus does not know, is refused with a message saying so. |
 | `listen` | Address Janus accepts connections on. Must be loopback unless `allowRemote` is true. |
 | `allowRemote` | Permit a non-loopback `listen`. Janus forwards whatever credentials clients send, so leave this off unless you mean it. While it is off, Janus also refuses requests from web pages: any whose `Host` is not this machine or whose `Origin` is a page from elsewhere. |
 | `upstream.baseUrl` | The Anthropic API, or a gateway in front of it. Janus refuses to start if this, or `local.baseUrl`, is its own `listen` address, where it would send each request back to itself. |

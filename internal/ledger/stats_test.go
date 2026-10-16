@@ -64,9 +64,9 @@ func TestReadFiltersByTime(t *testing.T) {
 		{"nothing in range", at(20, 0), time.Time{}, ""},
 	}
 	for _, c := range cases {
-		got, malformed, err := Read(dir, c.since, c.until)
-		if err != nil || malformed != 0 || ids(got) != c.want {
-			t.Errorf("%s: got %q (malformed %d, err %v), want %q", c.name, ids(got), malformed, err, c.want)
+		got, skipped, err := Read(dir, c.since, c.until)
+		if err != nil || skipped != (Skipped{}) || ids(got) != c.want {
+			t.Errorf("%s: got %q (skipped %+v, err %v), want %q", c.name, ids(got), skipped, err, c.want)
 		}
 	}
 }
@@ -82,16 +82,16 @@ func TestReadSkipsWhatIsNotARecord(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "not-a-date.jsonl"), []byte("{}\n"), 0o600)
 	os.Mkdir(filepath.Join(dir, "2026-10-11.jsonl"), 0o700)
 
-	got, malformed, err := Read(dir, time.Time{}, time.Time{})
-	if err != nil || ids(got) != "good-1,good-2" || malformed != 3 {
-		t.Errorf("got %q, malformed %d, err %v; want both good records and 3 skipped lines", ids(got), malformed, err)
+	got, skipped, err := Read(dir, time.Time{}, time.Time{})
+	if err != nil || ids(got) != "good-1,good-2" || skipped.Malformed != 3 {
+		t.Errorf("got %q, skipped %+v, err %v; want both good records and 3 skipped lines", ids(got), skipped, err)
 	}
 }
 
 func TestReadOfMissingLedgerIsEmpty(t *testing.T) {
-	got, malformed, err := Read(filepath.Join(t.TempDir(), "nope"), time.Time{}, time.Time{})
-	if err != nil || len(got) != 0 || malformed != 0 {
-		t.Errorf("got %d records, malformed %d, err %v", len(got), malformed, err)
+	got, skipped, err := Read(filepath.Join(t.TempDir(), "nope"), time.Time{}, time.Time{})
+	if err != nil || len(got) != 0 || skipped != (Skipped{}) {
+		t.Errorf("got %d records, skipped %+v, err %v", len(got), skipped, err)
 	}
 }
 
@@ -520,5 +520,67 @@ func TestSummariseTotalsLocalOnly(t *testing.T) {
 	}
 	if lo.Reasons[reason] != 2 || lo.Reasons[marker] != 2 {
 		t.Errorf("reasons = %v", lo.Reasons)
+	}
+}
+
+// Someone who skips versions still has every ledger an older Janus wrote.
+// testdata/releases holds one in the shape of each release, built by hand.
+func TestEveryReleasedLedgerShapeIsRead(t *testing.T) {
+	cases := []struct {
+		shape         string
+		requests      int
+		input, output int
+		check         func(t *testing.T, recs []Record)
+	}{
+		{"rc1", 3, 2003, 550, func(t *testing.T, recs []Record) {
+			if g := recs[2].Guard; g == nil || g.Kinds["aws_access_key"] != 1 {
+				t.Errorf("rc1 guard = %+v", g)
+			}
+		}},
+		{"rc5", 1, 5, 120, func(t *testing.T, recs []Record) {
+			if tr := recs[0].Transforms; len(tr) != 1 || tr[0].Tokens != 4000 {
+				t.Errorf("rc5 transforms = %+v", tr)
+			}
+		}},
+		{"rc9", 2, 30000, 400, func(t *testing.T, recs []Record) {
+			if a := recs[1].Attempt; a == nil || a.Limits["anthropic-ratelimit-unified-status"] != "rejected" {
+				t.Errorf("rc9 attempt = %+v", a)
+			}
+		}},
+		{"rc12", 2, 1504, 580, func(t *testing.T, recs []Record) {
+			if q := recs[0].Quota; q == nil || q.Windows["5h"].Utilization != 0.42 {
+				t.Errorf("rc12 quota = %+v", q)
+			}
+			if h := recs[0].Handback; h == nil || h.LocalTurns != 3 {
+				t.Errorf("rc12 handback = %+v", h)
+			}
+			if recs[1].LocalCause != "busy" {
+				t.Errorf("rc12 local_cause = %q", recs[1].LocalCause)
+			}
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.shape, func(t *testing.T) {
+			recs, skipped, err := Read(filepath.Join("testdata", "releases", c.shape), time.Time{}, time.Time{})
+			if err != nil || skipped != (Skipped{}) {
+				t.Fatalf("Read: skipped %+v, err %v", skipped, err)
+			}
+			rep := Summarise(recs, Prices{})
+			if rep.Total.Requests != c.requests || rep.Total.Input != c.input || rep.Total.Output != c.output {
+				t.Errorf("total = %d requests, %d input, %d output; want %d, %d, %d",
+					rep.Total.Requests, rep.Total.Input, rep.Total.Output, c.requests, c.input, c.output)
+			}
+			c.check(t, recs)
+		})
+	}
+}
+
+// A record in a schema this Janus does not know is left out and counted,
+// even when its fields do not fit this schema's types, rather than read
+// as if it meant what this Janus would mean.
+func TestReadSkipsRecordsFromANewerSchema(t *testing.T) {
+	recs, skipped, err := Read(filepath.Join("testdata", "releases", "newer"), time.Time{}, time.Time{})
+	if err != nil || ids(recs) != "now-a" || skipped != (Skipped{Newer: 1}) {
+		t.Errorf("got %q, skipped %+v, err %v; want now-a and one newer record skipped", ids(recs), skipped, err)
 	}
 }
