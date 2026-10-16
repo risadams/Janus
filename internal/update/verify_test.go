@@ -72,8 +72,14 @@ func TestParseKeysSkipsCommentsAndRefusesJunk(t *testing.T) {
 	}
 }
 
-func TestTheShippedKeyListReads(t *testing.T) {
-	if _, err := ReleaseKeys(); err != nil {
-		t.Errorf("release-keys.txt: %v", err)
+// A list with no key would leave janus update unable to check anything,
+// and the release workflow unable to publish.
+func TestTheShippedKeyListHasAKey(t *testing.T) {
+	keys, err := ReleaseKeys()
+	if err != nil {
+		t.Fatalf("release-keys.txt: %v", err)
+	}
+	if len(keys) == 0 {
+		t.Error("release-keys.txt lists no key")
 	}
 }
