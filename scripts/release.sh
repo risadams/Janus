@@ -4,7 +4,8 @@
 #   scripts/release.sh v1.2.3
 #
 # One archive per platform, each holding the janus binary, the README and
-# the licence, and a checksums.txt of SHA-256 sums over the archives. The
+# the licence, a CycloneDX SBOM of what went into each (#263), and a
+# checksums.txt of SHA-256 sums over the archives. The
 # binaries are static and carry the version given. Every installed Janus
 # updates itself from releases laid out this way, so the names and the
 # layout are fixed (docs/adr/004-release-tooling.md), and the release
@@ -31,6 +32,9 @@ mkdir -p dist
 tools="$(mktemp -d)"
 trap 'rm -rf "$tools"' EXIT
 go build -o "$tools/archive" ./scripts/archive
+# The CycloneDX project's own tool, at an exact version (ADR-004). Built
+# for this machine, then run with each target's GOOS and GOARCH.
+GOBIN="$tools" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.12.0
 
 for target in "${targets[@]}"; do
   os="${target%/*}"
@@ -44,6 +48,13 @@ for target in "${targets[@]}"; do
   GOOS="$os" GOARCH="$arch" go build -trimpath -buildvcs=false \
     -ldflags "-s -w -buildid= -X main.version=${version}" -o "${stage}/${binary}" ./cmd/janus
   cp README.md LICENSE "$stage/"
+  # No serial number or time, so the same tag writes the same SBOM. It is
+  # left out of checksums.txt all the same: it names Janus's version as
+  # Git describes the checkout, which a shallow clone describes
+  # differently. Its attestation, made when the release is published,
+  # binds it to its archive instead.
+  GOOS="$os" GOARCH="$arch" "$tools/cyclonedx-gomod" app -json -std -packages -licenses \
+    -noserial -notimestamp -main cmd/janus -output "dist/${name}.cdx.json" . 2>/dev/null
 
   ext=tar.gz
   if [ "$os" = "windows" ]; then ext=zip; fi
@@ -54,8 +65,8 @@ done
 
 cd dist
 if command -v sha256sum >/dev/null; then
-  sha256sum janus_* > checksums.txt
+  sha256sum janus_*.tar.gz janus_*.zip > checksums.txt
 else
-  shasum -a 256 janus_* > checksums.txt
+  shasum -a 256 janus_*.tar.gz janus_*.zip > checksums.txt
 fi
 cat checksums.txt
