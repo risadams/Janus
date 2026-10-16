@@ -19,7 +19,7 @@ Some tests run only when pointed at real traffic or asked for:
 
 | Variable | Runs |
 | --- | --- |
-| `JANUS_CAPTURES=~/logs/captures` | Parsing, classification, and prompt-cache stability over every captured request |
+| `JANUS_CAPTURES=~/logs/captures` | Parsing, classification, and prompt-cache stability over every captured request; fails on a Claude Code newer than `route.TestedClaudeCode`, which is raised once the rest passes |
 | `JANUS_PERF=1` | Overhead benchmarks and the soak test in `internal/route` |
 | `JANUS_DIGEST_EVAL` and friends | The digest evaluation; see `internal/digest/eval_test.go` |
 

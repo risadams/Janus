@@ -40,6 +40,7 @@ The problems below are ones met while building and testing Janus.
 | A `403` or `500` from Janus, or something withheld | [The guard](#the-guard) |
 | `janus stats` is empty or costs look wrong | [The books](#the-books) |
 | `janus doctor` warns about `ledger` or `claude` | [The books](#the-books) |
+| `janus doctor` warns about `client` | [Getting started](#getting-started) |
 
 ## Installing
 
@@ -134,6 +135,17 @@ was copied into `JANUS_UPSTREAM_URL` or `-upstream`. Janus would send each
 request back to itself without end, so it refuses to start. Set the
 upstream to the Anthropic API (`https://api.anthropic.com`) or your
 gateway, and `local.baseUrl` to LM Studio.
+
+**`janus doctor` warns that Claude Code is newer than any it was
+tested with.** The `client` line names the Claude Code release in the
+newest request of the past week, from its User-Agent, and the range of
+releases this Janus was tested against. A newer Claude Code usually
+works, but a change in what it sends can make Janus misread requests
+without anything failing: `janus stats` counting requests as `unknown`,
+or a routing rule or the guard no longer matching. Run `janus update`;
+if the newest Janus is no newer, report it on the issue tracker. A
+Claude Code older than the range is better updated, with
+`claude update`.
 
 ## Reaching LM Studio
 

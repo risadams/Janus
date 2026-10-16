@@ -25,6 +25,7 @@ func exchange() proxy.Exchange {
 	header := http.Header{}
 	header.Set("X-Claude-Code-Session-Id", "sess-1")
 	header.Set("X-Claude-Code-Agent-Id", "agent-1")
+	header.Set("User-Agent", "claude-cli/2.1.301 (external, cli)")
 	header.Set("Authorization", "Bearer secret-token")
 	return proxy.Exchange{
 		ID:       "20261011T143927.123-ab12cd",
@@ -59,8 +60,8 @@ func TestFromExchange(t *testing.T) {
 	if got := rec.Time.Format(time.RFC3339Nano); got != "2026-10-11T14:39:27.123Z" {
 		t.Errorf("time = %s, want it in UTC", got)
 	}
-	if rec.Session != "sess-1" || rec.Agent != "agent-1" || rec.Class != "subagent" {
-		t.Errorf("session=%q agent=%q class=%q", rec.Session, rec.Agent, rec.Class)
+	if rec.Session != "sess-1" || rec.Agent != "agent-1" || rec.ClaudeCode != "2.1.301" || rec.Class != "subagent" {
+		t.Errorf("session=%q agent=%q claude_code=%q class=%q", rec.Session, rec.Agent, rec.ClaudeCode, rec.Class)
 	}
 	if rec.Route != "upstream" || rec.Reason != "passthrough" || rec.Backend != "upstream" || rec.Stages == nil || len(rec.Stages) != 0 {
 		t.Errorf("decision = route %q reason %q backend %q stages %v", rec.Route, rec.Reason, rec.Backend, rec.Stages)

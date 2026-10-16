@@ -13,12 +13,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/risadams/janus/internal/ledger"
+	"github.com/risadams/janus/internal/route"
 )
 
 const lmStudioModels = `{"data":[
@@ -386,5 +388,50 @@ func TestDoctorSaysWhetherClaudeCodeIsPointedAtJanus(t *testing.T) {
 				t.Errorf("got %s %q; want %s saying %q", f.level, f.detail, c.level, c.says)
 			}
 		})
+	}
+}
+
+// doctor names the Claude Code release in the newest request that names
+// one, and warns, never fails, when it is outside the tested range.
+func TestDoctorWarnsOfAnUntestedClaudeCode(t *testing.T) {
+	saved := route.TestedClaudeCode
+	t.Cleanup(func() { route.TestedClaudeCode = saved })
+	route.TestedClaudeCode.Oldest, route.TestedClaudeCode.Newest = "2.1.296", "2.1.301"
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+
+	for _, c := range []struct {
+		versions []string // oldest request first
+		level    string
+		says     string
+	}{
+		{nil, "", ""},
+		{[]string{"2.1.301", ""}, "ok", "Claude Code 2.1.301, which janus was tested with (2.1.296 to 2.1.301)"},
+		{[]string{"2.1.296"}, "ok", "2.1.296, which janus was tested with"},
+		{[]string{"2.1.296", "2.1.310"}, "warn", "2.1.310 is newer than any this janus was tested with (up to 2.1.301)"},
+		{[]string{"2.1.310", "2.1.299"}, "ok", "2.1.299"},
+		{[]string{"2.2.0"}, "warn", "run janus update"},
+		{[]string{"2.0.9"}, "warn", "older than any this janus was tested with (from 2.1.296)"},
+	} {
+		dir := t.TempDir()
+		for i, v := range c.versions {
+			ledger.Open(dir).Append(ledger.Record{V: 1, ID: strconv.Itoa(i), Time: now.Add(time.Duration(i-10) * time.Minute), Class: "main", ClaudeCode: v})
+		}
+		f, seen := checkClaudeVersion(dir, now)
+		if c.level == "" {
+			if seen {
+				t.Errorf("%v: said %+v, want nothing", c.versions, f)
+			}
+			continue
+		}
+		if !seen || f.level != c.level || !strings.Contains(f.detail, c.says) {
+			t.Errorf("%v: %+v (seen %v), want %s saying %q", c.versions, f, seen, c.level, c.says)
+		}
+	}
+
+	// A week-old request says nothing about the Claude Code in use now.
+	dir := t.TempDir()
+	ledger.Open(dir).Append(ledger.Record{V: 1, ID: "old", Time: now.Add(-8 * 24 * time.Hour), Class: "main", ClaudeCode: "2.1.310"})
+	if f, seen := checkClaudeVersion(dir, now); seen {
+		t.Errorf("a request from 8 days ago gave %+v", f)
 	}
 }

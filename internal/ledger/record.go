@@ -25,6 +25,10 @@ type Record struct {
 	// run of the client, one agent per subagent within it.
 	Session string `json:"session,omitempty"`
 	Agent   string `json:"agent,omitempty"`
+	// ClaudeCode is the Claude Code release that sent the request, from
+	// its User-Agent, so that janus doctor can say when it is newer than
+	// any janus was tested with (#267).
+	ClaudeCode string `json:"claude_code,omitempty"`
 
 	Method string `json:"method"`
 	Path   string `json:"path"`
@@ -315,6 +319,7 @@ func FromExchange(ex proxy.Exchange) Record {
 		Time:       ex.Start.UTC(),
 		Session:    ex.Header.Get("X-Claude-Code-Session-Id"),
 		Agent:      ex.Header.Get("X-Claude-Code-Agent-Id"),
+		ClaudeCode: route.ClaudeCodeVersion(ex.Header),
 		Method:     ex.Method,
 		Path:       ex.Path,
 		Class:      string(route.Classify(ex.Method, ex.Path, ex.Header)),
