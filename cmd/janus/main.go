@@ -233,6 +233,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go noticeUpdate(ctx, cfg, &http.Client{Timeout: 10 * time.Second}, func(line string) {
+		console.Printf("%s", console.paint(yellow, line))
+	})
 	go func() {
 		<-ctx.Done()
 		// Give streams in flight a moment to finish, then cut them.

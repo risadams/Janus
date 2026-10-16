@@ -138,3 +138,27 @@ func upgradeHow(how install, r update.Release) string {
 	}
 	return "Download it from " + r.URL + "\nand replace this binary, then restart janus."
 }
+
+// noticeUpdate is the notice at startup that a newer release is out. It
+// asks only when update.check is on, at most once a day (the answer is
+// kept in the log folder), and says nothing unless there is something to
+// upgrade to: a check that fails, offline or rate-limited, is not worth a
+// line on the console. A development build has nothing to compare, so it
+// asks nothing. It is meant to run in the background, so that startup and
+// the first request never wait for GitHub.
+func noticeUpdate(ctx context.Context, cfg config.Config, client *http.Client, say func(string)) {
+	if !cfg.Update.Check {
+		return
+	}
+	current, how := currentVersion()
+	have, ok := update.Parse(current)
+	if how == devBuild || !ok {
+		return
+	}
+	cache := filepath.Join(cfg.Logging.Dir, update.CacheFile)
+	latest, found, err := update.Daily(ctx, client, releasesAPI, "janus/"+current, cfg.Update.Prerelease, cache, time.Now())
+	if err != nil || !found || have.Compare(latest.Version) >= 0 {
+		return
+	}
+	say(latest.Tag + " is out; janus version -check says how to upgrade.")
+}

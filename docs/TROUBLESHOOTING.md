@@ -58,6 +58,12 @@ such questions an hour without signing in; past that it refuses until the
 hour is up. Nothing else in Janus depends on the check, and `janus
 doctor` reports it as a warning only.
 
+**No notice of a new release at startup.** `update.check` asks GitHub at
+most once a day and says nothing when the check fails or when you have
+the newest release, so a release from this morning may not show until
+tomorrow. `janus version -check` asks now. To make the next start ask
+too, delete `update-check.json` from the log folder.
+
 **`No stable release has been published yet`.** Every release so far is
 a pre-release. Add `-pre`, or set `update.prerelease` in the config, to
 be offered those.

@@ -306,6 +306,11 @@ stable releases are offered unless you add `-pre`, or set
 asks GitHub for the list of releases and sends nothing else, and only
 when you run one of these commands.
 
+To hear about a new release without asking, set `"update": {"check":
+true}` in the config. Janus then looks when it starts, at most once a
+day, and prints a line on the console if a newer release is out. It
+never updates itself.
+
 Download the new release as in step 1 and replace the binary, or run the
 `go install` command again. Then restart Janus. Your config, ledger, and
 captures are left as they are. `janus version` says which version you
