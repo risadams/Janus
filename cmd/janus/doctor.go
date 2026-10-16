@@ -42,6 +42,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&flags.Listen, "listen", "", "override the listen address (host:port)")
 	fs.StringVar(&flags.UpstreamURL, "upstream", "", "override the upstream API base URL")
 	fs.StringVar(&flags.LocalURL, "local", "", "override the LM Studio base URL")
+	asJSON := fs.Bool("json", false, "print the results as JSON")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -64,11 +65,24 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		findings = append(findings, checkUpdate(client, cfg.Update.Prerelease))
 	}
 
-	p := newPainter(stdout)
-	fmt.Fprintf(stdout, "%s\n\n", p.paint(bold, versionLine()+" doctor"))
 	failed := false
 	for _, f := range findings {
 		failed = failed || f.level == "fail"
+	}
+	if *asJSON {
+		if err := printDoctorJSON(stdout, findings, failed); err != nil {
+			fmt.Fprintf(stderr, "janus doctor: %v\n", err)
+			return 1
+		}
+		if failed {
+			return 1
+		}
+		return 0
+	}
+
+	p := newPainter(stdout)
+	fmt.Fprintf(stdout, "%s\n\n", p.paint(bold, versionLine()+" doctor"))
+	for _, f := range findings {
 		// Continuation lines are indented to sit under the detail.
 		detail := strings.ReplaceAll(f.detail, "\n", "\n"+strings.Repeat(" ", 18))
 		fmt.Fprintf(stdout, "  %s  %-8s  %s\n", p.level(f.level, pad(f.level, 4)), f.name, detail)
@@ -82,6 +96,32 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "Start janus, then point Claude Code at it:\n\n")
 	printClaudeCommand(stdout, "http://"+cfg.Listen)
 	return 0
+}
+
+// doctorReport is what janus doctor -json prints. Its fields are kept
+// within a major version (docs/RELEASES.md); docs/TROUBLESHOOTING.md
+// describes them.
+type doctorReport struct {
+	Version string        `json:"version"`
+	OK      bool          `json:"ok"`
+	Checks  []doctorCheck `json:"checks"`
+}
+
+type doctorCheck struct {
+	Name   string `json:"name"`
+	Level  string `json:"level"`
+	Detail string `json:"detail"`
+}
+
+func printDoctorJSON(w io.Writer, findings []finding, failed bool) error {
+	v, _ := currentVersion()
+	r := doctorReport{Version: v, OK: !failed, Checks: make([]doctorCheck, len(findings))}
+	for i, f := range findings {
+		r.Checks[i] = doctorCheck{Name: f.name, Level: f.level, Detail: f.detail}
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(r)
 }
 
 // checkConfig loads the config the way janus itself would, without writing
