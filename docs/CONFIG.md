@@ -41,6 +41,7 @@ the defaults below and carries on.
 | `logging.retainDays` | Delete captures older than this. `0` keeps them forever. |
 | `logging.maxMegabytes` | Delete the oldest captures once they exceed this. `0` means no limit. |
 | `pricing` | Optional. Prices to add or correct, by model id. See below. |
+| `update.prerelease` | Count pre-releases, such as `v1.0.0-rc.2`, when `janus version -check` and `janus doctor` look for a newer release. Off by default, so only stable releases are offered. `-pre` does the same for one check. Janus never looks for releases on its own. |
 
 A field left out of the file keeps its default. A field Janus does not
 recognise is an error, so typos are caught.

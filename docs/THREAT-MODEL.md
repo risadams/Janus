@@ -201,6 +201,11 @@ the response. It adds no identifying header to what it sends upstream.
 
 ## Supply chain
 
+- Janus asks GitHub for its list of releases when, and only when,
+  `janus version -check` or `janus doctor` runs: one request to
+  `api.github.com` with `janus/<version>` as its User-Agent, and nothing
+  about you, your config, or your traffic. The proxy never makes it.
+
 - Janus uses the Go standard library and nothing else, by
   [decision](adr/001-dependencies.md). There are no third-party modules to
   compromise.

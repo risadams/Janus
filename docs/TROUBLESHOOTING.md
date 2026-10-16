@@ -52,6 +52,16 @@ quarantined, and the binaries are not signed. Clear it with
 program without a known publisher, and the binaries are not signed.
 Choose "More info", then "Run anyway".
 
+**`janus version -check` could not check.** It asks
+`api.github.com`, so it needs the internet. GitHub allows an address 60
+such questions an hour without signing in; past that it refuses until the
+hour is up. Nothing else in Janus depends on the check, and `janus
+doctor` reports it as a warning only.
+
+**`No stable release has been published yet`.** Every release so far is
+a pre-release. Add `-pre`, or set `update.prerelease` in the config, to
+be offered those.
+
 **Claude Code can't connect at all.** `ANTHROPIC_BASE_URL` points at
 Janus, and Janus isn't running. If you set it in
 `~/.claude/settings.json`, every session needs Janus: start it, run it as

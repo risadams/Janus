@@ -22,7 +22,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
-	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -56,8 +55,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
 		switch args[0] {
 		case "version", "-version", "--version":
-			fmt.Fprintln(stdout, versionLine())
-			return 0
+			return runVersion(args[1:], stdout, stderr)
 		case "stats":
 			return runStats(args[1:], stdout, stderr)
 		case "doctor":
@@ -553,19 +551,6 @@ func newDetector(cfg config.Config) *guard.Detector {
 		d.Patterns = append(d.Patterns, regexp.MustCompile(pattern))
 	}
 	return d
-}
-
-// versionLine is what `janus version` prints. A release build has its
-// version set by the linker; one made with `go install ...@v1.2.3` takes it
-// from the module; anything else is "dev".
-func versionLine() string {
-	v := version
-	if v == "dev" {
-		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-			v = info.Main.Version
-		}
-	}
-	return "janus " + v
 }
 
 // routingSummary describes, one line each, what the config routes where:

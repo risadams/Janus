@@ -47,6 +47,17 @@ type Config struct {
 	// model id. Left out of the starter file because the defaults are
 	// usually right; see docs/CONFIG.md.
 	Pricing map[string]Price `json:"pricing,omitempty"`
+	// Update sets how janus looks for newer releases when a command asks
+	// it to. Janus never looks on its own.
+	Update Update `json:"update,omitzero"`
+}
+
+// Update configures the check for newer releases made by `janus version
+// -check` and `janus doctor`.
+type Update struct {
+	// Prerelease counts pre-releases, such as v1.0.0-rc.2, as newer
+	// releases. Without it only stable releases are offered.
+	Prerelease bool `json:"prerelease,omitempty"`
 }
 
 // Guard configures the search for secrets in requests going upstream.
