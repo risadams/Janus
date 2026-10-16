@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Installing Janus | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/guide/install"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Installing Janus | Janus"><meta data-rh="true" name="description" content="This page takes you from nothing to Claude Code talking to Anthropic"><meta data-rh="true" property="og:description" content="This page takes you from nothing to Claude Code talking to Anthropic"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/guide/install"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/guide/install" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/guide/install" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"User guide","item":"https://risadams.github.io/Janus/docs/guide/"},{"@type":"ListItem","position":2,"name":"Installing","item":"https://risadams.github.io/Janus/docs/guide/install"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.5f100707.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.3391e861.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.20de0ceb.js" defer="defer"></script>
 </head>
 <body>
@@ -222,9 +222,19 @@ when you run one of these commands.</p>
 <p>To hear about a new release without asking, set <code>&quot;update&quot;: {&quot;check&quot;: true}</code> in the config. Janus then looks when it starts, at most once a
 day, and prints a line on the console if a newer release is out. It
 never updates itself.</p>
-<p>Download the new release as in step 1 and replace the binary, or run the
-<code>go install</code> command again. Then restart Janus. Your config, ledger, and
-captures are left as they are. <code>janus version</code> says which version you
+<p><code>janus update</code> upgrades a copy installed from a release archive. It
+downloads the newest release for your machine, checks the signature on
+its <code>checksums.txt</code> against the key built into the Janus you have and
+the archive against those sums, and only then replaces the binary. If
+any check fails, it says why and leaves the binary as it was. If <code>janus service install</code> set Janus up to run in the background, <code>janus update</code>
+restarts it; the old Janus finishes the requests it has in flight, for
+up to a minute, before the new one starts. Otherwise, restart Janus
+yourself. <code>-pre</code> and <code>update.prerelease</code> count pre-releases, as they do
+for <code>janus version -check</code>.</p>
+<p>A copy from <code>go install</code> or Homebrew is refused, since those upgrade it
+themselves: run the <code>go install</code> command again, or <code>brew upgrade janus</code>.
+You can also download the new release as in step 1 and replace the
+binary by hand. Your config, ledger, and captures are left as they are. <code>janus version</code> says which version you
 have, and the console prints it at the top when Janus starts.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="removing-janus">Removing Janus<a href="#removing-janus" class="hash-link" aria-label="Direct link to Removing Janus" title="Direct link to Removing Janus" translate="no">​</a></h2>
 <ol>
