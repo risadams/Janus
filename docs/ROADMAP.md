@@ -1,6 +1,6 @@
 # Janus — Roadmap
 
-Status: draft for review · Last updated: 2026-10-15
+Status: draft for review · Last updated: 2026-10-16
 
 The roadmap is a sequence, not a schedule. Each milestone ends in something
 usable and has an exit test. Issues for each milestone are on the
@@ -14,12 +14,16 @@ M0 Foundations ─▶ M1 Observe ─▶ M2 Route ─▶ M3 Escalate ─▶ M4 De
                                     └──────────────▶ M6 Guard ─────────────────────────────┘
                                                     │
                                                     └──────▶ M8 Pace (beside M7)
+
+M9 Distribution: beside M7; its package managers wait for the first stable tag
 ```
 
 M6 depends only on M2, so it can be pulled forward if privacy becomes the
 pressing goal. M8 depends on M3's fallback and runs beside M7: it does not
 hold up 1.0, and its first piece, recording the limits, starts at once so
-that the 1.0 report has the data. Everything else is ordered by two rules: measure before
+that the 1.0 report has the data. M9 depends on nothing but the release
+pipeline, so its command-line work starts at once; what it publishes to
+package managers starts with the first stable tag. Everything else is ordered by two rules: measure before
 changing anything, and take the cheapest, safest savings first.
 
 ## Milestones
@@ -162,6 +166,44 @@ Found in the first days of real use:
   terminal while a session runs.
 
 Issues: #242 (log folder), #243 (service), #244 (watch).
+
+### M9 — Distribution
+
+Janus is installed by unpacking an archive and is updated by noticing a
+new release by hand. Every release so far is a pre-release, and a macOS
+binary downloaded in a browser is quarantined. M9 is how Janus reaches
+people and stays current, without giving up what the charter promises: no
+traffic nobody asked for, and nothing that makes Janus worse than no Janus.
+
+- Colour in every command, not only the console, decided the same way
+  everywhere and never in JSON or piped output.
+- `janus version -check` and a line in `janus doctor`, with stable
+  releases by default and pre-releases on request; a once-a-day notice at
+  startup for those who turn it on.
+- `janus update`, run by hand, which checks the download against signed
+  checksums before replacing the binary and restarts the service if
+  Janus runs as one.
+- Homebrew, Scoop and winget; signed and notarized macOS binaries once
+  the Apple Developer ID arrives; an SBOM; builds anyone can reproduce
+  from the tag.
+- `doctor` warning when Claude Code is newer than the versions Janus was
+  tested with; shell completions; `-json` on `doctor` and `audit`; old
+  configs and ledgers still read after a jump of several versions.
+
+Not in M9: Janus never updates itself unasked, and sends nothing to check
+for updates unless a command or the config asks it to.
+
+Issues: #254 (colour), #255 (check, with pre-releases), #256 (notice),
+#257 (signed checksums), #258 (update), #259 (GoReleaser decision), #260
+(Homebrew), #261 (Scoop and winget), #262 (notarization), #263 (SBOM),
+#264 (reproducible builds), #265 (release policy), #266 (Scorecard), #267
+(Claude Code version), #268 (completions), #269 (config and ledger
+versions), #270 (`-json`).
+
+**Exit:** a stable release installed with Homebrew on macOS, without a
+Gatekeeper warning, and with Scoop or winget on Windows; an older install brought
+to it with `janus update`, which refuses a tampered download; and a CI job
+that rebuilds the release and gets the same bytes.
 
 ## What is deliberately late or absent
 
