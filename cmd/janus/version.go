@@ -22,6 +22,10 @@ import (
 // fake.
 var releasesAPI = update.DefaultAPI
 
+// readBuildInfo is how this binary learns the module version go install
+// stamped on it. Tests stand in for go install with it.
+var readBuildInfo = debug.ReadBuildInfo
+
 // install is how this copy of janus was installed, which decides how it
 // is upgraded.
 type install int
@@ -43,7 +47,7 @@ func currentVersion() (string, install) {
 		}
 		return version, archive
 	}
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+	if info, ok := readBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
 		return info.Main.Version, goInstall
 	}
 	return "dev", devBuild

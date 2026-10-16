@@ -51,14 +51,31 @@ func runUpdate(args []string, stdout, stderr io.Writer) int {
 	if !ok {
 		how = devBuild
 	}
-	if why := updateRefusal(how); why != "" {
-		return fail("%s", why)
+	if how == devBuild {
+		return fail("%s", updateRefusal(how, update.Release{Tag: "latest"}))
 	}
 
 	cfg, err := config.Read(*configPath)
 	if err != nil {
 		return fail("%v", err)
 	}
+	client := &http.Client{Timeout: 5 * time.Minute}
+	ctx := context.Background()
+	latest, found, err := update.Latest(ctx, client, releasesAPI, "janus/"+current, *pre || cfg.Update.Prerelease)
+	if how != archive {
+		// Another tool owns this copy. Name the exact release it should
+		// fetch: @latest leaves pre-releases out once there is a stable
+		// one, and the Go module proxy can take a while to list a new tag.
+		switch {
+		case err != nil || !found:
+			return fail("%s", updateRefusal(how, update.Release{Tag: "latest"}))
+		case have.Compare(latest.Version) >= 0:
+			fmt.Fprintf(stdout, "janus %s is the newest release.\n", current)
+			return 0
+		}
+		return fail("%s", updateRefusal(how, latest))
+	}
+
 	keys, err := releaseKeys()
 	if err != nil {
 		return fail("the release keys built into janus are unreadable: %v", err)
@@ -71,9 +88,6 @@ func runUpdate(args []string, stdout, stderr io.Writer) int {
 		exe = resolved
 	}
 
-	client := &http.Client{Timeout: 5 * time.Minute}
-	ctx := context.Background()
-	latest, found, err := update.Latest(ctx, client, releasesAPI, "janus/"+current, *pre || cfg.Update.Prerelease)
 	switch {
 	case err != nil:
 		return fail("could not check for a newer release: %v", err)
@@ -96,18 +110,18 @@ func runUpdate(args []string, stdout, stderr io.Writer) int {
 }
 
 // updateRefusal says why janus update will not replace a copy installed
-// this way, or is empty if it will.
-func updateRefusal(how install) string {
+// this way, and how to upgrade it to r instead, or is empty if it will.
+func updateRefusal(how install, r update.Release) string {
 	switch how {
 	case devBuild:
 		return "this is a development build, which janus update does not replace. Build it again from source, or install a release."
 	case goInstall:
 		// Replacing it would leave the module cache and go's idea of what
 		// is installed behind; go upgrades it itself.
-		return "this janus was installed with go install, which upgrades it too.\n" + upgradeHow(how, update.Release{Tag: "latest"})
+		return "this janus was installed with go install, which upgrades it too.\n" + upgradeHow(how, r)
 	case homebrew:
 		// Brew owns the cellar, and would put the old version back.
-		return "this janus was installed with Homebrew, which upgrades it too.\n" + upgradeHow(how, update.Release{})
+		return "this janus was installed with Homebrew, which upgrades it too.\n" + upgradeHow(how, r)
 	}
 	return ""
 }

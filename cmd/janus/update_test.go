@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -168,11 +169,15 @@ func TestUpdateRefusesHomebrewsCopy(t *testing.T) {
 	wantLines(t, errOut, "installed with Homebrew", "brew upgrade janus")
 }
 
-func TestUpdateNamesTheCommandForAGoInstall(t *testing.T) {
-	if why := updateRefusal(goInstall); !strings.Contains(why, "go install github.com/risadams/janus/cmd/janus@latest") {
+// The exact release, not @latest: the Go module proxy can be slow to list
+// a new tag, and @latest leaves pre-releases out once there is a stable
+// release, which would drop -pre.
+func TestUpdateNamesTheExactReleaseForAGoInstall(t *testing.T) {
+	r := release(t, "v0.9.0-rc.16", "https://example.invalid/v0.9.0-rc.16")
+	if why := updateRefusal(goInstall, r); !strings.Contains(why, "go install github.com/risadams/janus/cmd/janus@v0.9.0-rc.16") {
 		t.Errorf("refusal = %q", why)
 	}
-	if why := updateRefusal(archive); why != "" {
+	if why := updateRefusal(archive, r); why != "" {
 		t.Errorf("a release archive was refused: %q", why)
 	}
 }
@@ -224,6 +229,33 @@ func TestUpdateLeavesAServiceForAnotherBinaryAlone(t *testing.T) {
 		t.Error("restarted a service that runs another janus")
 	}
 	wantLines(t, out, "Restart janus to run the new version.")
+}
+
+func TestUpdateTellsAGoInstallTheExactReleaseToFetch(t *testing.T) {
+	_, exe := updateFrom(t)
+	version = "dev"
+	old := readBuildInfo
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Main: debug.Module{Path: "github.com/risadams/janus", Version: "v0.7.0"}}, true
+	}
+	t.Cleanup(func() { readBuildInfo = old })
+
+	_, errOut, code := runCLI(t, "update", "-config", noConfig(t))
+	if code != 1 {
+		t.Errorf("exit %d, want 1", code)
+	}
+	binaryIs(t, exe, "janus v0.7.0")
+	wantLines(t, errOut, "installed with go install", "go install github.com/risadams/janus/cmd/janus@v0.8.0")
+
+	// Already the newest: nothing to refuse.
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Main: debug.Module{Path: "github.com/risadams/janus", Version: "v0.8.0"}}, true
+	}
+	out, _, code := runCLI(t, "update", "-config", noConfig(t))
+	if code != 0 {
+		t.Errorf("exit %d on the newest release, want 0", code)
+	}
+	wantLines(t, out, "janus v0.8.0 is the newest release.")
 }
 
 // Install is given the release Latest found, assets and all.
