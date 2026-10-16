@@ -323,7 +323,7 @@ func TestStatsWatchShowsToday(t *testing.T) {
 	l.Append(ledger.Record{V: 1, ID: "b", Time: now.Add(-time.Minute), Class: "main", Backend: "upstream", Outcome: ledger.OutcomeAPIError})
 
 	var out bytes.Buffer
-	if code := watchStats(context.Background(), &out, []string{dir}, ledger.DefaultPrices, false, func() time.Time { return now }, time.Second); code != 0 {
+	if code := watchStats(context.Background(), &out, []string{dir}, ledger.DefaultPrices, false, false, func() time.Time { return now }, time.Second); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
 	squeezed := strings.Join(strings.Fields(out.String()), " ")
@@ -346,7 +346,7 @@ func TestStatsWatchShowsToday(t *testing.T) {
 	var live syncBuffer
 	done := make(chan int)
 	go func() {
-		done <- watchStats(ctx, &live, []string{dir}, ledger.DefaultPrices, true, func() time.Time { return now }, 10*time.Millisecond)
+		done <- watchStats(ctx, &live, []string{dir}, ledger.DefaultPrices, true, false, func() time.Time { return now }, 10*time.Millisecond)
 	}()
 	time.Sleep(100 * time.Millisecond)
 	cancel()

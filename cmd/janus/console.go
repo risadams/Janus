@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -304,24 +302,8 @@ const (
 	bad
 )
 
-// style is a color, or a weight, for a piece of a line.
-type style string
-
-const (
-	dim     style = "2"
-	bold    style = "1"
-	red     style = "31"
-	green   style = "32"
-	yellow  style = "33"
-	magenta style = "35"
-	cyan    style = "36"
-)
-
 func (c *Console) paint(s style, text string) string {
-	if !c.color || text == "" {
-		return text
-	}
-	return "\x1b[" + string(s) + "m" + text + "\x1b[0m"
+	return painter(c.color).paint(s, text)
 }
 
 // formatRequest lays out one request. Columns are padded before they are
@@ -597,23 +579,4 @@ func deref(p *int) int {
 		return 0
 	}
 	return *p
-}
-
-// wantColor reports whether output to f should be in color: only on a
-// terminal, never with NO_COLOR set (https://no-color.org), always with
-// FORCE_COLOR set. On Windows, only in a terminal known to understand
-// color codes, as the old console shows them as text.
-func wantColor(f *os.File, getenv func(string) string) bool {
-	switch {
-	case getenv("NO_COLOR") != "":
-		return false
-	case getenv("FORCE_COLOR") != "":
-		return true
-	case getenv("TERM") == "dumb":
-		return false
-	case runtime.GOOS == "windows" && getenv("WT_SESSION") == "" && getenv("TERM") == "":
-		return false
-	}
-	info, err := f.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }

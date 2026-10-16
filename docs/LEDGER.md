@@ -63,6 +63,15 @@ the cache being written again at many times the price. A turn over half a
 dollar is yellow for the same reason. Color is off when the output is not
 a terminal, or with `NO_COLOR` set; `FORCE_COLOR` turns it on regardless.
 
+The other commands follow the same rules, decided for standard output and
+standard error separately, and use the same colors: `doctor` shows ok,
+warn, and fail in green, yellow, and red; `stats` shows a usage limit in
+yellow from 75% used and red from 90%, failures in red and local answers
+in magenta; `audit` shows secrets sent upstream in red; `route` and
+`replay` color where a request went and how a replay compared; `service
+status` says running in green and not running in yellow. Output for
+scripts, such as `-json`, is never colored.
+
 ## Ledger record, schema version 1
 
 One JSON object per line. `v` goes up when a field changes meaning or is
