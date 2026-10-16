@@ -202,9 +202,11 @@ the response. It adds no identifying header to what it sends upstream.
 ## Supply chain
 
 - Janus asks GitHub for its list of releases when, and only when,
-  `janus version -check` or `janus doctor` runs: one request to
-  `api.github.com` with `janus/<version>` as its User-Agent, and nothing
-  about you, your config, or your traffic. The proxy never makes it.
+  `janus version -check` or `janus doctor` runs, or, with `update.check`
+  on, once a day when the proxy starts: one request to `api.github.com`
+  with `janus/<version>` as its User-Agent, and nothing about you, your
+  config, or your traffic. With `update.check` off, the default, the
+  proxy never makes it.
 
 - Janus uses the Go standard library and nothing else, by
   [decision](adr/001-dependencies.md). There are no third-party modules to
@@ -215,6 +217,12 @@ the response. It adds no identifying header to what it sends upstream.
   from that commit. Check one with
   `gh attestation verify <archive> --repo risadams/Janus`. That catches a
   replaced release, which `checksums.txt` alone cannot.
+- `checksums.txt` is also signed, with an ed25519 key held as an Actions
+  secret whose public half is compiled into Janus, so a download can be
+  checked without the GitHub CLI and without trusting the release page
+  ([ADR-003](adr/003-signed-checksums.md)). The signature proves less than
+  the attestation: that the key's holder signed the sums, not how the
+  archives were built. SECURITY.md says how to check it by hand.
 - **The binaries themselves are not code-signed**, so macOS quarantines a
   copy downloaded in a browser. Build from source if you would rather not
   trust a release at all.

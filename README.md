@@ -79,8 +79,10 @@ curl -LO "${url%/*}/checksums.txt"
 shasum -a 256 -c checksums.txt --ignore-missing
 ```
 
-Each archive also carries a signed record of the workflow and commit that
-built it. If you have the GitHub CLI, check that too, then unpack:
+`checksums.txt` is itself signed, so that a replaced release is caught
+too; [SECURITY.md](SECURITY.md#checking-a-download) says how to check
+the signature with OpenSSL. Each archive also carries a signed record of
+the workflow and commit that built it. If you have the GitHub CLI, check that too, then unpack:
 
 ```bash
 gh attestation verify "${url##*/}" --repo risadams/Janus
