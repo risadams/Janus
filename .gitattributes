@@ -1,0 +1,5 @@
+# The files packed into release archives keep the line endings they were
+# committed with, so a checkout on Windows rebuilds the same archives
+# (#264).
+README.md -text
+LICENSE -text

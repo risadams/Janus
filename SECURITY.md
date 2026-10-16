@@ -52,6 +52,30 @@ written.
 claim, that this repository's workflow built the archive from the tagged
 commit, if you have the GitHub CLI.
 
+## Rebuilding a release
+
+A release can be rebuilt from its tag, byte for byte, on any machine with
+Git, Bash, and Go 1.21 or later, which fetches the exact toolchain named
+in `go.mod` by itself:
+
+```bash
+git clone --branch v0.9.0-rc.13 https://github.com/risadams/Janus.git
+cd Janus
+scripts/release.sh v0.9.0-rc.13
+diff <(curl -sL https://github.com/risadams/Janus/releases/download/v0.9.0-rc.13/checksums.txt) dist/checksums.txt
+```
+
+No output from `diff` means every archive is the one published. The
+build dates each file at the tagged commit's time and records no paths,
+build ID, or anything of the machine it ran on; on Windows, run it from
+Git Bash. The release workflow rebuilds every release this way on macOS
+before publishing it, and refuses to publish one that differs.
+
+Releases before v0.9.0-rc.14 were not built this way and do not rebuild
+the same. Once the macOS binaries are notarized (#262), they carry
+Apple's signature, which a rebuild cannot make: for those, the binary
+before signing is what matches.
+
 ## Supported versions
 
 Janus is in pre-release. Fixes go into the next release candidate; there
