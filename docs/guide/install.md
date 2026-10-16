@@ -297,6 +297,23 @@ Only one Janus runs per log folder. If a second one starts, it stops and
 names the first, so a service and a copy in a terminal cannot both write
 the same ledger.
 
+## Tab completion (optional)
+
+`janus completion <shell>` prints a script that completes janus's
+commands and flags, for `bash`, `zsh`, `fish`, or `powershell`. It is
+made from the janus you run, so a newer janus completes its new flags
+once you write the script again.
+
+| Shell | Add this |
+| --- | --- |
+| bash | `eval "$(janus completion bash)"` in `~/.bashrc` |
+| zsh | `janus completion zsh > "${fpath[1]}/_janus"` once, or `source <(janus completion zsh)` in `~/.zshrc` after `compinit` |
+| fish | `janus completion fish > ~/.config/fish/completions/janus.fish` once |
+| PowerShell | `janus completion powershell \| Out-String \| Invoke-Expression` in your `$PROFILE` |
+
+After a flag that takes a value, such as `-config`, the shell completes
+file names.
+
 ## Updating
 
 `janus version -check` says whether a newer release is out, and how to

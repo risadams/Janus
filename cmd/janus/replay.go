@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -28,8 +27,7 @@ import (
 )
 
 func runReplay(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("janus replay", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := newFlagSet("janus replay", stderr)
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "usage: janus replay [flags] <capture file or directory>...")
 		fmt.Fprintln(stderr, "\nRuns saved Messages requests on a local model and compares each answer with")

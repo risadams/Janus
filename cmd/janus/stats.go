@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -23,8 +22,7 @@ import (
 )
 
 func runStats(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("janus stats", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := newFlagSet("janus stats", stderr)
 	configPath := fs.String("config", config.DefaultPath, "path to the config file")
 	var dirs dirList
 	fs.Var(&dirs, "dir", "ledger directory (default: <logging.dir>/ledger from the config); give it more than once to read several together")

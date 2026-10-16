@@ -4,7 +4,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -22,8 +21,7 @@ import (
 )
 
 func runAudit(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("janus audit", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := newFlagSet("janus audit", stderr)
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "usage: janus audit [flags] [request id]")
 		fmt.Fprintln(stderr, "\nShows what went to Anthropic: how many requests, how many janus changed on the")

@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -28,8 +27,7 @@ import (
 )
 
 func runMCP(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("janus mcp", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := newFlagSet("janus mcp", stderr)
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "usage: janus mcp -config <file> [-local name] [-root dir]")
 		fmt.Fprintln(stderr, "\nRuns an MCP server on standard input and output, for Claude Code to start.")

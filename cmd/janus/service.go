@@ -7,7 +7,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -56,6 +55,13 @@ func realServiceHost() (serviceHost, error) {
 		}}, nil
 }
 
+// serviceVerbs are what janus service does.
+var serviceVerbs = []verb{
+	{"install", "write and start the unit that runs janus at log in"},
+	{"uninstall", "stop and remove that unit"},
+	{"status", "say whether the unit is installed and running"},
+}
+
 func runService(args []string, stdout, stderr io.Writer) int {
 	host, err := realServiceHost()
 	if err != nil {
@@ -75,14 +81,15 @@ func service(args []string, host serviceHost, stdout, stderr io.Writer) int {
 		usage()
 		return 2
 	}
+	// The flag set is made before the platform is checked, so that janus
+	// completion finds it on every platform.
+	verb := args[0]
+	fs := newFlagSet("janus service "+verb, stderr)
+	configPath := fs.String("config", config.DefaultPath, "path to the config file janus runs with (install only)")
 	if host.goos != "darwin" && host.goos != "linux" {
 		fmt.Fprintf(stderr, "janus service: not supported on %s yet; docs/guide/install.md says how to run janus at log on\n", host.goos)
 		return 1
 	}
-	verb := args[0]
-	fs := flag.NewFlagSet("janus service "+verb, flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	configPath := fs.String("config", config.DefaultPath, "path to the config file janus runs with (install only)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}

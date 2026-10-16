@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -35,8 +34,7 @@ type finding struct {
 }
 
 func runDoctor(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("janus doctor", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := newFlagSet("janus doctor", stderr)
 	configPath := fs.String("config", config.DefaultPath, "path to the config file")
 	var flags config.Overrides
 	fs.StringVar(&flags.Listen, "listen", "", "override the listen address (host:port)")

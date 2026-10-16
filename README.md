@@ -178,6 +178,8 @@ The [configuration reference](docs/CONFIG.md) has every setting.
 | `janus claude` | Starts Claude Code through Janus, after checking Janus is running |
 | `janus service` | Installs, removes, or checks Janus as a service that starts at log in (macOS, Linux) |
 | `janus version` | Prints the version; `-check` asks GitHub whether a newer release is out, `-pre` counts pre-releases |
+| `janus update` | Replaces a copy installed from a release with the newest one, after checking its signature |
+| `janus completion` | Prints tab completion for bash, zsh, fish, or PowerShell ([install](docs/guide/install.md#tab-completion-optional)) |
 
 Each one takes `-h`.
 

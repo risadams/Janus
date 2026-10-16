@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,8 +19,7 @@ import (
 )
 
 func runRoute(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("janus route", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := newFlagSet("janus route", stderr)
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "usage: janus route [-config file] [-class main|subagent|unknown] [-override value] <request file>")
 		fmt.Fprintln(stderr, "\nSays where a saved Messages request would be sent, and why. The request file")
