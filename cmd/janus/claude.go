@@ -32,8 +32,7 @@ const dialTimeout = time.Second
 
 func runClaude(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ours, theirs := splitClaudeArgs(args)
-	fs := flag.NewFlagSet("janus claude", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := newFlagSet("janus claude", stderr)
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "Usage: janus claude [-config file] [-require] [--] [claude arguments]\n\n"+
 			"Runs Claude Code through Janus if Janus is answering on its listen address.\n"+

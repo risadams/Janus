@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -69,8 +68,7 @@ func versionLine() string {
 }
 
 func runVersion(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("janus version", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := newFlagSet("janus version", stderr)
 	check := fs.Bool("check", false, "ask GitHub whether a newer release is out")
 	pre := fs.Bool("pre", false, "with -check, count pre-releases too (as update.prerelease does)")
 	configPath := fs.String("config", config.DefaultPath, "path to the config file, for update.prerelease")

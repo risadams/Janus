@@ -5,14 +5,14 @@
 // and transforms that send fewer tokens.
 //
 // Run with no arguments, it serves. The subcommands are version, stats,
-// doctor, route, replay, audit, mcp, claude, service, update, and config;
+// doctor, route, replay, audit, mcp, claude, service, update, config, and
+// completion;
 // each answers -h.
 package main
 
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -52,36 +52,56 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+// command is one of janus's subcommands. The table in commands is both
+// what run dispatches on and what janus completion offers, so the two
+// cannot disagree.
+type command struct {
+	name string
+	// about is the line a shell shows beside the name as it completes.
+	about string
+	// verbs are the words the command takes first, for one that has them;
+	// each verb has its own flag set, named "janus <name> <verb>".
+	verbs []verb
+	run   func(args []string, stdout, stderr io.Writer) int
+}
+
+// verb is a word a command takes first, such as service's install.
+type verb struct{ name, about string }
+
+func commands() []command {
+	return []command{
+		{name: "version", about: "print the version, or check for a newer one", run: runVersion},
+		{name: "stats", about: "summarize the ledger: requests, tokens, and cost", run: runStats},
+		{name: "doctor", about: "check the config, the upstream, and LM Studio", run: runDoctor},
+		{name: "route", about: "show where a request would be sent, and why", run: runRoute},
+		{name: "replay", about: "send captured requests again, to compare", run: runReplay},
+		{name: "audit", about: "report what reached Anthropic and what the guard did", run: runAudit},
+		{name: "mcp", about: "serve the local model to Claude Code as MCP tools", run: func(args []string, stdout, stderr io.Writer) int {
+			return runMCP(args, os.Stdin, stdout, stderr)
+		}},
+		{name: "claude", about: "run Claude Code through janus", run: func(args []string, stdout, stderr io.Writer) int {
+			return runClaude(args, os.Stdin, stdout, stderr)
+		}},
+		{name: "service", about: "run janus when you log in", verbs: serviceVerbs, run: runService},
+		{name: "update", about: "replace this janus with the latest release", run: runUpdate},
+		{name: "config", about: "rewrite an old config in this version's form", verbs: configVerbs, run: runConfig},
+		{name: "completion", about: "print a tab-completion script for a shell", verbs: completionShells, run: runCompletion},
+	}
+}
+
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
-		switch args[0] {
-		case "version", "-version", "--version":
+		if args[0] == "-version" || args[0] == "--version" {
 			return runVersion(args[1:], stdout, stderr)
-		case "stats":
-			return runStats(args[1:], stdout, stderr)
-		case "doctor":
-			return runDoctor(args[1:], stdout, stderr)
-		case "route":
-			return runRoute(args[1:], stdout, stderr)
-		case "replay":
-			return runReplay(args[1:], stdout, stderr)
-		case "audit":
-			return runAudit(args[1:], stdout, stderr)
-		case "mcp":
-			return runMCP(args[1:], os.Stdin, stdout, stderr)
-		case "claude":
-			return runClaude(args[1:], os.Stdin, stdout, stderr)
-		case "service":
-			return runService(args[1:], stdout, stderr)
-		case "update":
-			return runUpdate(args[1:], stdout, stderr)
-		case "config":
-			return runConfig(args[1:], stdout, stderr)
+		}
+		for _, c := range commands() {
+			if c.name == args[0] {
+				return c.run(args[1:], stdout, stderr)
+			}
 		}
 	}
 
-	fs := flag.NewFlagSet("janus", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := newFlagSet("janus", stderr)
 	configPath := fs.String("config", config.DefaultPath, "path to the config file")
 	var flags config.Overrides
 	fs.StringVar(&flags.Listen, "listen", "", "override the listen address (host:port)")

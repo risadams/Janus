@@ -6,7 +6,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,8 +29,7 @@ var (
 )
 
 func runUpdate(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("janus update", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := newFlagSet("janus update", stderr)
 	pre := fs.Bool("pre", false, "count pre-releases too (as update.prerelease does)")
 	configPath := fs.String("config", config.DefaultPath, "path to the config file, for update.prerelease")
 	if err := fs.Parse(args); err != nil {

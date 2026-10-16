@@ -6,13 +6,17 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/risadams/janus/internal/config"
 )
+
+// configVerbs are what janus config does.
+var configVerbs = []verb{
+	{"upgrade", "rewrite the config in this version's form, keeping a .bak"},
+}
 
 func runConfig(args []string, stdout, stderr io.Writer) int {
 	usage := func() {
@@ -27,8 +31,7 @@ func runConfig(args []string, stdout, stderr io.Writer) int {
 		}
 		return 2
 	}
-	fs := flag.NewFlagSet("janus config upgrade", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := newFlagSet("janus config upgrade", stderr)
 	configPath := fs.String("config", config.DefaultPath, "path to the config file")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
