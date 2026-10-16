@@ -29,7 +29,9 @@ signed tag. It asks before pushing; `--yes` skips that, and with `-m` lets
 it run where there is no terminal, such as `!` in Claude Code. The release
 workflow builds the binaries and publishes the release from that tag.
 Don't create the release on GitHub by hand: the workflow cannot publish
-over one that already exists.
+over one that already exists. What versions mean, what a stable release
+promises, and how a bad one is withdrawn are in
+[docs/RELEASES.md](docs/RELEASES.md).
 
 [AGENTS.md](AGENTS.md) has the full conventions: the rules that keep Janus
 safe to change, how comments and tests are written, and how experiments
