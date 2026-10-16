@@ -82,6 +82,7 @@ jobs:
             dist/*.zip
             dist/checksums.txt
             dist/checksums.txt.sig
+            dist/*.cdx.json
           retention-days: 7
 
   # Anyone can rebuild a release from its tag and get the same bytes
@@ -112,9 +113,43 @@ jobs:
           scripts/release.sh "$VERSION" > /dev/null
           diff -u "$GITHUB_WORKSPACE/built/checksums.txt" dist/checksums.txt
 
-  publish:
+  # Each SBOM gets a signed attestation binding it to its archive, so
+  # gh attestation verify can check what went into a build (#263). One
+  # job per platform, since the action takes one SBOM at a time.
+  attest-sbom:
     if: github.ref_type == 'tag'
     needs: [build, reproduce]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      matrix:
+        target: [darwin_arm64, darwin_amd64, linux_amd64, linux_arm64, windows_amd64, windows_arm64]
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Find the archive
+        id: archive
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          archive="$(ls dist/janus_*_"${TARGET}".tar.gz dist/janus_*_"${TARGET}".zip 2>/dev/null)"
+          base="${archive%.tar.gz}"
+          base="${base%.zip}"
+          echo "path=${archive}" >> "$GITHUB_OUTPUT"
+          echo "sbom=${base}.cdx.json" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: ${{ steps.archive.outputs.path }}
+          sbom-path: ${{ steps.archive.outputs.sbom }}
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [build, reproduce, attest-sbom]
     runs-on: ubuntu-latest
     permissions:
       contents: write

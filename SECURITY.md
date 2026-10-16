@@ -52,6 +52,15 @@ written.
 claim, that this repository's workflow built the archive from the tagged
 commit, if you have the GitHub CLI.
 
+Each archive also has an SBOM beside it, `<archive name>.cdx.json` in
+CycloneDX form: the Go toolchain, the standard library, and Janus's own
+packages, which are all a release contains, with the platform it was
+built for. Its attestation binds it to the archive; check it with
+`gh attestation verify <archive> --repo risadams/Janus --predicate-type
+https://cyclonedx.org/bom`. The SBOMs are not in `checksums.txt`: they
+name Janus's version as Git describes the checkout, so a rebuild from a
+fresh clone writes them with a different version string.
+
 ## Rebuilding a release
 
 A release can be rebuilt from its tag, byte for byte, on any machine with
