@@ -1,0 +1,4 @@
+# The public keys that sign each release's checksums.txt, one per line in
+# base64, the newest first. A rotated key stays here so that the releases
+# it signed can still be checked; see docs/adr/003-signed-checksums.md.
+# A new key is added by go run ./scripts/signsums -new.

@@ -31,6 +31,32 @@ jobs:
       # commit in the test workflow; here the tests only confirm the build.
       - run: go test -short -timeout 5m ./...
       - run: scripts/release.sh "${{ steps.version.outputs.version }}"
+      # A tag is signed with the release key, and the signature is checked
+      # against the keys Janus is built with, so a release Janus cannot
+      # check is never published. A pull request signs with a key made for
+      # the run, so that signing is tested before a tag depends on it.
+      - name: Sign the checksums
+        id: sign
+        env:
+          JANUS_RELEASE_KEY: ${{ github.ref_type == 'tag' && secrets.JANUS_RELEASE_KEY || '' }}
+        run: |
+          keys=internal/update/release-keys.txt
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            keys="${RUNNER_TEMP}/release-keys.txt"
+            JANUS_RELEASE_KEY="$(go run ./scripts/signsums -new -keys "$keys")"
+            export JANUS_RELEASE_KEY
+          fi
+          go run ./scripts/signsums -keys "$keys" dist/checksums.txt
+          echo "keys=$keys" >> "$GITHUB_OUTPUT"
+      # The check SECURITY.md gives people, with OpenSSL rather than Go.
+      - name: Check the signature by hand
+        env:
+          KEYS: ${{ steps.sign.outputs.keys }}
+        run: |
+          key="$(grep -v '^#' "$KEYS" | head -n 1)"
+          { printf '\060\052\060\005\006\003\053\145\160\003\041\000'; printf '%s' "$key" | base64 -d; } > "${RUNNER_TEMP}/janus-release.der"
+          openssl pkeyutl -verify -pubin -keyform DER -inkey "${RUNNER_TEMP}/janus-release.der" \
+            -rawin -in dist/checksums.txt -sigfile dist/checksums.txt.sig
       - name: Run the binary that was built
         run: |
           cd dist
@@ -46,6 +72,7 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
+            dist/checksums.txt.sig
           retention-days: 7
 
   publish:
