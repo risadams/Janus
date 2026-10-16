@@ -174,10 +174,19 @@ jobs:
       # A signed statement that each archive was built by this workflow from
       # the tagged commit, which anyone can check with gh attestation verify.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        id: provenance
         with:
           subject-path: |
             dist/*.tar.gz
             dist/*.zip
+      # The attestation also goes up with the release, so that it can be
+      # checked without asking GitHub for it (gh attestation verify
+      # --bundle), and so that tools looking for provenance beside a
+      # release, as OpenSSF Scorecard does (#266), find it.
+      - name: Keep the provenance with the release
+        env:
+          BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: cp "$BUNDLE" "dist/janus_${GITHUB_REF_NAME#v}.intoto.jsonl"
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}

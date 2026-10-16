@@ -50,7 +50,10 @@ written.
 
 `gh attestation verify <archive> --repo risadams/Janus` checks a stronger
 claim, that this repository's workflow built the archive from the tagged
-commit, if you have the GitHub CLI.
+commit, if you have the GitHub CLI. From v0.9.0-rc.17, the attestation is
+also published with the release, as `janus_<version>.intoto.jsonl`; add
+`--bundle janus_<version>.intoto.jsonl` to check against that file rather
+than asking GitHub for it.
 
 Each archive also has an SBOM beside it, `<archive name>.cdx.json` in
 CycloneDX form: the Go toolchain, the standard library, and Janus's own

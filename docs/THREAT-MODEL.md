@@ -246,7 +246,11 @@ the response. It adds no identifying header to what it sends upstream.
 | A local model's tool calls are run as if Claude made them | Limit, inherent to routing locally |
 | Redaction does not stop a prompt injection from using a placeholder | Limit, inherent to reversible redaction |
 | `http://` upstream sends the credential in the clear | Limit; allowed for testing |
-| Release binaries are unsigned | Limit |
+| Release binaries are not code-signed | Limit: `checksums.txt` is signed ([ADR-003](adr/003-signed-checksums.md)) and each archive's provenance attested; macOS notarization waits on a Developer ID (#262) |
+| OpenSSF Scorecard: no approving review on changes (Code-Review) | Accepted: one maintainer. Every change goes through a pull request that CI must pass |
+| OpenSSF Scorecard: `braces` in the docs site's lockfile (GHSA-vfj7-8cjw-p6xm) | Accepted: no fixed version exists; Docusaurus uses it only to build the site, on this repository's own files. Nothing of it is in Janus or on the published site |
+| OpenSSF Scorecard: `main` needs no approving review, code-owner review, or approval after the last push (Branch-Protection) | Accepted, as for Code-Review: with one maintainer, a required approval would block every merge. `main` takes changes only through pull requests that CI must pass and that are up to date with it, keeps a linear history, cannot be force-pushed or deleted, and binds administrators too |
+| OpenSSF Scorecard: no packaging workflow detected | Accepted: releases are published to GitHub by the release workflow, which Scorecard does not count |
 
 ## Reporting a problem
 
