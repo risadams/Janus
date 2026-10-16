@@ -61,6 +61,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		findings = append(findings, checkLocal(client, cfg)...)
 		ledgerCheck, recent := checkLedger(filepath.Join(cfg.Logging.Dir, "ledger"), time.Now())
 		findings = append(findings, ledgerCheck, checkClaude(cfg.Listen, os.Getenv, claudeSettingsPath(os.Getenv), recent))
+		findings = append(findings, checkUpdate(client, cfg.Update.Prerelease))
 	}
 
 	fmt.Fprintf(stdout, "%s doctor\n\n", versionLine())
@@ -378,4 +379,21 @@ func checkClaude(listen string, getenv func(string) string, settingsPath string,
 		"so Claude Code goes straight to Anthropic unless started with it (as below).\n" +
 		"To send every session through janus, set it under \"env\" in that file; see\n" +
 		"docs/guide/install.md for the catch"}
+}
+
+// checkUpdate says whether a newer release is out. Not knowing is never a
+// failure: janus works the same offline. A development build has nothing
+// to compare, so it asks nothing.
+func checkUpdate(client *http.Client, pre bool) finding {
+	if _, how := currentVersion(); how == devBuild {
+		return finding{"ok", "update", "a development build; janus version -check names the newest release"}
+	}
+	newer, msg, err := checkForUpdate(context.Background(), client, pre)
+	switch {
+	case err != nil:
+		return finding{"warn", "update", "could not check for a newer release: " + err.Error()}
+	case newer:
+		return finding{"warn", "update", msg}
+	}
+	return finding{"ok", "update", msg}
 }

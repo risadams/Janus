@@ -174,7 +174,7 @@ The [configuration reference](docs/CONFIG.md) has every setting.
 | `janus mcp` | The MCP server for Claude Code's worker tools |
 | `janus claude` | Starts Claude Code through Janus, after checking Janus is running |
 | `janus service` | Installs, removes, or checks Janus as a service that starts at log in (macOS, Linux) |
-| `janus version` | Prints the version |
+| `janus version` | Prints the version; `-check` asks GitHub whether a newer release is out, `-pre` counts pre-releases |
 
 Each one takes `-h`.
 

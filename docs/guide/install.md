@@ -299,6 +299,13 @@ the same ledger.
 
 ## Updating
 
+`janus version -check` says whether a newer release is out, and how to
+upgrade the copy you have; `janus doctor` says the same in one line. Only
+stable releases are offered unless you add `-pre`, or set
+`update.prerelease` in the config, to count pre-releases too. The check
+asks GitHub for the list of releases and sends nothing else, and only
+when you run one of these commands.
+
 Download the new release as in step 1 and replace the binary, or run the
 `go install` command again. Then restart Janus. Your config, ledger, and
 captures are left as they are. `janus version` says which version you
