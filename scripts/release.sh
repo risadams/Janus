@@ -5,7 +5,10 @@
 #
 # One archive per platform, each holding the janus binary, the README and
 # the licence, and a checksums.txt of SHA-256 sums over the archives. The
-# binaries are static and carry the version given.
+# binaries are static and carry the version given. Every installed Janus
+# updates itself from releases laid out this way, so the names and the
+# layout are fixed (docs/adr/004-release-tooling.md), and the release
+# workflow checks them with scripts/checklayout.
 set -euo pipefail
 
 version="${1:?usage: scripts/release.sh <version>, for example v1.2.3}"
