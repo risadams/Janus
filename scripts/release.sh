@@ -32,6 +32,7 @@ mkdir -p dist
 tools="$(mktemp -d)"
 trap 'rm -rf "$tools"' EXIT
 go build -o "$tools/archive" ./scripts/archive
+sha256() { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi; }
 # The CycloneDX project's own tool, at an exact version (ADR-004). Built
 # for this machine, then run with each target's GOOS and GOARCH.
 GOBIN="$tools" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.12.0
@@ -48,13 +49,18 @@ for target in "${targets[@]}"; do
   GOOS="$os" GOARCH="$arch" go build -trimpath -buildvcs=false \
     -ldflags "-s -w -buildid= -X main.version=${version}" -o "${stage}/${binary}" ./cmd/janus
   cp README.md LICENSE "$stage/"
-  # No serial number or time, so the same tag writes the same SBOM. It is
-  # left out of checksums.txt all the same: it names Janus's version as
+  # No time, and a serial number made from the version and platform rather
+  # than drawn at random, so the same tag writes the same SBOM. (The
+  # attestation refuses a CycloneDX SBOM without one.) It is a UUID of
+  # version 8, the kind RFC 9562 leaves to the maker. The SBOM is left out
+  # of checksums.txt all the same: it names Janus's version as
   # Git describes the checkout, which a shallow clone describes
   # differently. Its attestation, made when the release is published,
   # binds it to its archive instead.
+  h="$(printf 'janus %s %s/%s' "$version" "$os" "$arch" | sha256 | cut -c1-32)"
+  serial="urn:uuid:${h:0:8}-${h:8:4}-8${h:13:3}-8${h:17:3}-${h:20:12}"
   GOOS="$os" GOARCH="$arch" "$tools/cyclonedx-gomod" app -json -std -packages -licenses \
-    -noserial -notimestamp -main cmd/janus -output "dist/${name}.cdx.json" . 2>/dev/null
+    -serial "$serial" -notimestamp -main cmd/janus -output "dist/${name}.cdx.json" . 2>/dev/null
 
   ext=tar.gz
   if [ "$os" = "windows" ]; then ext=zip; fi
