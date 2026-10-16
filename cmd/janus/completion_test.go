@@ -235,21 +235,41 @@ func TestFishCompletes(t *testing.T) {
 	}
 }
 
+// pwsh takes seconds to start, so every case runs in one of it, each
+// case's answers ending in a line of their own.
 func TestPowerShellCompletes(t *testing.T) {
 	pwsh := lookShell(t, "pwsh")
-	script := writeScript(t, "powershell")
+	// Dot-sourcing a file that does not end in .ps1 opens it in whatever
+	// application claims it, rather than running it.
+	script := filepath.Join(t.TempDir(), "janus.ps1")
+	if err := os.WriteFile(script, []byte(completionScript(t, "powershell")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	prog := ". " + psQuote(script) + "\n"
 	for _, c := range completionCases {
 		if strings.Contains(c.line, " -- ") {
 			continue // PowerShell keeps -- to itself
 		}
-		prog := ". " + psQuote(script) + "\n" +
-			"$line = " + psQuote(c.line) + "\n" +
+		lines = append(lines, c.line)
+		prog += "$line = " + psQuote(c.line) + "\n" +
 			"(TabExpansion2 -inputScript $line -cursorColumn $line.Length).CompletionMatches |" +
-			" Where-Object ResultType -eq 'ParameterValue' | ForEach-Object CompletionText\n"
-		out, err := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command", prog).CombinedOutput()
-		if err != nil {
-			t.Fatalf("pwsh: %v\n%s", err, out)
+			" Where-Object ResultType -eq 'ParameterValue' | ForEach-Object CompletionText\n" +
+			"'--end--'\n"
+	}
+	out, err := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command", prog).CombinedOutput()
+	if err != nil {
+		t.Fatalf("pwsh: %v\n%s", err, out)
+	}
+	answers := strings.Split(strings.ReplaceAll(string(out), "\r", ""), "--end--\n")
+	if len(answers) != len(lines)+1 {
+		t.Fatalf("pwsh answered %d cases of %d:\n%s", len(answers)-1, len(lines), out)
+	}
+	for i, line := range lines {
+		for _, c := range completionCases {
+			if c.line == line {
+				checkOffered(t, "PowerShell", line, answers[i], c.want)
+			}
 		}
-		checkOffered(t, "PowerShell", c.line, string(out), c.want)
 	}
 }
