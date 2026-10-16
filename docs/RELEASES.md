@@ -24,6 +24,15 @@ with release candidates of a coming version as `vMAJOR.MINOR.PATCH-rc.N`.
 - **A stable release** keeps the promises below for every later release
   with the same major version.
 
+## Release notes
+
+Each release's notes open with the message of its signed tag, which
+`scripts/tag-release.sh` asks for: a line or two, for people, on what the
+release brings. Below it, GitHub lists the pull requests since the last
+release. When a release fixes a security problem, its tag message names
+it, with the advisory or CVE, so the notes say which vulnerabilities it
+fixes.
+
 ## What a stable release promises
 
 From 1.0, within one major version:
