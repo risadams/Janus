@@ -99,7 +99,16 @@ regression case. Seeds are built by hand, never taken from captures.
   and a card on the Janus project board (owner `risadams`, number 3) moved
   from Todo to In Progress to Done. Large issues get sub-issues.
 - **One branch and one PR per issue.** The PR body says `Closes #N`, what
-  changed and why, and how it was checked. The owner merges, squashing.
+  changed and why, and how it was checked. PRs are squashed into `main`;
+  history is linear, so a branch is rebased on `main`, never merged with
+  it.
+- **Agents may stack PRs and set them to auto-merge**, with
+  `gh pr merge <n> --auto --squash`, which waits for the required checks.
+  Fix a failing check rather than waiting for the owner. Before a parent
+  in a stack merges, retarget each child to `main`
+  (`gh pr edit <child> --base main`): deleting the parent's branch closes
+  its children instead of retargeting them. After it merges, rebase each
+  child with `git rebase --onto main <old parent tip>`.
 - **Commit titles are plain sentences** saying what the change does
   ("Plan a local attempt's upstream fallback only when it is needed"); the
   body says why. Commits are SSH-signed; if signing asks for a passphrase,
