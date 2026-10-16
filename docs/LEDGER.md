@@ -93,6 +93,7 @@ used to; `janus stats` says how many, and `-json` has them as
 | `time` | string | When the request arrived, RFC 3339, UTC |
 | `session` | string | Claude Code's session id, from `X-Claude-Code-Session-Id`. Omitted if absent. |
 | `agent` | string | Claude Code's subagent id, from `X-Claude-Code-Agent-Id`. Omitted for the main loop. |
+| `claude_code` | string | The Claude Code release that sent the request, such as `2.1.301`, from its `User-Agent`; `janus doctor` warns when it is outside the releases Janus was tested with. Omitted for other clients, and in records written by a Janus older than v0.9.0-rc.17. |
 | `method`, `path` | string | The request line |
 | `class` | string | `main`, `subagent`, `connectivity`, `quota` (Claude Code reading its rate limits at start-up with a one-token request; a `429` answer to it is normal), `compaction` (Claude Code asking for a summary of the conversation to replace it, as `/compact` does), `status` (Claude Code asking for a few words on what a subagent is doing, for its progress line), `safety` (Claude Code's auto-mode safety classifier grading an action before it runs; recognised by its system prompt), `token_count` (`POST /v1/messages/count_tokens`), or `unknown` |
 | `route` | string | Where the request was sent: `upstream`, `local`, or `shadow` for a shadow run |

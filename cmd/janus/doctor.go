@@ -23,6 +23,8 @@ import (
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/config"
 	"github.com/risadams/janus/internal/ledger"
+	"github.com/risadams/janus/internal/route"
+	"github.com/risadams/janus/internal/update"
 )
 
 // finding is the result of one check. A failure means janus will not work
@@ -60,6 +62,9 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		findings = append(findings, checkLocal(client, cfg)...)
 		ledgerCheck, recent := checkLedger(filepath.Join(cfg.Logging.Dir, "ledger"), time.Now())
 		findings = append(findings, ledgerCheck, checkClaude(cfg.Listen, os.Getenv, claudeSettingsPath(os.Getenv), recent))
+		if f, seen := checkClaudeVersion(filepath.Join(cfg.Logging.Dir, "ledger"), time.Now()); seen {
+			findings = append(findings, f)
+		}
 		findings = append(findings, checkUpdate(client, cfg.Update.Prerelease))
 	}
 
@@ -347,6 +352,44 @@ func checkLedger(dir string, now time.Time) (f finding, recent bool) {
 			"If Claude Code has been used since, it is not going through janus; see claude below."}, false
 	}
 	return finding{"ok", "ledger", "the last request was recorded " + when}, true
+}
+
+// versionLookback is how far back doctor looks in the ledger for the
+// Claude Code release in use.
+const versionLookback = 7 * 24 * time.Hour
+
+// checkClaudeVersion says whether the Claude Code release in the newest
+// request janus recorded is one janus was tested with. A newer one may
+// send requests janus classifies wrongly, without anything failing (#267),
+// so it is a warning, never a failure. seen is false when no request in
+// the last week named its release, and there is nothing to say.
+func checkClaudeVersion(dir string, now time.Time) (f finding, seen bool) {
+	records, _, err := ledger.Read(dir, now.Add(-versionLookback), time.Time{})
+	if err != nil {
+		return finding{}, false
+	}
+	var used string
+	for i := len(records) - 1; i >= 0 && used == ""; i-- {
+		used = records[i].ClaudeCode
+	}
+	v, ok := update.Parse(used)
+	if !ok {
+		return finding{}, false
+	}
+	tested := route.TestedClaudeCode
+	oldest, _ := update.Parse(tested.Oldest)
+	newest, _ := update.Parse(tested.Newest)
+	switch {
+	case v.Compare(newest) > 0:
+		return finding{"warn", "client", fmt.Sprintf("Claude Code %s is newer than any this janus was tested with (up to %s).\n"+
+			"It will most likely work. If janus stats counts requests as unknown, or routing or the guard\n"+
+			"misbehave, run janus update; if the newest janus is no newer, report it at\n"+
+			"https://github.com/risadams/Janus/issues.", used, tested.Newest)}, true
+	case v.Compare(oldest) < 0:
+		return finding{"warn", "client", fmt.Sprintf("Claude Code %s is older than any this janus was tested with (from %s).\n"+
+			"Update Claude Code with claude update.", used, tested.Oldest)}, true
+	}
+	return finding{"ok", "client", fmt.Sprintf("Claude Code %s, which janus was tested with (%s to %s)", used, tested.Oldest, tested.Newest)}, true
 }
 
 // ago writes a duration the way a person would say it.

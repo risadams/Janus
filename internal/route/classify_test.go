@@ -124,6 +124,7 @@ func TestRealCapturesAreClassified(t *testing.T) {
 	}
 	pages, _ := filepath.Glob(filepath.Join(dir, "*", "*.md"))
 	counts := map[Class]int{}
+	untested := map[string]bool{}
 	for _, page := range pages {
 		if strings.Contains(page, ".shadow.") {
 			continue
@@ -135,6 +136,10 @@ func TestRealCapturesAreClassified(t *testing.T) {
 		method, path, header := capturedRequest(string(data))
 		if method == "" {
 			continue
+		}
+		if v := ClaudeCodeVersion(header); v != "" && newerThanTested(v) && !untested[v] {
+			untested[v] = true
+			t.Errorf("%s is from Claude Code %s, newer than TestedClaudeCode.Newest (%s); once this test passes on it, raise Newest", filepath.Base(page), v, TestedClaudeCode.Newest)
 		}
 		class := Classify(method, path, header)
 		if method == http.MethodPost && path == "/v1/messages" {
