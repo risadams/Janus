@@ -23,6 +23,13 @@ const DefaultPath = "janus.config.json"
 
 // Config is the whole of janus.config.json.
 type Config struct {
+	// Version is the config's format; see Version(). A config without one
+	// is version 1.
+	Version int `json:"version,omitempty"`
+	// Upgraded says what was changed, in memory, to bring an older config
+	// up to this janus's version. The file itself is left alone until
+	// janus config upgrade rewrites it.
+	Upgraded []string `json:"-"`
 	// Listen is the host:port janus accepts client connections on.
 	Listen string `json:"listen"`
 	// AllowRemote must be set before Listen may name a non-loopback
@@ -319,6 +326,7 @@ func stateDir(goos string, getenv func(string) string, home func() (string, erro
 // reaches the intended instance from any machine, and every feature off.
 func Default() Config {
 	return Config{
+		Version:  Version(),
 		Listen:   "127.0.0.1:8787",
 		Upstream: Backend{BaseURL: "https://api.anthropic.com"},
 		Local:    Local{BaseURL: "http://studio.local:1234"},
@@ -356,11 +364,26 @@ func Read(path string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	upgraded, notes, err := upgrade(data)
+	if err != nil {
+		return Config{}, fmt.Errorf("%s: %w", path, err)
+	}
+	cfg, err := decode(upgraded, path)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Upgraded = notes
+	return cfg, nil
+}
+
+// decode reads a config's JSON over the defaults, refusing settings it
+// does not know, so that a typo is reported rather than ignored.
+func decode(data []byte, path string) (Config, error) {
 	cfg := Default()
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&cfg); err != nil {
-		return Config{}, fmt.Errorf("%s: %w", path, err)
+		return Config{}, fmt.Errorf("%s: %w", path, unknownFieldHint(err))
 	}
 	return resolve(cfg, path), nil
 }

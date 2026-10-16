@@ -5,8 +5,8 @@
 // and transforms that send fewer tokens.
 //
 // Run with no arguments, it serves. The subcommands are version, stats,
-// doctor, route, replay, audit, mcp, claude, service, and update; each
-// answers -h.
+// doctor, route, replay, audit, mcp, claude, service, update, and config;
+// each answers -h.
 package main
 
 import (
@@ -75,6 +75,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return runService(args[1:], stdout, stderr)
 		case "update":
 			return runUpdate(args[1:], stdout, stderr)
+		case "config":
+			return runConfig(args[1:], stdout, stderr)
 		}
 	}
 
@@ -105,6 +107,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if created {
 		fmt.Fprintf(stdout, "Wrote a starter config to %s. Edit it to change these settings.\n\n", *configPath)
+	}
+	if len(cfg.Upgraded) > 0 {
+		fmt.Fprintf(stdout, "%s\n\n", upgradedNote(*configPath, cfg.Upgraded))
 	}
 
 	// Validate has already established that these parse.

@@ -139,6 +139,9 @@ func checkConfig(path string, flags config.Overrides) (findings []finding, cfg c
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return []finding{{"ok", "config", path + " does not exist yet; using the defaults (janus writes it on first run)"}}, cfg, true
 	}
+	if len(cfg.Upgraded) > 0 {
+		return []finding{{"warn", "config", upgradedNote(path, cfg.Upgraded)}}, cfg, true
+	}
 	return []finding{{"ok", "config", path}}, cfg, true
 }
 

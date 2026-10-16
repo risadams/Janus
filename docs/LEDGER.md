@@ -78,6 +78,14 @@ One JSON object per line. `v` goes up when a field changes meaning or is
 removed; new fields may appear without a version change, so readers should
 ignore fields they do not know.
 
+Every release so far has written schema 1, and a newer Janus reads every
+ledger an older one wrote: when a schema changes, records in the old one
+are brought up to date as they are read. A record from a newer schema
+than this Janus knows, as after going back to an older version, is left
+out of every figure rather than read as if its fields meant what they
+used to; `janus stats` says how many, and `-json` has them as
+`newer_records`.
+
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `v` | int | Schema version, `1` |

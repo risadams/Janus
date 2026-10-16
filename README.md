@@ -171,6 +171,7 @@ The [configuration reference](docs/CONFIG.md) has every setting.
 | `janus doctor` | Checks the config, port, upstream, LM Studio, log directory, and whether Claude Code is using Janus, and says what to fix; `-json` |
 | `janus stats` | Tokens and estimated cost from the ledger; `-since 24h`, `-json` |
 | `janus audit` | What left this machine, request by request; `-verify` re-reads what was sent; `-json` |
+| `janus config upgrade` | Rewrites a config written for an older Janus in this version's form, keeping a copy |
 | `janus route` | Where a saved request would go, and why |
 | `janus replay` | Runs saved requests on the local model and compares its answers with Claude's |
 | `janus mcp` | The MCP server for Claude Code's worker tools |

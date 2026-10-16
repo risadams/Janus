@@ -41,16 +41,32 @@ func Newest(dir string) (time.Time, error) {
 	return time.Time{}, nil
 }
 
+// Skipped counts the ledger lines Read left out.
+type Skipped struct {
+	// Malformed lines are not records at all.
+	Malformed int
+	// Newer records were written by a newer janus, in a schema this one
+	// does not know: one where a field may mean something else. Reading
+	// them as if they were this schema could give wrong figures, so they
+	// are left out and counted instead (#269).
+	Newer int
+}
+
 // Read returns the records whose time falls in [since, until), oldest
-// first. A zero since or until leaves that end open. Lines that are not
-// records are skipped and counted: one bad line must not hide a day.
-func Read(dir string, since, until time.Time) (records []Record, malformed int, err error) {
+// first. A zero since or until leaves that end open. Lines it cannot read
+// are skipped and counted: one bad line must not hide a day.
+//
+// Every release so far has written schema 1, adding fields as it went, and
+// testdata holds a ledger in the shape of each; a later schema that
+// changes a field's meaning brings the records of earlier ones up to date
+// here, as it reads them.
+func Read(dir string, since, until time.Time) (records []Record, skipped Skipped, err error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, 0, nil
+			return nil, skipped, nil
 		}
-		return nil, 0, fmt.Errorf("ledger: %w", err)
+		return nil, skipped, fmt.Errorf("ledger: %w", err)
 	}
 
 	for _, entry := range entries {
@@ -66,14 +82,23 @@ func Read(dir string, since, until time.Time) (records []Record, malformed int, 
 
 		f, err := os.Open(filepath.Join(dir, name))
 		if err != nil {
-			return nil, 0, fmt.Errorf("ledger: %w", err)
+			return nil, skipped, fmt.Errorf("ledger: %w", err)
 		}
 		sc := bufio.NewScanner(f)
 		sc.Buffer(make([]byte, 0, 64<<10), 4<<20)
 		for sc.Scan() {
+			// The schema version is read first: a newer record's fields
+			// may not even fit this one's types.
+			var head struct {
+				V int `json:"v"`
+			}
+			if json.Unmarshal(sc.Bytes(), &head) == nil && head.V > SchemaVersion {
+				skipped.Newer++
+				continue
+			}
 			var rec Record
 			if json.Unmarshal(sc.Bytes(), &rec) != nil || rec.ID == "" {
-				malformed++
+				skipped.Malformed++
 				continue
 			}
 			if (!since.IsZero() && rec.Time.Before(since)) || (!until.IsZero() && !rec.Time.Before(until)) {
@@ -84,11 +109,11 @@ func Read(dir string, since, until time.Time) (records []Record, malformed int, 
 		err = sc.Err()
 		f.Close()
 		if err != nil {
-			return nil, 0, fmt.Errorf("ledger: %s: %w", name, err)
+			return nil, skipped, fmt.Errorf("ledger: %s: %w", name, err)
 		}
 	}
 	sort.SliceStable(records, func(i, j int) bool { return records[i].Time.Before(records[j].Time) })
-	return records, malformed, nil
+	return records, skipped, nil
 }
 
 // Row is the totals for one group of requests.
@@ -206,9 +231,12 @@ type Report struct {
 	// Their tokens are missing from every figure in the report.
 	Unread int `json:"unread,omitempty"`
 	// Unpriced counts, by reason, the requests left out of every cost.
-	Unpriced      map[string]int `json:"unpriced,omitempty"`
-	Malformed     int            `json:"malformed_lines,omitempty"`
-	PricesChecked string         `json:"prices_checked"`
+	Unpriced  map[string]int `json:"unpriced,omitempty"`
+	Malformed int            `json:"malformed_lines,omitempty"`
+	// Newer counts records written by a newer janus, in a schema this one
+	// does not know, which were left out.
+	Newer         int    `json:"newer_records,omitempty"`
+	PricesChecked string `json:"prices_checked"`
 }
 
 // Summarise totals the records, overall and by class, model, and backend.

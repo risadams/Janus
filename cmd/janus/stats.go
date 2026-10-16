@@ -80,14 +80,14 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	records, malformed, err := readLedgers(dirs, from, to)
+	records, skipped, err := readLedgers(dirs, from, to)
 	if err != nil {
 		fmt.Fprintf(stderr, "janus stats: %v\n", err)
 		return 1
 	}
 
 	report := ledger.Summarise(records, prices(cfg))
-	report.Malformed = malformed
+	report.Malformed, report.Newer = skipped.Malformed, skipped.Newer
 	if *daily {
 		report.ByDay = ledger.ByDay(records, prices(cfg), time.Local)
 	}
@@ -217,14 +217,15 @@ func (d *dirList) Set(dir string) error { *d = append(*d, dir); return nil }
 
 // readLedgers reads several ledgers as one, oldest first. A record found
 // in more than one, as when a day's file was copied, is counted once.
-func readLedgers(dirs []string, from, to time.Time) (records []ledger.Record, malformed int, err error) {
+func readLedgers(dirs []string, from, to time.Time) (records []ledger.Record, skipped ledger.Skipped, err error) {
 	seen := map[string]bool{}
 	for _, dir := range dirs {
 		recs, bad, err := ledger.Read(dir, from, to)
 		if err != nil {
-			return nil, 0, err
+			return nil, skipped, err
 		}
-		malformed += bad
+		skipped.Malformed += bad.Malformed
+		skipped.Newer += bad.Newer
 		for _, rec := range recs {
 			if !seen[rec.ID] {
 				seen[rec.ID] = true
@@ -233,7 +234,7 @@ func readLedgers(dirs []string, from, to time.Time) (records []ledger.Record, ma
 		}
 	}
 	sort.SliceStable(records, func(i, j int) bool { return records[i].Time.Before(records[j].Time) })
-	return records, malformed, nil
+	return records, skipped, nil
 }
 
 // parseWhen reads a point in time given as a date, an RFC 3339 time, or an
@@ -265,9 +266,7 @@ func printReport(w io.Writer, p painter, dir string, rep ledger.Report) {
 	fmt.Fprintln(w, p.paint(bold, "Ledger "+dir))
 	if rep.Total.Requests == 0 && len(rep.Delegated) == 0 && len(rep.Shadow) == 0 {
 		fmt.Fprintln(w, "No requests recorded in this range.")
-		if rep.Malformed > 0 {
-			fmt.Fprintf(w, "%d ledger lines could not be read and were skipped.\n", rep.Malformed)
-		}
+		printSkipped(w, rep)
 		return
 	}
 	const stamp = "2006-01-02 15:04"
@@ -373,8 +372,20 @@ func printReport(w io.Writer, p painter, dir string, rep ledger.Report) {
 			"are missing from every figure above. Run janus stats -json, or search the\n"+
 			"ledger for \"unread\", to see why.\n", commas(rep.Unread))
 	}
+	if rep.Malformed > 0 || rep.Newer > 0 {
+		fmt.Fprintln(w)
+		printSkipped(w, rep)
+	}
+}
+
+// printSkipped says what the ledger held that the figures leave out.
+func printSkipped(w io.Writer, rep ledger.Report) {
 	if rep.Malformed > 0 {
-		fmt.Fprintf(w, "\n%d ledger lines could not be read and were skipped.\n", rep.Malformed)
+		fmt.Fprintf(w, "%d ledger lines could not be read and were skipped.\n", rep.Malformed)
+	}
+	if rep.Newer > 0 {
+		fmt.Fprintf(w, "%d records were written by a newer janus, in a form this one does not know,\n"+
+			"and were skipped. Update janus (janus update) to count them.\n", rep.Newer)
 	}
 }
 

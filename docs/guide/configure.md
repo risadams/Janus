@@ -26,6 +26,7 @@ The file Janus writes on its first run:
 
 ```json
 {
+  "version": 1,
   "listen": "127.0.0.1:8787",
   "allowRemote": false,
   "upstream": { "baseUrl": "https://api.anthropic.com" },
