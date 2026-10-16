@@ -42,7 +42,7 @@ the defaults below and carries on.
 | `logging.maxMegabytes` | Delete the oldest captures once they exceed this. `0` means no limit. |
 | `pricing` | Optional. Prices to add or correct, by model id. See below. |
 | `update.check` | When Janus starts, look for a newer release and, if there is one, say so in a line on the console. Off by default: then Janus sends nothing to look for releases unless `janus version -check` or `janus doctor` asks. It asks GitHub at most once a day, keeping the answer in `update-check.json` in the log folder, and in the background, so startup and requests never wait for it. A check that fails, offline or rate-limited, prints nothing and is not tried again until the next day. A development build has nothing to compare, so it asks nothing. |
-| `update.prerelease` | Count pre-releases, such as `v1.0.0-rc.2`, when `janus version -check`, `janus doctor`, and `update.check` look for a newer release. Off by default, so only stable releases are offered. `-pre` does the same for one check. |
+| `update.prerelease` | Count pre-releases, such as `v1.0.0-rc.2`, when `janus version -check`, `janus doctor`, `janus update`, and `update.check` look for a newer release. Off by default, so only stable releases are offered. `-pre` does the same for one check. |
 
 A field left out of the file keeps its default. A field Janus does not
 recognise is an error, so typos are caught.

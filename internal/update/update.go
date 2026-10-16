@@ -31,6 +31,9 @@ type Release struct {
 	Tag string
 	// URL is the release's page.
 	URL string
+	// Assets are the files published with it, by name, each with the URL
+	// it is downloaded from.
+	Assets map[string]string
 }
 
 // Latest returns the newest release at api, or found false if there is
@@ -61,6 +64,10 @@ func Latest(ctx context.Context, client *http.Client, api, userAgent string, pre
 		URL        string `json:"html_url"`
 		Draft      bool   `json:"draft"`
 		Prerelease bool   `json:"prerelease"`
+		Assets     []struct {
+			Name string `json:"name"`
+			URL  string `json:"browser_download_url"`
+		} `json:"assets"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(&listed); err != nil {
 		return Release{}, false, fmt.Errorf("GitHub's list of releases could not be read: %w", err)
@@ -76,7 +83,10 @@ func Latest(ctx context.Context, client *http.Client, api, userAgent string, pre
 			continue
 		}
 		if !found || v.Compare(r.Version) > 0 {
-			r, found = Release{Version: v, Tag: l.Tag, URL: l.URL}, true
+			r, found = Release{Version: v, Tag: l.Tag, URL: l.URL, Assets: map[string]string{}}, true
+			for _, a := range l.Assets {
+				r.Assets[a.Name] = a.URL
+			}
 		}
 	}
 	return r, found, nil

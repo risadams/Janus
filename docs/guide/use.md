@@ -34,8 +34,9 @@ Point Claude Code at janus:
 Read the `Routing` lines after any config change: they are the rules as
 Janus understood them.
 
-Press Ctrl+C to stop. Answers still streaming get up to five seconds to
-finish. Claude Code sessions pointed at Janus can't reach Claude while it
+Press Ctrl+C to stop. Answers still streaming get up to a minute to
+finish, and new ones are refused meanwhile; press Ctrl+C again to stop at
+once. Claude Code sessions pointed at Janus can't reach Claude while it
 is stopped.
 
 ## Reading the console

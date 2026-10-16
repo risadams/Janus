@@ -256,6 +256,7 @@ func launchdPlist(exe, configPath, logFile string) string {
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>ExitTimeOut</key><integer>70</integer>
   <key>StandardOutPath</key><string>` + x(logFile) + `</string>
   <key>StandardErrorPath</key><string>` + x(logFile) + `</string>
 </dict>
