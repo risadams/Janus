@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">The guard | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/GUARD"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="The guard | Janus"><meta data-rh="true" name="description" content="The guard deals with secrets in requests on their way to Anthropic. It has"><meta data-rh="true" property="og:description" content="The guard deals with secrets in requests on their way to Anthropic. It has"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/GUARD"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/GUARD" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/GUARD" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"The guard","item":"https://risadams.github.io/Janus/docs/GUARD"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.d9da4131.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.fe0299a9.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.489f8898.js" defer="defer"></script>
 </head>
 <body>
@@ -273,6 +273,60 @@ verified or printed.</li>
 <li class=""><strong>The detector.</strong> &quot;Contain nothing that looks like a secret&quot; means
 nothing a detector recognises. It is evidence, not proof.</li>
 </ul>
+<p><strong><code>-json</code> is for scripts.</strong> <code>janus audit -json</code> prints the same tally,
+never in color, and exits as the report does (1 when <code>-verify</code> finds a
+leak). The fields, in snake_case as <code>janus stats -json</code> has them:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Field</th><th>What it holds</th></tr></thead><tbody><tr><td><code>dir</code></td><td>The log folder audited</td></tr><tr><td><code>from</code>, <code>to</code></td><td>The first and last request counted; left out when there were none</td></tr><tr><td><code>requests</code></td><td>Requests carrying your content in the range</td></tr><tr><td><code>anthropic</code></td><td>Those that reached Anthropic: <code>untouched</code>, <code>changed</code>, and of the changed, <code>redacted</code>, <code>withheld</code>, <code>repaired</code></td></tr><tr><td><code>local_only</code>, <code>stopped</code></td><td>Those answered only by the local model, and those sent nowhere</td></tr><tr><td><code>kept_local</code></td><td>Those the local-only policy kept from Anthropic altogether</td></tr><tr><td><code>secrets</code></td><td><code>requests</code> that carried a secret to Anthropic, how many had them <code>replaced</code>, the <code>kinds</code> found with counts, and the <code>exposed</code> requests sent with them in: each an <code>id</code>, its <code>kinds</code>, and <code>where</code></td></tr><tr><td><code>blocked</code></td><td>Requests the guard stopped: <code>id</code> and <code>why</code></td></tr><tr><td><code>verify</code></td><td>Only with <code>-verify</code>: <code>checked</code>, <code>clean</code>, <code>unchecked</code>, and the <code>leaks</code>, shaped as <code>exposed</code> is</td></tr></tbody></table>
+<p>Lists are always there, empty when there is nothing in them. With a
+request id, <code>janus audit -json &lt;id&gt;</code> prints that request&#x27;s ledger record,
+as <a class="" href="/Janus/docs/LEDGER">the ledger</a> describes it. Fields may be added in later
+versions; none are removed or change meaning within a major version
+(<a class="" href="/Janus/docs/RELEASES">releases</a>).</p>
 <p>For the wider picture, including the listening port, files on disk, and
 the connection to LM Studio, see the <a class="" href="/Janus/docs/THREAT-MODEL">threat model</a>.</p>
 <p>What the guard costs in time is in the
