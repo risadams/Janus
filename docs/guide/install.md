@@ -311,9 +311,21 @@ true}` in the config. Janus then looks when it starts, at most once a
 day, and prints a line on the console if a newer release is out. It
 never updates itself.
 
-Download the new release as in step 1 and replace the binary, or run the
-`go install` command again. Then restart Janus. Your config, ledger, and
-captures are left as they are. `janus version` says which version you
+`janus update` upgrades a copy installed from a release archive. It
+downloads the newest release for your machine, checks the signature on
+its `checksums.txt` against the key built into the Janus you have and
+the archive against those sums, and only then replaces the binary. If
+any check fails, it says why and leaves the binary as it was. If `janus
+service install` set Janus up to run in the background, `janus update`
+restarts it; the old Janus finishes the requests it has in flight, for
+up to a minute, before the new one starts. Otherwise, restart Janus
+yourself. `-pre` and `update.prerelease` count pre-releases, as they do
+for `janus version -check`.
+
+A copy from `go install` or Homebrew is refused, since those upgrade it
+themselves: run the `go install` command again, or `brew upgrade janus`.
+You can also download the new release as in step 1 and replace the
+binary by hand. Your config, ledger, and captures are left as they are. `janus version` says which version you
 have, and the console prints it at the top when Janus starts.
 
 ## Removing Janus

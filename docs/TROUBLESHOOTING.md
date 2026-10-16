@@ -58,6 +58,17 @@ such questions an hour without signing in; past that it refuses until the
 hour is up. Nothing else in Janus depends on the check, and `janus
 doctor` reports it as a warning only.
 
+**`janus update` says nothing was changed.** It found something wrong
+and left the binary alone; the message says what. `does not match its
+checksum` and `not signed by a Janus release key` mean the download is
+not the release that was published, or was cut short: try again, and if
+it says the same, report it ([SECURITY.md](../SECURITY.md)). `has no
+signed checksums` is a release from before releases were signed: download
+it by hand. `installed with go install` or `with Homebrew`: use the command
+it names. A service installed before `janus update` existed is stopped
+by launchd after 20 seconds rather than a minute, cutting long answers
+short; run `janus service install` again to give it the minute.
+
 **No notice of a new release at startup.** `update.check` asks GitHub at
 most once a day and says nothing when the check fails or when you have
 the newest release, so a release from this morning may not show until

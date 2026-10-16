@@ -52,7 +52,7 @@ func TestVersionCheckOffersOnlyStableReleasesByDefault(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
-	wantLines(t, out, "janus v0.7.0", "v0.8.0 is out.", "Download it from https://github.com/risadams/Janus/releases/tag/v0.8.0")
+	wantLines(t, out, "janus v0.7.0", "v0.8.0 is out.", "To upgrade: janus update", "download it from https://github.com/risadams/Janus/releases/tag/v0.8.0")
 	if strings.Contains(out, "rc.12") {
 		t.Errorf("a pre-release was offered without -pre:\n%s", out)
 	}
@@ -115,7 +115,7 @@ func TestVersionWithoutCheckSendsNothing(t *testing.T) {
 func TestUpgradeAdviceFitsHowJanusWasInstalled(t *testing.T) {
 	releaseBuild(t, "v0.7.0", releasesJSON)
 	for how, want := range map[install]string{
-		archive:   "Download it from https://github.com/risadams/Janus/releases/tag/v0.8.0",
+		archive:   "To upgrade: janus update",
 		goInstall: "go install github.com/risadams/janus/cmd/janus@v0.8.0",
 		homebrew:  "brew upgrade janus",
 	} {

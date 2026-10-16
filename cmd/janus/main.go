@@ -5,7 +5,8 @@
 // and transforms that send fewer tokens.
 //
 // Run with no arguments, it serves. The subcommands are version, stats,
-// doctor, route, replay, audit, mcp, claude, and service; each answers -h.
+// doctor, route, replay, audit, mcp, claude, service, and update; each
+// answers -h.
 package main
 
 import (
@@ -72,6 +73,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return runClaude(args[1:], os.Stdin, stdout, stderr)
 		case "service":
 			return runService(args[1:], stdout, stderr)
+		case "update":
+			return runUpdate(args[1:], stdout, stderr)
 		}
 	}
 
@@ -238,8 +241,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	})
 	go func() {
 		<-ctx.Done()
-		// Give streams in flight a moment to finish, then cut them.
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// Let the requests in flight finish, as a restart after janus
+		// update relies on, but not forever. From here a second Ctrl-C
+		// has its usual effect and stops janus at once.
+		stop()
+		console.Printf("Stopping once the requests in flight finish, for up to a minute. Press Ctrl-C again to stop now.")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			srv.Close()
@@ -252,6 +259,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	return 0
 }
+
+// shutdownGrace is how long janus waits, once asked to stop, for the
+// requests in flight to finish. A long answer from Claude can stream for
+// minutes; past this it is cut. The launchd agent's ExitTimeOut and
+// systemd's TimeoutStopSec leave it this long.
+const shutdownGrace = time.Minute
 
 // newRouter builds the router from the config's local models and rules.
 func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local) *route.Router {

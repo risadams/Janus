@@ -207,6 +207,12 @@ the response. It adds no identifying header to what it sends upstream.
   with `janus/<version>` as its User-Agent, and nothing about you, your
   config, or your traffic. With `update.check` off, the default, the
   proxy never makes it.
+- `janus update`, run only by hand, downloads a release and replaces the
+  binary. It checks the signature on `checksums.txt` against the keys
+  compiled into the running binary, then the archive against those sums,
+  before it writes anything, so a replaced release page cannot get a
+  binary installed; what it cannot catch is a stolen signing key
+  ([ADR-003](adr/003-signed-checksums.md)).
 
 - Janus uses the Go standard library and nothing else, by
   [decision](adr/001-dependencies.md). There are no third-party modules to

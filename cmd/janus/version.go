@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -39,7 +38,7 @@ const (
 // install ...@v1.2.3` takes it from the module; anything else is "dev".
 func currentVersion() (string, install) {
 	if version != "dev" {
-		if exe, err := os.Executable(); err == nil && isHomebrew(exe) {
+		if exe, err := executable(); err == nil && isHomebrew(exe) {
 			return version, homebrew
 		}
 		return version, archive
@@ -136,7 +135,7 @@ func upgradeHow(how install, r update.Release) string {
 	case homebrew:
 		return "To upgrade: brew upgrade janus"
 	}
-	return "Download it from " + r.URL + "\nand replace this binary, then restart janus."
+	return "To upgrade: janus update, which checks the download first.\nOr download it from " + r.URL + "\nand replace this binary, then restart janus."
 }
 
 // noticeUpdate is the notice at startup that a newer release is out. It
