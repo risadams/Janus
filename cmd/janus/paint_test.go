@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -70,8 +72,16 @@ func TestDoctorColorsEachResult(t *testing.T) {
 	up := serverSaying(200, "Anthropic API")
 	defer up.Close()
 	dir := t.TempDir()
-	path := dir + "/janus.config.json"
-	os.WriteFile(path, []byte(`{"listen":"`+freeAddr(t)+`","upstream":{"baseUrl":"`+up.URL+`"},"local":{"baseUrl":"http://127.0.0.1:1"},"logging":{"dir":"`+dir+`/logs"}}`), 0o600)
+	// Marshalled, not spliced, so that a Windows path's backslashes are
+	// escaped in the JSON.
+	data, _ := json.Marshal(map[string]any{
+		"listen":   freeAddr(t),
+		"upstream": map[string]any{"baseUrl": up.URL},
+		"local":    map[string]any{"baseUrl": "http://127.0.0.1:1"},
+		"logging":  map[string]any{"dir": filepath.Join(dir, "logs")},
+	})
+	path := filepath.Join(dir, "janus.config.json")
+	os.WriteFile(path, data, 0o600)
 	t.Setenv("CLAUDE_CONFIG_DIR", dir)
 
 	out := runPiped(t, "doctor", "-config", path)
