@@ -1,6 +1,7 @@
 // Package update finds out whether a newer Janus has been released. It
-// asks GitHub's releases API, and only when a command asks it to: Janus
-// sends nothing to check for updates on its own.
+// asks GitHub's releases API, and only when a command asks it to or the
+// config's update.check is on: Janus sends nothing to check for updates
+// otherwise.
 package update
 
 import (
