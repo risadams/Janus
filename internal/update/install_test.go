@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -121,7 +122,8 @@ func TestInstallReplacesTheBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantContent(t, exe, "new janus")
-	if info, _ := os.Stat(exe); info.Mode().Perm()&0o100 == 0 {
+	// Windows has no execute bit to keep.
+	if info, _ := os.Stat(exe); runtime.GOOS != "windows" && info.Mode().Perm()&0o100 == 0 {
 		t.Errorf("the new binary is not executable: %v", info.Mode())
 	}
 	if left, _ := filepath.Glob(filepath.Join(filepath.Dir(exe), ".janus-update-*")); len(left) > 0 {
