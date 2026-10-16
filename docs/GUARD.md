@@ -270,6 +270,28 @@ What it depends on:
 - **The detector.** "Contain nothing that looks like a secret" means
   nothing a detector recognises. It is evidence, not proof.
 
+**`-json` is for scripts.** `janus audit -json` prints the same tally,
+never in color, and exits as the report does (1 when `-verify` finds a
+leak). The fields, in snake_case as `janus stats -json` has them:
+
+| Field | What it holds |
+| --- | --- |
+| `dir` | The log folder audited |
+| `from`, `to` | The first and last request counted; left out when there were none |
+| `requests` | Requests carrying your content in the range |
+| `anthropic` | Those that reached Anthropic: `untouched`, `changed`, and of the changed, `redacted`, `withheld`, `repaired` |
+| `local_only`, `stopped` | Those answered only by the local model, and those sent nowhere |
+| `kept_local` | Those the local-only policy kept from Anthropic altogether |
+| `secrets` | `requests` that carried a secret to Anthropic, how many had them `replaced`, the `kinds` found with counts, and the `exposed` requests sent with them in: each an `id`, its `kinds`, and `where` |
+| `blocked` | Requests the guard stopped: `id` and `why` |
+| `verify` | Only with `-verify`: `checked`, `clean`, `unchecked`, and the `leaks`, shaped as `exposed` is |
+
+Lists are always there, empty when there is nothing in them. With a
+request id, `janus audit -json <id>` prints that request's ledger record,
+as [the ledger](LEDGER.md) describes it. Fields may be added in later
+versions; none are removed or change meaning within a major version
+([releases](RELEASES.md)).
+
 For the wider picture, including the listening port, files on disk, and
 the connection to LM Studio, see the [threat model](THREAT-MODEL.md).
 

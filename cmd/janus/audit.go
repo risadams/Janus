@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -36,10 +37,11 @@ func runAudit(args []string, stdout, stderr io.Writer) int {
 	until := fs.String("until", "", "only requests before this point")
 	verify := fs.Bool("verify", false, "re-read every saved request that was sent to Anthropic and look for secrets in it")
 	body := fs.Bool("body", false, "with a request id: print the request exactly as it was sent, and nothing else")
+	asJSON := fs.Bool("json", false, "print the report as JSON; with a request id, its ledger record")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if fs.NArg() > 1 || (*body && fs.NArg() != 1) {
+	if fs.NArg() > 1 || (*body && fs.NArg() != 1) || (*body && *asJSON) {
 		fs.Usage()
 		return 2
 	}
@@ -75,16 +77,42 @@ func runAudit(args []string, stdout, stderr io.Writer) int {
 	captures := filepath.Join(*dir, "captures")
 
 	if fs.NArg() == 1 {
+		if *asJSON {
+			return auditOneJSON(stdout, stderr, records, fs.Arg(0))
+		}
 		return auditOne(stdout, stderr, records, captures, fs.Arg(0), *body)
 	}
 
 	a := tally(records)
-	printAudit(stdout, newPainter(stdout), *dir, a)
-	if !*verify {
-		return 0
+	var v *verification
+	if *verify {
+		v = verifySent(a.sent, captures, scanner(cfg))
 	}
+	if *asJSON {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(auditJSON(*dir, a, v)); err != nil {
+			fmt.Fprintf(stderr, "janus audit: %v\n", err)
+			return 1
+		}
+	} else {
+		p := newPainter(stdout)
+		printAudit(stdout, p, *dir, a)
+		if v != nil {
+			printVerification(stdout, p, v)
+		}
+	}
+	if v != nil && len(v.leaks) > 0 {
+		return 1
+	}
+	return 0
+}
+
+// scanner is how -verify looks for secrets and local-only content in a
+// request: with the detector and the policy as they are configured now.
+func scanner(cfg config.Config) func(*anthropic.Request) guard.Report {
 	detector, policy := newDetector(cfg), newPolicy(cfg)
-	leaks := verifySent(stdout, newPainter(stdout), a.sent, captures, func(req *anthropic.Request) guard.Report {
+	return func(req *anthropic.Request) guard.Report {
 		report := detector.ScanRequest(req)
 		if policy == nil {
 			return report
@@ -101,11 +129,7 @@ func runAudit(args []string, stdout, stderr io.Writer) int {
 			report.Where = append(report.Where, m.Reasons...)
 		}
 		return report
-	})
-	if leaks > 0 {
-		return 1
 	}
-	return 0
 }
 
 // audit is the tally of where requests went.
@@ -276,12 +300,7 @@ func printAudit(w io.Writer, p painter, dir string, a audit) {
 }
 
 func kindList(kinds map[string]int) string {
-	names := make([]string, 0, len(kinds))
-	for k := range kinds {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return strings.Join(names, ", ")
+	return strings.Join(sortedKinds(kinds), ", ")
 }
 
 // sentPath is the file holding a request as it was sent: the .sent.txt
@@ -300,56 +319,68 @@ func sentPath(captures string, rec ledger.Record) (path string, ok bool) {
 	return "", false
 }
 
+// verification is what -verify found.
+type verification struct {
+	checked, clean, unchecked int
+	leaks                     []leak
+}
+
+// leak is a request sent to Anthropic that still carries something that
+// looks like a secret.
+type leak struct {
+	id     string
+	report guard.Report
+}
+
 // verifySent re-reads every saved request that went to Anthropic and looks
-// for secrets in it, with the detector as it is configured now. It returns
-// how many still carry one.
+// for secrets in it, with the detector as it is configured now.
 //
 // This is the check that does not take the ledger's word for it: it looks
 // at the bytes that were sent.
-func verifySent(w io.Writer, p painter, sent []ledger.Record, captures string, scan func(*anthropic.Request) guard.Report) (leaks int) {
-	clean, unchecked := 0, 0
-	var lines []string
+func verifySent(sent []ledger.Record, captures string, scan func(*anthropic.Request) guard.Report) *verification {
+	v := &verification{checked: len(sent)}
 	for _, rec := range sent {
 		path, ok := sentPath(captures, rec)
 		if !ok {
-			unchecked++
+			v.unchecked++
 			continue
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			unchecked++
+			v.unchecked++
 			continue
 		}
 		req, err := anthropic.ParseRequest(data)
 		if err != nil {
-			unchecked++
+			v.unchecked++
 			continue
 		}
 		report := scan(req)
 		if report.Findings == 0 {
-			clean++
+			v.clean++
 			continue
 		}
-		leaks++
-		lines = append(lines, fmt.Sprintf("            %s  %s  in %s", p.paint(red, rec.ID), report.Summary(), strings.Join(report.Where, "; ")))
+		v.leaks = append(v.leaks, leak{id: rec.ID, report: report})
 	}
+	return v
+}
 
-	fmt.Fprintf(w, "\nVerification: re-read %s requests as they were sent to Anthropic\n", commas(len(sent)))
-	fmt.Fprintf(w, "  %6s  contain nothing that looks like a secret\n", commas(clean))
-	still := fmt.Sprintf("  %6s  STILL CONTAIN SOMETHING THAT LOOKS LIKE A SECRET", commas(leaks))
-	if leaks > 0 {
+func printVerification(w io.Writer, p painter, v *verification) {
+	fmt.Fprintf(w, "\nVerification: re-read %s requests as they were sent to Anthropic\n", commas(v.checked))
+	fmt.Fprintf(w, "  %6s  contain nothing that looks like a secret\n", commas(v.clean))
+	still := fmt.Sprintf("  %6s  STILL CONTAIN SOMETHING THAT LOOKS LIKE A SECRET", commas(len(v.leaks)))
+	if len(v.leaks) > 0 {
 		still = p.paint(red, still)
 	}
 	fmt.Fprintln(w, still)
-	for _, line := range lines {
-		fmt.Fprintln(w, line)
+	for _, l := range v.leaks {
+		fmt.Fprintf(w, "            %s  %s  in %s\n", p.paint(red, l.id), l.report.Summary(), strings.Join(l.report.Where, "; "))
 	}
-	fmt.Fprintf(w, "  %6s  could not be checked: no capture was saved, or it has been pruned\n", commas(unchecked))
-	if unchecked > 0 {
+	fmt.Fprintf(w, "  %6s  could not be checked: no capture was saved, or it has been pruned\n", commas(v.unchecked))
+	if v.unchecked > 0 {
 		fmt.Fprintf(w, "  Captures have to be on (logging.capture) for a request to be checked later.\n")
 	}
 	fmt.Fprintf(w, "  This uses the detector as configured now, so it also finds what a pattern\n  added since would have caught. It cannot find what no detector recognises.\n")
-	return leaks
 }
 
 // auditOne shows one request, or with body set prints it as it was sent.

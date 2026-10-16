@@ -7,6 +7,10 @@ When something is wrong, these five things find most problems:
 1. **`janus doctor`.** It checks the config, the port, Anthropic, LM
    Studio, and the log folder, when the ledger last recorded a request,
    and whether Claude Code is pointed at Janus, and says what to fix.
+   `janus doctor -json` gives the same results for a script or a status
+   line: `version`, `ok` (false if any check failed, when it also exits
+   1), and `checks`, each with a `name`, a `level` of `ok`, `warn`, or
+   `fail`, and a `detail`.
 2. **The console.** Janus prints a line for every request. No lines at
    all means Claude Code is not using Janus. A `↳` note under a line says
    what happened to that request and why.
