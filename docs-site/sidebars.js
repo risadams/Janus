@@ -51,6 +51,7 @@ const sidebars = {
         { type: 'doc', id: 'CHARTER', label: 'Charter' },
         { type: 'doc', id: 'REQUIREMENTS', label: 'Requirements' },
         { type: 'doc', id: 'ROADMAP', label: 'Roadmap' },
+        { type: 'doc', id: 'RELEASES', label: 'Releases' },
         {
           type: 'category',
           label: 'Research',
