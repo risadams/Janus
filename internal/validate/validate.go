@@ -236,8 +236,13 @@ func typeNames(raw json.RawMessage) []string {
 	if json.Unmarshal(raw, &one) == nil {
 		return []string{one}
 	}
+	// A type that is neither a name nor a list of names gives none, so no
+	// type is checked, as when a schema has no type at all. Such a schema
+	// is not valid JSON Schema, which the API refuses; were Claude Code to
+	// send one, only the type would go unchecked here, and Claude Code
+	// checks a tool call against its own schema before running it.
 	var many []string
-	json.Unmarshal(raw, &many)
+	_ = json.Unmarshal(raw, &many)
 	return many
 }
 
