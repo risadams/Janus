@@ -15,6 +15,12 @@ pass before a merge. Run them all before pushing, with `go test -race ./...`
 locally. The suite is offline: fake upstreams and a fake LM Studio are
 `httptest` servers.
 
+CI also runs gosec, with `scripts/gosec.sh ./...`, and shows its findings
+under the Security tab beside CodeQL's. It does not fail the build until
+the findings already on main are triaged (#298), but a change should add
+none: fix what it reports, or say on the line why it is safe, with `_ =`
+for an error dropped on purpose or `// #nosec G304 -- <reason>`.
+
 Some tests run only when pointed at real traffic or asked for:
 
 | Variable | Runs |
