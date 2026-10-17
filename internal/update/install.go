@@ -187,6 +187,9 @@ func readBinary(r io.Reader) ([]byte, error) {
 	return b, nil
 }
 
+// rename is os.Rename, replaceable so that tests can make a rename fail.
+var rename = os.Rename
+
 // replace puts binary in place of exe, keeping exe's permissions.
 func replace(exe string, binary []byte, windows bool) error {
 	info, err := os.Stat(exe)
@@ -197,8 +200,8 @@ func replace(exe string, binary []byte, windows bool) error {
 	aside := exe + ".old"
 	if windows {
 		// Left by the last update, once the program it was is no longer
-		// running.
-		os.Remove(aside)
+		// running. If it is still there, the rename below says so.
+		_ = os.Remove(aside)
 	}
 	tmp, err := os.CreateTemp(dir, ".janus-update-*")
 	if err != nil {
@@ -214,16 +217,20 @@ func replace(exe string, binary []byte, windows bool) error {
 		return err
 	}
 	if windows {
-		if err := os.Rename(exe, aside); err != nil {
+		if err := rename(exe, aside); err != nil {
 			return fmt.Errorf("moving the running janus aside: %w", err)
 		}
-		if err := os.Rename(tmp.Name(), exe); err != nil {
-			os.Rename(aside, exe)
+		if err := rename(tmp.Name(), exe); err != nil {
+			// Put the old binary back. If that fails too, nothing is left
+			// at exe, so say where the old one is.
+			if rerr := rename(aside, exe); rerr != nil {
+				return fmt.Errorf("putting the new binary in place: %w; putting the old one back failed too (%v), so it is now %s: rename it to %s to run janus again", err, rerr, aside, filepath.Base(exe))
+			}
 			return fmt.Errorf("putting the new binary in place: %w", err)
 		}
 		return nil
 	}
-	if err := os.Rename(tmp.Name(), exe); err != nil {
+	if err := rename(tmp.Name(), exe); err != nil {
 		return fmt.Errorf("putting the new binary in place: %w", err)
 	}
 	return nil

@@ -31,7 +31,7 @@ type cached struct {
 // is returned only the first time. The file is only a cache: if it cannot
 // be read or written, Daily asks GitHub as Latest does.
 func Daily(ctx context.Context, client *http.Client, api, userAgent string, pre bool, path string, now time.Time) (Release, bool, error) {
-	if b, err := os.ReadFile(path); err == nil {
+	if b, err := os.ReadFile(path); err == nil { // #nosec G304 -- Janus's own cache file, in the log directory the config names
 		var c cached
 		if json.Unmarshal(b, &c) == nil && c.Prerelease == pre {
 			// A check stamped in the future, from a clock set wrong, is
@@ -72,6 +72,6 @@ func writeCache(path string, c cached) {
 	_, werr := tmp.Write(b)
 	cerr := tmp.Close()
 	if werr != nil || cerr != nil || os.Rename(tmp.Name(), path) != nil {
-		os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name()) // only a cache: a stray temp file is harmless
 	}
 }

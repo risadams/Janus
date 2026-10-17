@@ -62,7 +62,7 @@ func makeKey(path string) error {
 	if err != nil {
 		return err
 	}
-	old, err := os.ReadFile(path)
+	old, err := os.ReadFile(path) // #nosec G304 -- the key list named on the command line
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -78,7 +78,8 @@ func makeKey(path string) error {
 		}
 	}
 	list := strings.Join(head, "") + base64.StdEncoding.EncodeToString(pub) + "\n" + strings.Join(rest, "")
-	if err := os.WriteFile(path, []byte(list), 0o644); err != nil {
+	// The list holds public keys and is committed, so anyone may read it.
+	if err := os.WriteFile(path, []byte(list), 0o644); err != nil { // #nosec G306 G703 -- public, and the path is the command line's
 		return err
 	}
 	if _, err := fmt.Println(base64.StdEncoding.EncodeToString(priv.Seed())); err != nil {
@@ -96,13 +97,13 @@ func sign(sums, keysPath string) error {
 		return errors.New("JANUS_RELEASE_KEY is not set to a key made by signsums -new")
 	}
 	priv := ed25519.NewKeyFromSeed(seed)
-	data, err := os.ReadFile(sums)
+	data, err := os.ReadFile(sums) // #nosec G304 -- the checksums file named on the command line
 	if err != nil {
 		return err
 	}
 	sig := ed25519.Sign(priv, data)
 
-	text, err := os.ReadFile(keysPath)
+	text, err := os.ReadFile(keysPath) // #nosec G304 -- the key list named on the command line
 	if err != nil {
 		return err
 	}
@@ -113,7 +114,8 @@ func sign(sums, keysPath string) error {
 	if err := update.VerifyChecksums(data, sig, keys); err != nil {
 		return fmt.Errorf("the signing key is not in %s, so Janus could not check this release: %w", keysPath, err)
 	}
-	if err := os.WriteFile(sums+".sig", sig, 0o644); err != nil {
+	// A signature is published beside the release, so anyone may read it.
+	if err := os.WriteFile(sums+".sig", sig, 0o644); err != nil { // #nosec G306 G703 -- public, and the path is the command line's
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "signed %s\n", sums)

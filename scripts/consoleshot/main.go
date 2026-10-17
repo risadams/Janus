@@ -41,11 +41,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("consoleshot: %v", err)
 	}
-	if err := os.WriteFile(*out+".ansi", console, 0o644); err != nil {
+	// The picture is committed to docs/assets, so it is written as any
+	// file in the repository is.
+	if err := os.WriteFile(*out+".ansi", console, 0o644); err != nil { // #nosec G306 -- a committed docs asset
 		log.Fatalf("consoleshot: %v", err)
 	}
 	title := "The Janus console: one line per request, with main-loop turns on Claude, subagent turns on a local model, and a note where the local answer failed its checks"
-	if err := os.WriteFile(*out+".svg", render(string(console), title), 0o644); err != nil {
+	if err := os.WriteFile(*out+".svg", render(string(console), title), 0o644); err != nil { // #nosec G306 -- a committed docs asset
 		log.Fatalf("consoleshot: %v", err)
 	}
 	log.Printf("wrote %s.ansi and %s.svg", *out, *out)
@@ -64,7 +66,7 @@ func capture() ([]byte, error) {
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	if out, err := exec.Command("go", "build", "-o", binary, "./cmd/janus").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", binary, "./cmd/janus").CombinedOutput(); err != nil { // #nosec G204 -- fixed arguments; binary is in this run's temp directory
 		return nil, fmt.Errorf("building janus: %v\n%s", err, out)
 	}
 
@@ -89,14 +91,14 @@ func capture() ([]byte, error) {
   "logging": { "dir": "logs", "capture": false }
 }`, listen, upstream, studio)
 	configPath := filepath.Join(dir, "janus.config.json")
-	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		return nil, err
 	}
 
 	// The request lines go to standard error; the start-up banner, with
 	// this run's scratch paths, goes to standard output and is not kept.
 	var console bytes.Buffer
-	janus := exec.Command(binary, "-config", configPath)
+	janus := exec.Command(binary, "-config", configPath) // #nosec G204 -- the janus just built, with the config just written
 	janus.Dir = dir
 	janus.Env = append(os.Environ(), "FORCE_COLOR=1", "NO_COLOR=")
 	janus.Stderr = &console
@@ -112,8 +114,9 @@ func capture() ([]byte, error) {
 		return nil, err
 	}
 	time.Sleep(500 * time.Millisecond) // the last line is printed after the response
-	janus.Process.Kill()
-	janus.Wait()
+	// Killed on purpose, so the exit status says nothing worth checking.
+	_ = janus.Process.Kill()
+	_ = janus.Wait()
 	return console.Bytes(), nil
 }
 
@@ -144,7 +147,7 @@ func converse(endpoint string) error {
 		if err != nil {
 			return err
 		}
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body) // only the console line matters, not the answer
 		return resp.Body.Close()
 	}
 
@@ -179,11 +182,11 @@ func converse(endpoint string) error {
 // anthropic stands in for the Anthropic API, answering as X-Demo says.
 func anthropic(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Model string }
-	json.NewDecoder(r.Body).Decode(&body)
+	_ = json.NewDecoder(r.Body).Decode(&body) // a request without a model answers without one
 	var in, read, write, out int
 	var stop string
 	var seconds float64
-	fmt.Sscanf(strings.ReplaceAll(r.Header.Get("X-Demo"), ",", " "), "%d %d %d %d %s %g", &in, &read, &write, &out, &stop, &seconds)
+	_, _ = fmt.Sscanf(strings.ReplaceAll(r.Header.Get("X-Demo"), ",", " "), "%d %d %d %d %s %g", &in, &read, &write, &out, &stop, &seconds)
 	time.Sleep(time.Duration(seconds * float64(time.Second)))
 	stream(w, body.Model, in, read, write, out, stop, "Done.")
 }
@@ -194,14 +197,14 @@ func anthropic(w http.ResponseWriter, r *http.Request) {
 func lmStudio(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/api/v0/models":
-		io.WriteString(w, `{"data":[{"id":"qwen/qwen3.8-27b","state":"loaded","loaded_context_length":65536,"max_context_length":262144}]}`)
+		_, _ = io.WriteString(w, `{"data":[{"id":"qwen/qwen3.8-27b","state":"loaded","loaded_context_length":65536,"max_context_length":262144}]}`)
 		return
 	case "/api/v1/models/load":
-		io.WriteString(w, `{"type":"llm","instance_id":"qwen/qwen3.8-27b","status":"loaded","load_config":{"context_length":65536}}`)
+		_, _ = io.WriteString(w, `{"type":"llm","instance_id":"qwen/qwen3.8-27b","status":"loaded","load_config":{"context_length":65536}}`)
 		return
 	case "/v1/messages":
 	default:
-		fmt.Fprintf(w, `{"error":"Unexpected endpoint or method. (%s %s)"}`, r.Method, r.URL.Path)
+		fmt.Fprintf(w, `{"error":"Unexpected endpoint or method. (%s %s)"}`, r.Method, r.URL.Path) // #nosec G705 -- a stand-in LM Studio on loopback, read only by the Janus under test
 		return
 	}
 	prompt, _ := io.ReadAll(r.Body)
@@ -247,7 +250,8 @@ func serve(h http.Handler) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	go http.Serve(l, h)
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = srv.Serve(l) }() // runs until consoleshot exits
 	return l.Addr().String(), nil
 }
 

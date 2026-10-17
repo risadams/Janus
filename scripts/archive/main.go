@@ -85,7 +85,7 @@ func pack(out, dir string, at time.Time) error {
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
 
-	f, err := os.Create(out)
+	f, err := os.Create(out) // #nosec G304 -- the archive path release.sh passes
 	if err != nil {
 		return err
 	}
@@ -98,12 +98,12 @@ func pack(out, dir string, at time.Time) error {
 		err = cerr
 	}
 	if err != nil {
-		os.Remove(out)
+		_ = os.Remove(out) // the error being returned is the one that matters
 	}
 	return err
 }
 
-func mode(e entry) int64 {
+func mode(e entry) fs.FileMode {
 	if e.exec {
 		return 0o755
 	}
@@ -126,7 +126,7 @@ func writeTarGz(w io.Writer, base string, entries []entry, at time.Time) error {
 		if err != nil {
 			return err
 		}
-		h := &tar.Header{Typeflag: tar.TypeReg, Name: e.name, Mode: mode(e), Size: int64(len(b)), ModTime: at, Format: tar.FormatUSTAR}
+		h := &tar.Header{Typeflag: tar.TypeReg, Name: e.name, Mode: int64(mode(e)), Size: int64(len(b)), ModTime: at, Format: tar.FormatUSTAR}
 		if err := tw.WriteHeader(h); err != nil {
 			return err
 		}
@@ -150,7 +150,7 @@ func writeZip(w io.Writer, base string, entries []entry, at time.Time) error {
 			return err
 		}
 		h := &zip.FileHeader{Name: e.name, Method: zip.Deflate, Modified: at}
-		h.SetMode(fs.FileMode(mode(e)))
+		h.SetMode(mode(e))
 		fw, err := zw.CreateHeader(h)
 		if err != nil {
 			return err

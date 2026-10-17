@@ -45,7 +45,7 @@ func main() {
 }
 
 func check(dist, version, keysPath string) error {
-	text, err := os.ReadFile(keysPath)
+	text, err := os.ReadFile(keysPath) // #nosec G304 -- the key list named on the command line
 	if err != nil {
 		return err
 	}
@@ -72,10 +72,10 @@ func check(dist, version, keysPath string) error {
 
 	for _, t := range targets {
 		exe := filepath.Join(scratch, t[0]+"_"+t[1], "janus")
-		if err := os.MkdirAll(filepath.Dir(exe), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
 			return err
 		}
-		if err := os.WriteFile(exe, []byte("the janus being replaced"), 0o755); err != nil {
+		if err := os.WriteFile(exe, []byte("the janus being replaced"), 0o600); err != nil {
 			return err
 		}
 		if err := update.Install(context.Background(), srv.Client(), r, t[0], t[1], exe, "checklayout", keys); err != nil {

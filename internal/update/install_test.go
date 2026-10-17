@@ -143,6 +143,43 @@ func TestInstallOnWindowsMovesTheRunningBinaryAside(t *testing.T) {
 	wantContent(t, exe+".old", "old janus")
 }
 
+// failRename makes rename fail for the moves fail picks, for the rest of
+// the test.
+func failRename(t *testing.T, fail func(from, to string) bool) {
+	t.Helper()
+	t.Cleanup(func() { rename = os.Rename })
+	rename = func(from, to string) error {
+		if fail(from, to) {
+			return &os.LinkError{Op: "rename", Old: from, New: to, Err: os.ErrPermission}
+		}
+		return os.Rename(from, to)
+	}
+}
+
+func TestInstallOnWindowsPutsTheOldBinaryBackWhenTheNewOneCannotGoInPlace(t *testing.T) {
+	f := newFakeRelease(t, "windows", "arm64", []byte("new janus"))
+	exe := oldBinary(t)
+	failRename(t, func(from, to string) bool { return to == exe && from != exe+".old" })
+	if err := install(f, "windows", exe, []ed25519.PublicKey{f.key}); err == nil {
+		t.Fatal("the install succeeded with the new binary unable to go in place")
+	}
+	wantContent(t, exe, "old janus")
+}
+
+func TestInstallOnWindowsSaysWhereTheOldBinaryIsWhenItCannotBePutBack(t *testing.T) {
+	f := newFakeRelease(t, "windows", "arm64", []byte("new janus"))
+	exe := oldBinary(t)
+	failRename(t, func(from, to string) bool { return to == exe })
+	err := install(f, "windows", exe, []ed25519.PublicKey{f.key})
+	if err == nil {
+		t.Fatal("the install succeeded with nothing able to go in place")
+	}
+	if !strings.Contains(err.Error(), exe+".old") {
+		t.Errorf("the error does not say where the old binary is: %v", err)
+	}
+	wantContent(t, exe+".old", "old janus")
+}
+
 func TestInstallRefusesABadChecksum(t *testing.T) {
 	f := newFakeRelease(t, "darwin", "arm64", []byte("new janus"))
 	name := ArchiveName(Release{Tag: "v1.2.0"}, "darwin", "arm64")
