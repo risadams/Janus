@@ -238,8 +238,10 @@ func typeNames(raw json.RawMessage) []string {
 	}
 	// A type that is neither a name nor a list of names gives none, so no
 	// type is checked, as when a schema has no type at all. Such a schema
-	// is not valid JSON Schema, and the API refuses a tool that has one,
-	// so a request carrying it never reaches a validator.
+	// is not valid JSON Schema: the API refuses a tool that has one, so a
+	// session whose tools carry it fails on its first request upstream,
+	// and a local answer is only ever checked against tools the API has
+	// taken.
 	var many []string
 	_ = json.Unmarshal(raw, &many)
 	return many
