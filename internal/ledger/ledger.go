@@ -37,12 +37,12 @@ func (l *Ledger) Append(rec Record) error {
 		return fmt.Errorf("ledger: %w", err)
 	}
 	path := filepath.Join(l.dir, rec.Time.UTC().Format("2006-01-02")+".jsonl")
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // #nosec G304 -- a day file in the ledger directory the config names
 	if err != nil {
 		return fmt.Errorf("ledger: %w", err)
 	}
 	if _, err := f.Write(append(line, '\n')); err != nil {
-		f.Close()
+		_ = f.Close() // the write's error is the one to report
 		return fmt.Errorf("ledger: %w", err)
 	}
 	if err := f.Close(); err != nil {

@@ -343,7 +343,7 @@ func verifySent(sent []ledger.Record, captures string, scan func(*anthropic.Requ
 			v.unchecked++
 			continue
 		}
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G304 -- a capture the ledger names, under the captures directory
 		if err != nil {
 			v.unchecked++
 			continue
@@ -405,12 +405,15 @@ func auditOne(stdout, stderr io.Writer, records []ledger.Record, captures, id st
 			fmt.Fprintf(stderr, "janus audit: no capture of request %s was saved, or it has been pruned\n", id)
 			return 1
 		}
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G304 -- a capture the ledger names, under the captures directory
 		if err != nil {
 			fmt.Fprintf(stderr, "janus audit: %v\n", err)
 			return 1
 		}
-		stdout.Write(data)
+		if _, err := stdout.Write(data); err != nil {
+			fmt.Fprintf(stderr, "janus audit: %v\n", err)
+			return 1
+		}
 		return 0
 	}
 

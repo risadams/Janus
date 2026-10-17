@@ -93,7 +93,10 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 	if *asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
-		enc.Encode(report)
+		if err := enc.Encode(report); err != nil {
+			fmt.Fprintf(stderr, "janus stats: %v\n", err)
+			return 1
+		}
 		return 0
 	}
 	printReport(stdout, newPainter(stdout), strings.Join(dirs, ", "), report)
@@ -204,7 +207,7 @@ func printToday(w io.Writer, p painter, rep ledger.Report, now time.Time, live b
 		}
 		fmt.Fprintf(tw, "  limits\t%s\n", strings.Join(parts, " · "))
 	}
-	tw.Flush()
+	_ = tw.Flush()
 }
 
 // dirList is a flag that can be given more than once.
@@ -416,7 +419,7 @@ func printOutages(w io.Writer, outages []ledger.Outage) {
 			o.Cause, commas(o.Requests), commas(o.StoodIn), limit, lifts)
 		stoodIn += o.StoodIn
 	}
-	tw.Flush()
+	_ = tw.Flush()
 	fmt.Fprintf(w, "  Requests no more than %d minutes apart are one row; times are local. \"Stood\n"+
 		"  in\" were answered by the local model, %s in all; the rest reached the client\n"+
 		"  as errors. \"Limit\" is the subscription limit reached, and \"answering\n"+
@@ -452,7 +455,7 @@ func printTable(w io.Writer, by string, rows []ledger.Row, total *ledger.Row) {
 	if total != nil {
 		line(*total)
 	}
-	tw.Flush()
+	_ = tw.Flush()
 }
 
 // printQuota says where the subscription's limits stood at the end of the
@@ -525,7 +528,7 @@ func printDays(w io.Writer, rows []ledger.DayRow) {
 		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\t%s\t$%.4f\t%s\t\n", r.Day, commas(r.Requests), commas(r.Failed),
 			hit, cost, commas(r.LocalTried), commas(r.LocalAccepted), r.LocalSavedUSD, commas(r.StoodIn))
 	}
-	tw.Flush()
+	_ = tw.Flush()
 	fmt.Fprintf(w, "  Days are local dates. \"failed\" leaves out requests the client cancelled.\n")
 }
 
@@ -561,7 +564,7 @@ func printLocalFirst(w io.Writer, rows []ledger.LocalFirstRow) {
 		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%.0f%%\t%.1fs\t\n", r.Class, commas(r.Tried), commas(r.Accepted),
 			commas(r.Rejected), commas(r.Failed), 100*float64(r.Accepted)/float64(r.Tried), float64(r.MedianMs)/1000)
 	}
-	tw.Flush()
+	_ = tw.Flush()
 	fmt.Fprintf(w, "  Accepted answers came from the local model. Rejected ones came back whole and\n"+
 		"  failed a check; failed ones never gave an answer to judge (why is below).\n"+
 		"  Claude answered both, after the attempt time (a median) had been spent.\n")
@@ -580,7 +583,7 @@ func printLocalFirstCause(w io.Writer, rows []ledger.CauseRow) {
 	for _, r := range rows {
 		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", r.Cause, commas(r.Attempts), commas(r.NotTried), r.Hint())
 	}
-	tw.Flush()
+	_ = tw.Flush()
 	fmt.Fprintf(w, "  \"Tried\" is a local attempt that ended that way; Claude answered.\n"+
 		"  \"Never tried\" is a request a rule meant for the local model that was\n"+
 		"  sent upstream (or left without a stand-in) for that reason.\n")
@@ -605,7 +608,7 @@ func printDelegated(w io.Writer, rows []ledger.DelegatedRow) {
 		}
 		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", r.Tool, commas(r.Calls), commas(r.Failed), commas(r.Files), read, commas(r.AvoidedTokens), took)
 	}
-	tw.Flush()
+	_ = tw.Flush()
 	fmt.Fprintf(w, "  \"avoided at most\" is the input tokens Claude would have spent reading every\n"+
 		"  one of those files in full, less what the answers cost it. It is a ceiling: left\n"+
 		"  to itself Claude often searches a file and reads a little of it. Compare cost\n"+
@@ -638,7 +641,7 @@ func printTransforms(w io.Writer, rows []ledger.TransformRow) {
 		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\t$%.4f\t$%.4f\t\n", r.Name, commas(r.Requests), commas(r.Rewritten),
 			commas(r.Revised), commas(r.Declined), commas(r.Tokens), r.SavedUSD-r.CostUSD, r.ExpectedUSD)
 	}
-	tw.Flush()
+	_ = tw.Flush()
 	fmt.Fprintf(w, "  \"saved\" is what the tokens cut would have cost on these requests, less the cache\n"+
 		"  that revisions broke. \"expected\" is what the guard expected its decisions in\n"+
 		"  this range to save over the rest of their conversations. Saved catches up with\n"+
@@ -677,7 +680,7 @@ func printShadow(w io.Writer, rows []ledger.ShadowRow) {
 			share(r.StopMatch, r.Compared), share(r.ToolsMatch, r.Compared), share(r.BothMatch, r.Compared),
 			seconds(r.LocalMedianMs, r.Compared > 0), seconds(r.UpstreamMedianMs, r.Compared > 0 && r.UpstreamMedianMs > 0))
 	}
-	tw.Flush()
+	_ = tw.Flush()
 	fmt.Fprintf(w, "  \"same stop\" and \"same tools\" compare the shape of the two answers, not their\n"+
 		"  content: whether both stopped for the same reason and called the same tools.\n"+
 		"  Times are medians. Shadow runs are in no other figure in this report.\n")

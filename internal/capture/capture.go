@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -37,19 +38,21 @@ type Writer struct {
 // pruneEvery is how many captures are written between prunes.
 const pruneEvery = 50
 
-// New returns a Writer and prunes what is already there.
+// New returns a Writer. It does not prune what is already there; call
+// Prune for that, and report what it returns.
 func New(dir string, retainDays, maxMegabytes int) *Writer {
-	w := &Writer{
+	return &Writer{
 		dir:      dir,
 		retain:   time.Duration(retainDays) * 24 * time.Hour,
 		maxBytes: int64(maxMegabytes) << 20,
 	}
-	w.Prune(time.Now())
-	return w
 }
 
 // Write saves one exchange and returns its name: the path under the
-// captures directory, without extension, which the ledger records.
+// captures directory, without extension, which the ledger records. Every
+// pruneEvery captures it also prunes. A name returned with an error means
+// the capture was saved but the prune failed, and older captures are being
+// kept past their limits.
 func (w *Writer) Write(ex proxy.Exchange) (name string, err error) {
 	day := ex.Start.UTC().Format("2006-01-02")
 	name = filepath.Join(day, ex.ID+"_"+sanitize(ex.Path))
@@ -79,7 +82,7 @@ func (w *Writer) Write(ex proxy.Exchange) (name string, err error) {
 	due := w.writes%pruneEvery == 0
 	w.mu.Unlock()
 	if due {
-		w.Prune(time.Now())
+		return name, w.Prune(time.Now())
 	}
 	return name, nil
 }
@@ -143,6 +146,10 @@ func sanitize(path string) string {
 // Prune deletes captures older than the retention period, then the oldest
 // remaining ones until the total fits the size limit. It only ever touches
 // day directories and the capture files inside them.
+//
+// Captures hold prompts, code, and secrets, so a capture that could not be
+// deleted is reported rather than skipped quietly: the error names each
+// one, and Prune carries on with the rest.
 func (w *Writer) Prune(now time.Time) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -162,6 +169,7 @@ func (w *Writer) Prune(now time.Time) error {
 	var files []file
 	var total int64
 	var dayDirs []string
+	var failed []error
 	for _, d := range days {
 		day, err := time.Parse("2006-01-02", d.Name())
 		if err != nil || !d.IsDir() {
@@ -171,12 +179,22 @@ func (w *Writer) Prune(now time.Time) error {
 		// A day directory covers 24 hours, so it is only wholly past
 		// retention once its last moment is.
 		if w.retain > 0 && now.Sub(day.Add(24*time.Hour)) > w.retain {
-			os.RemoveAll(dayDir)
+			if err := os.RemoveAll(dayDir); err != nil {
+				failed = append(failed, fmt.Errorf("%s is past logging.retainDays but could not be deleted: %w", dayDir, err))
+			}
 			continue
 		}
 		dayDirs = append(dayDirs, dayDir)
-		filepath.WalkDir(dayDir, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil || entry.IsDir() {
+		// The walk's own error is always nil: an unreadable entry is
+		// reported through failed and the walk goes on.
+		_ = filepath.WalkDir(dayDir, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				// What cannot be read cannot be counted toward the size
+				// limit, or deleted when it is reached.
+				failed = append(failed, fmt.Errorf("%s could not be read to apply logging.maxMegabytes: %w", path, err))
+				return nil
+			}
+			if entry.IsDir() {
 				return nil
 			}
 			if info, err := entry.Info(); err == nil {
@@ -198,14 +216,19 @@ func (w *Writer) Prune(now time.Time) error {
 			if total <= w.maxBytes && stem(f.path) != removing {
 				break
 			}
-			if os.Remove(f.path) == nil {
-				total -= f.size
-				removing = stem(f.path)
+			if err := os.Remove(f.path); err != nil {
+				failed = append(failed, fmt.Errorf("%s is over logging.maxMegabytes but could not be deleted: %w", f.path, err))
+				continue
 			}
+			total -= f.size
+			removing = stem(f.path)
 		}
 		for _, dir := range dayDirs {
-			os.Remove(dir) // succeeds only if the directory is now empty
+			_ = os.Remove(dir) // succeeds only if the directory is now empty, as intended
 		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("capture: delete these by hand, since captures hold prompts and secrets: %w", errors.Join(failed...))
 	}
 	return nil
 }

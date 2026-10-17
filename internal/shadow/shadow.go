@@ -292,7 +292,7 @@ func Run(ctx context.Context, client *http.Client, local *backend.Local, in Inpu
 			if ex.TTFB == 0 {
 				ex.TTFB = time.Since(start)
 			}
-			observer.Write(buf[:n])
+			_, _ = observer.Write(buf[:n]) // an Observer never fails a write
 			if kept.Len() < maxKept {
 				kept.Write(buf[:n])
 			}

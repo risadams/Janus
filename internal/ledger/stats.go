@@ -80,7 +80,7 @@ func Read(dir string, since, until time.Time) (records []Record, skipped Skipped
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(dir, name))
+		f, err := os.Open(filepath.Join(dir, name)) // #nosec G304 -- a day file listed from the ledger directory
 		if err != nil {
 			return nil, skipped, fmt.Errorf("ledger: %w", err)
 		}
@@ -107,7 +107,7 @@ func Read(dir string, since, until time.Time) (records []Record, skipped Skipped
 			records = append(records, rec)
 		}
 		err = sc.Err()
-		f.Close()
+		_ = f.Close() // read only: closing cannot lose anything
 		if err != nil {
 			return nil, skipped, fmt.Errorf("ledger: %s: %w", name, err)
 		}
