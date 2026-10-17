@@ -10,12 +10,12 @@ import (
 
 // lock opens path and takes an exclusive flock on it without waiting.
 func lock(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) // #nosec G304 -- the lock file in the log directory the config names
 	if err != nil {
 		return nil, err
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
+		_ = f.Close() // the lock's error is the one to report
 		if errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, errHeld
 		}

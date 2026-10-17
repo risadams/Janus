@@ -66,7 +66,7 @@ func assembleStream(body []byte) (Answer, bool) {
 	// strings.Builder that has been written to panics once copied. A
 	// stream that writes to an earlier block after a later one has
 	// appeared would otherwise crash this (found by fuzzing).
-	var text []*strings.Builder
+	var text []*strings.Builder // a Builder's writes never fail
 	seen := false
 
 	for _, line := range bytes.Split(body, []byte("\n")) {
@@ -107,12 +107,12 @@ func assembleStream(body []byte) (Answer, bool) {
 			grow()
 			b := &answer.Blocks[ev.Index]
 			b.Type, b.Name, b.ID = ev.Block.Type, ev.Block.Name, ev.Block.ID
-			text[ev.Index].WriteString(ev.Block.Text)
+			_, _ = text[ev.Index].WriteString(ev.Block.Text)
 		case "content_block_delta":
 			grow()
-			text[ev.Index].WriteString(ev.Delta.Text)
-			text[ev.Index].WriteString(ev.Delta.Thinking)
-			text[ev.Index].WriteString(ev.Delta.PartialJSON)
+			_, _ = text[ev.Index].WriteString(ev.Delta.Text)
+			_, _ = text[ev.Index].WriteString(ev.Delta.Thinking)
+			_, _ = text[ev.Index].WriteString(ev.Delta.PartialJSON)
 		case "message_delta":
 			if ev.Delta.StopReason != "" {
 				answer.StopReason = ev.Delta.StopReason

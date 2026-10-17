@@ -50,7 +50,7 @@ func realServiceHost() (serviceHost, error) {
 	}
 	return serviceHost{goos: runtime.GOOS, home: home, uid: os.Getuid(), exe: exe,
 		run: func(name string, args ...string) (string, error) {
-			out, err := exec.Command(name, args...).CombinedOutput()
+			out, err := exec.Command(name, args...).CombinedOutput() // #nosec G204 -- launchctl or systemctl, with arguments janus builds
 			return strings.TrimSpace(string(out)), err
 		}}, nil
 }
@@ -130,7 +130,7 @@ func serviceInstall(host serviceHost, configPath string, stdout, stderr io.Write
 		fmt.Fprintf(stderr, "janus service: %v\n", err)
 		return 1
 	}
-	if _, err := os.Stat(abs); err != nil {
+	if _, err := os.Stat(abs); err != nil { // #nosec G703 -- the config file the user named, only looked at
 		fmt.Fprintf(stderr, "janus service: no config file at %s. Run janus once there to write one, or pass -config with the file to use.\n", abs)
 		return 1
 	}
@@ -156,7 +156,9 @@ func serviceInstall(host serviceHost, configPath string, stdout, stderr io.Write
 	} else {
 		unit = systemdUnit(host.exe, abs)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	// ~/Library/LaunchAgents and ~/.config/systemd/user are made as the
+	// system makes them, if they are not there already.
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { // #nosec G301 -- the system's own folder for user services
 		fmt.Fprintf(stderr, "janus service: %v\n", err)
 		return 1
 	}
@@ -167,9 +169,13 @@ func serviceInstall(host serviceHost, configPath string, stdout, stderr io.Write
 			return 1
 		}
 		// Loading over a loaded job fails, so take any old one down first.
-		host.run("launchctl", "bootout", launchdTarget(host))
+		// This fails when there is none, which is the usual case; if it
+		// fails with one loaded, the bootstrap below fails and says so.
+		_, _ = host.run("launchctl", "bootout", launchdTarget(host))
 	}
-	if err := os.WriteFile(path, []byte(unit), 0o644); err != nil {
+	// The unit names the binary and the config file and holds no secret;
+	// it is written as launchd and systemd units usually are.
+	if err := os.WriteFile(path, []byte(unit), 0o644); err != nil { // #nosec G306 G703 -- an ordinary unit file, in the system's folder for them
 		fmt.Fprintf(stderr, "janus service: %v\n", err)
 		return 1
 	}
@@ -203,17 +209,25 @@ func serviceUninstall(host serviceHost, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "No janus service is installed (%s does not exist).\n", path)
 		return 0
 	}
+	// Stopping fails harmlessly when the service is not loaded. If it
+	// fails with janus still running, the unit is left in place, so that
+	// the service can still be stopped by name.
+	stop := []string{"systemctl", "--user", "disable", "--now", serviceUnit}
 	if host.goos == "darwin" {
-		host.run("launchctl", "bootout", launchdTarget(host)) // fails harmlessly if not loaded
-	} else {
-		host.run("systemctl", "--user", "disable", "--now", serviceUnit)
+		stop = []string{"launchctl", "bootout", launchdTarget(host)}
+	}
+	if out, err := host.run(stop[0], stop[1:]...); err != nil && serviceRunning(host) {
+		fmt.Fprintf(stderr, "janus service: %s failed, and janus is still running, so %s is left in place: %v\n%s\n", strings.Join(stop, " "), path, err, out)
+		return 1
 	}
 	if err := os.Remove(path); err != nil {
 		fmt.Fprintf(stderr, "janus service: %v\n", err)
 		return 1
 	}
 	if host.goos == "linux" {
-		host.run("systemctl", "--user", "daemon-reload")
+		// The service is already stopped and its unit gone; systemd forgets
+		// it at the next reload either way.
+		_, _ = host.run("systemctl", "--user", "daemon-reload")
 	}
 	fmt.Fprintf(stdout, "Stopped janus and removed %s.\n", path)
 	return 0
@@ -225,21 +239,24 @@ func serviceStatus(host serviceHost, stdout io.Writer) int {
 		fmt.Fprintf(stdout, "No janus service is installed.\n")
 		return 1
 	}
-	var running bool
-	if host.goos == "darwin" {
-		out, err := host.run("launchctl", "print", launchdTarget(host))
-		running = err == nil && strings.Contains(out, "state = running")
-	} else {
-		out, _ := host.run("systemctl", "--user", "is-active", serviceUnit)
-		running = out == "active"
-	}
 	p := newPainter(stdout)
-	if running {
+	if serviceRunning(host) {
 		fmt.Fprintf(stdout, "janus is %s as a service (%s).\n", p.paint(green, "running"), path)
 		return 0
 	}
 	fmt.Fprintf(stdout, "The janus service is installed (%s) but %s.\n", path, p.paint(yellow, "not running"))
 	return 1
+}
+
+// serviceRunning is whether launchd or systemd says the janus service is
+// running.
+func serviceRunning(host serviceHost) bool {
+	if host.goos == "darwin" {
+		out, err := host.run("launchctl", "print", launchdTarget(host))
+		return err == nil && strings.Contains(out, "state = running")
+	}
+	out, _ := host.run("systemctl", "--user", "is-active", serviceUnit)
+	return out == "active"
 }
 
 func launchdTarget(host serviceHost) string {

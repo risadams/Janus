@@ -147,3 +147,55 @@ func TestUnitFilesQuoteAwkwardPaths(t *testing.T) {
 		t.Errorf("plist does not escape:\n%s", got)
 	}
 }
+
+// stopFails makes the host's launchctl bootout and systemctl disable fail,
+// with launchd and systemd reporting janus as running or not.
+func stopFails(host serviceHost, running bool) serviceHost {
+	run := host.run
+	host.run = func(name string, args ...string) (string, error) {
+		switch {
+		case name == "launchctl" && args[0] == "bootout", name == "systemctl" && args[1] == "disable":
+			out, _ := run(name, args...)
+			return out, errors.New("exit status 5")
+		case name == "launchctl" && args[0] == "print" && !running:
+			return "", errors.New("exit status 113")
+		case name == "systemctl" && args[1] == "is-active" && !running:
+			return "inactive", errors.New("exit status 3")
+		}
+		return run(name, args...)
+	}
+	return host
+}
+
+func TestServiceUninstallKeepsTheUnitWhenJanusCannotBeStopped(t *testing.T) {
+	for _, goos := range []string{"darwin", "linux"} {
+		host, _ := fakeHost(t, goos)
+		cfg, _ := configIn(t)
+		if out, code := runSvc(host, "install", "-config", cfg); code != 0 {
+			t.Fatalf("%s: install: exit %d:\n%s", goos, code, out)
+		}
+		out, code := runSvc(stopFails(host, true), "uninstall")
+		if code != 1 || !strings.Contains(out, "still running") || strings.Contains(out, "Stopped janus") {
+			t.Errorf("%s: uninstall with janus unstoppable: exit %d: %s", goos, code, out)
+		}
+		if _, err := os.Stat(unitPath(host)); err != nil {
+			t.Errorf("%s: the unit was removed with janus still running: %v", goos, err)
+		}
+	}
+}
+
+func TestServiceUninstallRemovesAUnitThatWasNotLoaded(t *testing.T) {
+	for _, goos := range []string{"darwin", "linux"} {
+		host, _ := fakeHost(t, goos)
+		cfg, _ := configIn(t)
+		if out, code := runSvc(host, "install", "-config", cfg); code != 0 {
+			t.Fatalf("%s: install: exit %d:\n%s", goos, code, out)
+		}
+		if out, code := runSvc(stopFails(host, false), "uninstall"); code != 0 {
+			t.Errorf("%s: uninstall of a service that was not loaded: exit %d: %s", goos, code, out)
+		}
+		if _, err := os.Stat(unitPath(host)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s: the unit is still there: %v", goos, err)
+		}
+	}
+}

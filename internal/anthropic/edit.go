@@ -19,7 +19,7 @@ func SetResponseModel(data []byte, model string) (out []byte, ok bool) {
 	}
 	var kind string
 	if v, found := find(members, "type"); found {
-		json.Unmarshal(v, &kind)
+		_ = json.Unmarshal(v, &kind) // a type that is not a string is no kind this rewrites
 	}
 
 	switch kind {

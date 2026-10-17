@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"compress/gzip"
+	"fmt"
 	"io"
 	"strings"
 
@@ -24,6 +25,17 @@ type observation struct {
 	done   chan struct{}
 	failed error
 }
+
+// maxDecompressed bounds how much of a gzip body is decompressed for the
+// copy. The Observer and the kept body are capped already, but each
+// content block an event stream starts still adds to the summary, and the
+// decompressing goes on as long as the body does, so without a bound a
+// small body that expands enormously (gzip runs to about 1000 to 1) costs
+// memory and CPU on the side of every relay. A Messages response at the
+// largest output any model allows is a few tens of megabytes as an event
+// stream, well inside this. It is a variable so that tests can lower it;
+// the client gets every byte the upstream sends either way.
+var maxDecompressed int64 = 256 << 20
 
 // newObservation sets up reading a response. unsupported is true when the
 // content encoding is one janus cannot decode: then nothing is summarised,
@@ -50,12 +62,17 @@ func newObservation(contentType, contentEncoding string, summarise, keep bool) (
 			defer close(o.done)
 			zr, err := gzip.NewReader(pr)
 			if err == nil {
-				_, err = io.Copy(sinkWriter{o}, zr)
+				var n int64
+				n, err = io.Copy(sinkWriter{o}, io.LimitReader(zr, maxDecompressed+1))
+				if err == nil && n > maxDecompressed {
+					err = fmt.Errorf("the body is more than %d MiB once decompressed, so it was not read", maxDecompressed>>20)
+				}
 			}
 			o.failed = err
 			// Keep reading whatever happens, or the relay would block on
-			// a pipe nobody is draining.
-			io.Copy(io.Discard, pr)
+			// a pipe nobody is draining. Errors here are the relay's to
+			// report, not this copy's.
+			_, _ = io.Copy(io.Discard, pr)
 		}()
 	}
 	return o, false
@@ -64,7 +81,9 @@ func newObservation(contentType, contentEncoding string, summarise, keep bool) (
 // Write takes the next piece of the body as it arrived from upstream.
 func (o *observation) Write(p []byte) (int, error) {
 	if o.pipe != nil {
-		o.pipe.Write(p)
+		// The pipe fails only once the reader is gone, and the reader
+		// drains to the end whatever happens.
+		_, _ = o.pipe.Write(p)
 		return len(p), nil
 	}
 	o.sink(p)
@@ -73,11 +92,13 @@ func (o *observation) Write(p []byte) (int, error) {
 
 // sink receives the body in readable form.
 func (o *observation) sink(p []byte) {
+	// Neither fails a write: the Observer and the capped buffer only ever
+	// stop keeping what they are given.
 	if o.observer != nil {
-		o.observer.Write(p)
+		_, _ = o.observer.Write(p)
 	}
 	if o.kept != nil {
-		o.kept.Write(p)
+		_, _ = o.kept.Write(p)
 	}
 }
 
@@ -92,7 +113,7 @@ func (w sinkWriter) Write(p []byte) (int, error) {
 // being summarised; unread is set if the copy could not be decompressed.
 func (o *observation) finish() (summary *anthropic.Summary, unread string) {
 	if o.pipe != nil {
-		o.pipe.Close()
+		_ = o.pipe.Close() // a PipeWriter's Close always succeeds
 		<-o.done
 		// A response cut off part-way ends the gzip stream early. That is
 		// an incomplete response, which the summary already says; it is not

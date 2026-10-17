@@ -56,7 +56,7 @@ func Acquire(dir string) (*Lock, error) {
 	path := filepath.Join(dir, FileName)
 	f, err := lock(path)
 	if errors.Is(err, errHeld) {
-		data, _ := os.ReadFile(path)
+		data, _ := os.ReadFile(path) // #nosec G304 -- the lock file, to say who holds it
 		return nil, &HeldError{Dir: dir, Holder: strings.TrimSpace(string(data))}
 	}
 	if err != nil {

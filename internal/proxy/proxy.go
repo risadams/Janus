@@ -457,7 +457,7 @@ func New(opts Options) http.Handler {
 					resp.Body = state.restorer
 				} else {
 					raw, _ := io.ReadAll(resp.Body)
-					resp.Body.Close()
+					_ = resp.Body.Close() // fully read; what was read is what is restored
 					restored, n, err := rd.RestoreJSON(raw)
 					if err != nil {
 						state.guard.Blocked = err.Error()
@@ -537,7 +537,7 @@ func New(opts Options) http.Handler {
 		// connection with the response half relayed. Full duplex tells the
 		// server to leave the body alone. The error is ignored: it means
 		// the connection is HTTP/2, which has no such restriction.
-		http.NewResponseController(w).EnableFullDuplex()
+		_ = http.NewResponseController(w).EnableFullDuplex()
 
 		var (
 			requestBody *cappedBuffer // a copy made as the body streams past
@@ -940,7 +940,7 @@ func New(opts Options) http.Handler {
 					sw.Header().Set("Content-Type", ct)
 				}
 				sw.WriteHeader(http.StatusOK)
-				sw.Write(body)
+				_, _ = sw.Write(body) // a client that has gone cannot be told
 				return
 			}
 			if got.Err == nil {
@@ -1016,7 +1016,7 @@ func (b *observedBody) Read(p []byte) (int, error) {
 			b.state.firstByte = time.Now()
 		}
 		if b.state.observation != nil {
-			b.state.observation.Write(p[:n])
+			_, _ = b.state.observation.Write(p[:n]) // an observation never fails a write
 		}
 	}
 	if err != nil && err != io.EOF {
@@ -1034,7 +1034,7 @@ type teeBody struct {
 func (b *teeBody) Read(p []byte) (int, error) {
 	n, err := b.ReadCloser.Read(p)
 	if n > 0 {
-		b.copy.Write(p[:n])
+		_, _ = b.copy.Write(p[:n]) // a capped buffer never fails a write
 	}
 	return n, err
 }
@@ -1078,7 +1078,7 @@ func writeError(w http.ResponseWriter, status int, kind, message string) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write(body)
+	_, _ = w.Write(body) // a client that has gone cannot be told
 }
 
 // errorBody is an error in the Anthropic API's shape.
