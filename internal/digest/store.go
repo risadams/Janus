@@ -22,6 +22,7 @@ type Store struct {
 	dir    string
 	retain time.Duration
 	now    func() time.Time
+	logf   func(format string, args ...any)
 
 	mu     sync.Mutex
 	pruned time.Time // when Prune last ran
@@ -33,11 +34,18 @@ type Store struct {
 const pruneEvery = time.Hour
 
 // NewStore returns a store in dir that keeps originals for retainDays, or
-// for good if that is zero, and deletes what is already older.
-func NewStore(dir string, retainDays int) *Store {
-	s := &Store{dir: dir, retain: time.Duration(retainDays) * 24 * time.Hour, now: time.Now}
+// for good if that is zero, and deletes what is already older. Originals
+// it cannot delete then or later are reported through logf, which may be
+// nil.
+func NewStore(dir string, retainDays int, logf func(format string, args ...any)) *Store {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	s := &Store{dir: dir, retain: time.Duration(retainDays) * 24 * time.Hour, now: time.Now, logf: logf}
 	s.pruned = s.now()
-	s.Prune(s.pruned)
+	if err := s.Prune(s.pruned); err != nil {
+		s.logf("%v", err)
+	}
 	return s
 }
 
@@ -51,9 +59,14 @@ func (s *Store) pruneIfDue() {
 	}
 	s.mu.Unlock()
 	if due {
-		s.Prune(now)
+		if err := s.Prune(now); err != nil {
+			s.logf("%v", err)
+		}
 	}
 }
+
+// chtimes is os.Chtimes, replaceable so that tests can make it fail.
+var chtimes = os.Chtimes
 
 // idPattern is what Put returns; anything else is not an id, and Get
 // refuses it before it can name a path.
@@ -71,7 +84,12 @@ func (s *Store) Put(text string) (id string, err error) {
 	}
 	path := filepath.Join(s.dir, id+".txt")
 	if _, err := os.Stat(path); err == nil {
-		os.Chtimes(path, s.now(), s.now()) // kept as long as it is in use
+		// Kept as long as it is in use. If it cannot be marked as in use
+		// it may be pruned while a digest still points at it, so the
+		// result is not digested.
+		if err := chtimes(path, s.now(), s.now()); err != nil {
+			return "", fmt.Errorf("digest store: %s could not be marked as in use, so it might be deleted before the digest is done with: %w", path, err)
+		}
 		return id, nil
 	}
 	tmp, err := os.CreateTemp(s.dir, "."+id+"-*")
@@ -80,7 +98,7 @@ func (s *Store) Put(text string) (id string, err error) {
 	}
 	defer os.Remove(tmp.Name())
 	if _, err := tmp.WriteString(text); err != nil {
-		tmp.Close()
+		_ = tmp.Close() // the write's error is the one to report
 		return "", fmt.Errorf("digest store: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
@@ -102,7 +120,7 @@ func (s *Store) Get(id string) (string, error) {
 	if !idPattern.MatchString(id) {
 		return "", fmt.Errorf("%q is not an id; ids are 16 hex digits", id)
 	}
-	data, err := os.ReadFile(filepath.Join(s.dir, id+".txt"))
+	data, err := os.ReadFile(filepath.Join(s.dir, id+".txt")) // #nosec G304 -- id is 16 hex digits, checked above, so it cannot leave the store
 	if os.IsNotExist(err) {
 		return "", ErrNotFound
 	}
@@ -113,22 +131,35 @@ func (s *Store) Get(id string) (string, error) {
 }
 
 // Prune deletes originals older than the retention period. It only ever
-// touches files named as Put names them.
-func (s *Store) Prune(now time.Time) {
+// touches files named as Put names them. Originals hold tool output in
+// full, so one it cannot delete is reported rather than skipped quietly:
+// the error names each, and Prune carries on with the rest.
+func (s *Store) Prune(now time.Time) error {
 	if s.retain <= 0 {
-		return
+		return nil
 	}
 	entries, err := os.ReadDir(s.dir)
-	if err != nil {
-		return
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
 	}
+	if err != nil {
+		return fmt.Errorf("digest store: originals past logging.retainDays could not be looked for: %w", err)
+	}
+	var failed []error
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".txt") || !idPattern.MatchString(strings.TrimSuffix(name, ".txt")) {
 			continue
 		}
 		if info, err := e.Info(); err == nil && now.Sub(info.ModTime()) > s.retain {
-			os.Remove(filepath.Join(s.dir, name))
+			path := filepath.Join(s.dir, name)
+			if err := os.Remove(path); err != nil {
+				failed = append(failed, fmt.Errorf("%s is past logging.retainDays but could not be deleted: %w", path, err))
+			}
 		}
 	}
+	if len(failed) > 0 {
+		return fmt.Errorf("digest store: delete these by hand, since originals hold tool output in full: %w", errors.Join(failed...))
+	}
+	return nil
 }

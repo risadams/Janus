@@ -57,7 +57,7 @@ func ifSet(ok bool, s string) string {
 func digester(t *testing.T, m *model) (*Digest, *[]string) {
 	t.Helper()
 	var logged []string
-	return &Digest{Model: m, Store: NewStore(filepath.Join(t.TempDir(), "originals"), 7), MinBytes: 4000,
+	return &Digest{Model: m, Store: NewStore(filepath.Join(t.TempDir(), "originals"), 7, nil), MinBytes: 4000,
 		Logf: func(f string, a ...any) { logged = append(logged, fmt.Sprintf(f, a...)) }}, &logged
 }
 
@@ -208,7 +208,7 @@ func TestInThePipeline(t *testing.T) {
 
 func TestStore(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "originals")
-	s := NewStore(dir, 7)
+	s := NewStore(dir, 7, nil)
 	id, err := s.Put("hello\n")
 	if err != nil {
 		t.Fatal(err)
@@ -241,7 +241,9 @@ func TestStore(t *testing.T) {
 	old := time.Now().Add(-8 * 24 * time.Hour)
 	os.Chtimes(filepath.Join(dir, id+".txt"), old, old)
 	os.Chtimes(stray, old, old)
-	s.Prune(time.Now())
+	if err := s.Prune(time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.Get(id); !errors.Is(err, ErrNotFound) {
 		t.Errorf("an original past retention was kept: %v", err)
 	}
@@ -254,7 +256,7 @@ func TestStore(t *testing.T) {
 // retention period, not only when it next starts.
 func TestStorePrunesWhileRunning(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "originals")
-	s := NewStore(dir, 1)
+	s := NewStore(dir, 1, nil)
 	start := time.Now()
 	clock := start
 	s.now = func() time.Time { return clock }
@@ -283,6 +285,40 @@ func TestStorePrunesWhileRunning(t *testing.T) {
 	}
 }
 
+func TestStoreReportsAnOriginalPastRetentionItCannotDelete(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("directory permissions do not stop deletion here")
+	}
+	dir := filepath.Join(t.TempDir(), "originals")
+	s := NewStore(dir, 1, nil)
+	id, err := s.Put("from three days ago")
+	if err != nil {
+		t.Fatal(err)
+	}
+	then := time.Now().Add(-3 * 24 * time.Hour)
+	os.Chtimes(filepath.Join(dir, id+".txt"), then, then)
+	os.Chmod(dir, 0o500)
+	t.Cleanup(func() { os.Chmod(dir, 0o700) })
+
+	var logged []string
+	NewStore(dir, 1, func(f string, a ...any) { logged = append(logged, fmt.Sprintf(f, a...)) })
+	if len(logged) != 1 || !strings.Contains(logged[0], id+".txt") || !strings.Contains(logged[0], "retainDays") {
+		t.Errorf("an original past retention that could not be deleted was reported as %q", logged)
+	}
+}
+
+func TestStoreDoesNotDigestWhatItCannotMarkAsInUse(t *testing.T) {
+	s := NewStore(filepath.Join(t.TempDir(), "originals"), 7, nil)
+	if _, err := s.Put("in use"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { chtimes = os.Chtimes })
+	chtimes = func(string, time.Time, time.Time) error { return os.ErrPermission }
+	if id, err := s.Put("in use"); err == nil {
+		t.Errorf("Put = %q with the original unable to be kept from pruning, want an error", id)
+	}
+}
+
 func TestTargetWords(t *testing.T) {
 	for bytes, want := range map[int]int{100: 80, 4000: 200, 9000: 400, 1 << 20: 400} {
 		if got := targetWords(bytes); got != want {
@@ -292,7 +328,7 @@ func TestTargetWords(t *testing.T) {
 }
 
 func TestToolOutput(t *testing.T) {
-	store := NewStore(filepath.Join(t.TempDir(), "originals"), 7)
+	store := NewStore(filepath.Join(t.TempDir(), "originals"), 7, nil)
 	text := "one\ntwo\nerror: three\nfour\nerror: five\n"
 	id, _ := store.Put(text)
 	call := func(args string) (string, bool) {

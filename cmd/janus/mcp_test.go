@@ -118,7 +118,7 @@ func TestMCPServesAskFilesEndToEnd(t *testing.T) {
 // Claude Code in a project directory, must find them there.
 func TestMCPFetchesADigestedOriginal(t *testing.T) {
 	cfgPath, project := mcpFixture(t)
-	store := digest.NewStore(filepath.Join(filepath.Dir(cfgPath), "logs", "originals"), 7)
+	store := digest.NewStore(filepath.Join(filepath.Dir(cfgPath), "logs", "originals"), 7, nil)
 	id, err := store.Put("ok  pkg/a\nFAIL pkg/b: undefined: Foo\nok  pkg/c\n")
 	if err != nil {
 		t.Fatal(err)
