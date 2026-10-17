@@ -336,6 +336,69 @@ func TestPruneLeavesAnythingJanusDidNotMake(t *testing.T) {
 	}
 }
 
+// lockDay makes a day directory's files impossible to delete, for the rest
+// of the test. Windows and root ignore the permission, so the test is
+// skipped there.
+func lockDay(t *testing.T, dir, day string) {
+	t.Helper()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("directory permissions do not stop deletion here")
+	}
+	path := filepath.Join(dir, day)
+	if err := os.Chmod(path, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(path, 0o700) })
+}
+
+func TestPruneReportsAnExpiredCaptureItCannotDelete(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir, "2026-10-01", "old", 10)
+	lockDay(t, dir, "2026-10-01")
+
+	err := (&Writer{dir: dir, retain: 7 * 24 * time.Hour}).Prune(time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC))
+	if err == nil {
+		t.Fatal("a capture past retention could not be deleted, and Prune said nothing")
+	}
+	if !strings.Contains(err.Error(), filepath.Join(dir, "2026-10-01")) || !strings.Contains(err.Error(), "retainDays") {
+		t.Errorf("the error does not say which capture is kept, or why it should not be: %v", err)
+	}
+}
+
+func TestPruneReportsACaptureOverTheSizeLimitItCannotDelete(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir, "2026-10-11", "20261011T090000.000-bbbbbb", 100)
+	seed(t, dir, "2026-10-11", "20261011T100000.000-cccccc", 100)
+	lockDay(t, dir, "2026-10-11")
+
+	err := (&Writer{dir: dir, maxBytes: 350}).Prune(time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC))
+	if err == nil {
+		t.Fatal("a capture over the size limit could not be deleted, and Prune said nothing")
+	}
+	if !strings.Contains(err.Error(), "20261011T090000.000-bbbbbb") || !strings.Contains(err.Error(), "maxMegabytes") {
+		t.Errorf("the error does not say which capture is kept, or why it should not be: %v", err)
+	}
+}
+
+func TestWriteSavesTheCaptureAndReportsAFailedPrune(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "captures")
+	seed(t, dir, "2020-01-02", "ancient", 10)
+	lockDay(t, dir, "2020-01-02")
+	w := New(dir, 7, 1024)
+	w.writes = pruneEvery - 1 // the next write prunes
+
+	name, err := w.Write(exchange())
+	if name == "" {
+		t.Fatalf("the capture was not saved: %v", err)
+	}
+	if err == nil {
+		t.Error("the prune after the write failed, and Write said nothing")
+	}
+	if _, serr := os.Stat(filepath.Join(dir, name+".md")); serr != nil {
+		t.Errorf("the capture is not on disk: %v", serr)
+	}
+}
+
 func TestPruneWithNoLimitsOrNoDirectoryDoesNothing(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir, "2020-01-02", "ancient", 1000)

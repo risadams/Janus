@@ -191,6 +191,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var captures *capture.Writer
 	if cfg.Logging.Capture {
 		captures = capture.New(filepath.Join(cfg.Logging.Dir, "captures"), cfg.Logging.RetainDays, cfg.Logging.MaxMegabytes)
+		if err := captures.Prune(time.Now()); err != nil {
+			console.Printf("janus: %v", err)
+		}
 	}
 
 	// Shadows are only ever asked for by a routing rule, so the runner is
@@ -390,6 +393,7 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 		outageNotes = append(outageNotes, *n)
 	}
 	if captures != nil {
+		// A name with an error is a capture saved and a prune that failed.
 		name, err := captures.Write(ex)
 		if err != nil {
 			console.Printf("janus: %v", err)

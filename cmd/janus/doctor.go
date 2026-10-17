@@ -164,7 +164,7 @@ func checkListen(addr string) finding {
 		}
 		return finding{"fail", "listen", fmt.Sprintf("cannot listen on %s: %v", addr, err)}
 	}
-	ln.Close()
+	_ = ln.Close() // only opened to see that it could be
 	return finding{"ok", "listen", addr + " is free"}
 }
 
@@ -178,7 +178,7 @@ func checkUpstream(client *http.Client, base string) finding {
 	if err != nil {
 		return finding{"fail", "upstream", fmt.Sprintf("%s did not answer: %s", base, diagnoseUpstream(u, err))}
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close() // any answer will do; its body is not read
 	return finding{"ok", "upstream", fmt.Sprintf("%s answered in %s", base, time.Since(start).Round(time.Millisecond))}
 }
 
@@ -322,8 +322,10 @@ func checkLogs(dir string) finding {
 	if err != nil {
 		return finding{"fail", "logs", fmt.Sprintf("cannot write under %s: %v", probe, err)}
 	}
-	f.Close()
-	os.Remove(f.Name())
+	// Only made to see that it could be; an empty probe file left behind
+	// is harmless.
+	_ = f.Close()
+	_ = os.Remove(f.Name())
 	if probe != dir {
 		return finding{"ok", "logs", dir + " will be created when janus runs"}
 	}
@@ -436,7 +438,7 @@ func checkClaude(listen string, getenv func(string) string, settingsPath string,
 		var settings struct {
 			Env map[string]string `json:"env"`
 		}
-		data, err := os.ReadFile(settingsPath)
+		data, err := os.ReadFile(settingsPath) // #nosec G304 -- Claude Code's own settings file
 		switch {
 		case err == nil && json.Unmarshal(data, &settings) != nil:
 			return finding{"warn", "claude", settingsPath + " is not valid JSON, so whether it points Claude Code at janus is unknown"}

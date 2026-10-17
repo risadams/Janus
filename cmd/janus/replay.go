@@ -155,7 +155,7 @@ func printReplaySummary(w io.Writer, outcomes []replayOutcome) {
 		fmt.Fprintf(tw, "  %s\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t\n", class,
 			t.n["replayed"], t.n["skipped"], t.n["failed"], t.n["same"], t.n["differs"], t.n["uncompared"], median)
 	}
-	tw.Flush()
+	_ = tw.Flush()
 	fmt.Fprintf(w, "  \"same\" means the local model stopped for the same reason as Claude and called\n"+
 		"  the same tools. It compares the shape of the answers, not whether they are right.\n"+
 		"  Local time is the median. Each answer is saved beside its capture as .replay.md.\n")
@@ -219,7 +219,7 @@ func replayOne(ctx context.Context, local *backend.Local, path, model string, co
 	stem := strings.TrimSuffix(path, ".request.txt")
 	id := strings.TrimSuffix(filepath.Base(path), requestSuffix)
 
-	body, err := os.ReadFile(path)
+	body, err := os.ReadFile(path) // #nosec G304 -- a capture file found under the captures directory
 	if err != nil {
 		fmt.Fprintf(stdout, "%s  could not be read: %v\n", id, err)
 		return o, false
@@ -244,7 +244,7 @@ func replayOne(ctx context.Context, local *backend.Local, path, model string, co
 	// Claude's answer, if the capture has it. Without it the local answer
 	// is still saved, but there is nothing to compare it with.
 	var real *anthropic.Summary
-	if data, err := os.ReadFile(stem + ".response.txt"); err == nil && len(data) > 0 {
+	if data, err := os.ReadFile(stem + ".response.txt"); err == nil && len(data) > 0 { // #nosec G304 -- the same capture's response
 		if s := summarise(data); s.Complete && s.Error == nil {
 			real = &s
 		}
@@ -319,7 +319,7 @@ func summarise(body []byte) anthropic.Summary {
 		contentType = "text/event-stream"
 	}
 	o := anthropic.NewObserver(contentType)
-	o.Write(body)
+	_, _ = o.Write(body) // an Observer never fails a write
 	return o.Summary()
 }
 

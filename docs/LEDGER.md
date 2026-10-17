@@ -412,7 +412,10 @@ Pruning runs at startup and every 50 captures. It removes day directories
 older than `logging.retainDays`, then the oldest captures until the total
 is under `logging.maxMegabytes`. It only ever touches directories named
 like a date and the files inside them; anything else you put under
-`captures/` is left alone.
+`captures/` is left alone. A capture it cannot delete, because of its
+permissions or another program holding it, is named on the console with
+the reason, so that captures are never kept past their limits without
+your knowing; delete it by hand.
 
 The originals of digested tool results, in `originals/` (see
 [CONFIG](CONFIG.md)), are pruned by age only: at startup and then at most
