@@ -70,7 +70,7 @@ func (u *Upstream) Health(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close() // any answer will do; its body is not read
 	return nil
 }
 
