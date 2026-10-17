@@ -80,7 +80,7 @@ const keySize = 32
 // but is not a key is an error, not replaced: replacing it would change
 // every placeholder already sent.
 func LoadKey(path string) ([]byte, error) {
-	key, err := os.ReadFile(path)
+	key, err := os.ReadFile(path) // #nosec G304 -- the key file in the log directory the config names
 	if os.IsNotExist(err) {
 		key = make([]byte, keySize)
 		if _, err := rand.Read(key); err != nil {
@@ -89,20 +89,24 @@ func LoadKey(path string) ([]byte, error) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return nil, err
 		}
-		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- the same key file
 		if os.IsExist(err) {
 			return LoadKey(path) // made since we looked
 		}
 		if err != nil {
 			return nil, err
 		}
+		// If the key cannot be written whole it is removed, and the write's
+		// error is the one returned. A removal that fails too is safe: a
+		// short key is refused at the next start, below, and a whole one
+		// was never used for any placeholder.
 		if _, err := f.Write(key); err != nil {
-			f.Close()
-			os.Remove(path)
+			_ = f.Close()
+			_ = os.Remove(path)
 			return nil, err
 		}
 		if err := f.Close(); err != nil {
-			os.Remove(path)
+			_ = os.Remove(path)
 			return nil, err
 		}
 		return key, nil
@@ -230,7 +234,7 @@ func escapedForms(value string) [][]byte {
 	var loose bytes.Buffer
 	enc := json.NewEncoder(&loose)
 	enc.SetEscapeHTML(false)
-	enc.Encode(value)
+	_ = enc.Encode(value) // a string always encodes, into a Buffer that cannot fail
 
 	forms := [][]byte{trimQuotes(bytes.TrimRight(loose.Bytes(), "\n"))}
 	if s := trimQuotes(strict); !bytes.Equal(s, forms[0]) {
