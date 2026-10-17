@@ -374,7 +374,9 @@ func toolReferencesAsText(messages []anthropic.Message, known map[string]bool) (
 				var ref struct {
 					ToolName string `json:"tool_name"`
 				}
-				c.Decode(&ref)
+				// A reference that does not decode names no tool, and is
+				// answered as one that cannot be called here.
+				_ = c.Decode(&ref)
 				text := fmt.Sprintf("Tool %s is loaded and can be called.", ref.ToolName)
 				if !known[ref.ToolName] {
 					text = fmt.Sprintf("Tool %s was found, but it cannot be called here.", ref.ToolName)
