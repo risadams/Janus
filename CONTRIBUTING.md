@@ -11,11 +11,11 @@ here saves a round trip on a pull request.
   branch on `main` to bring it up to date.
 - **Run the checks** CI runs: `gofmt -l .` (prints nothing), `go vet ./...`,
   `go test -race ./...`,
-  `go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...`, and
-  `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`. All of them must
-  pass before a pull request can merge. The suite is offline.
-  `scripts/gosec.sh ./...` runs the security checker CI also runs; a
-  change should add no findings to what it reports.
+  `go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...`,
+  `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`, and
+  `scripts/gosec.sh ./...`. All of them must pass before a pull request
+  can merge. The suite is offline. A gosec finding that is safe says why
+  on its line, with `_ =` or `// #nosec <rule> -- <reason>`.
 - **Update the docs** that describe any behaviour you change, in the same
   pull request. They are Markdown in `docs/`, published as the
   [docs site](https://risadams.github.io/Janus/); to preview it,

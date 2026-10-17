@@ -9,17 +9,16 @@ is going is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 CI runs `gofmt -l .` (must print nothing), `go vet ./...`, and
 `go test ./...` on Linux, macOS, and Windows, and
-`go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...` and
-`go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`; all of them must
-pass before a merge. Run them all before pushing, with `go test -race ./...`
-locally. The suite is offline: fake upstreams and a fake LM Studio are
-`httptest` servers.
+`go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...`,
+`go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`, and
+`scripts/gosec.sh ./...`; all of them must pass before a merge. Run them
+all before pushing, with `go test -race ./...` locally. The suite is
+offline: fake upstreams and a fake LM Studio are `httptest` servers.
 
-CI also runs gosec, with `scripts/gosec.sh ./...`, and shows its findings
-under the Security tab beside CodeQL's. It does not fail the build until
-the findings already on main are triaged (#298), but a change should add
-none: fix what it reports, or say on the line why it is safe, with `_ =`
-for an error dropped on purpose or `// #nosec G304 -- <reason>`.
+gosec's findings also show under the Security tab beside CodeQL's. Fix
+what it reports, or say on the line why it is safe: `_ =` for an error
+dropped on purpose, or `// #nosec G304 -- <reason>`. A `#nosec` without
+a reason is not accepted in review.
 
 Some tests run only when pointed at real traffic or asked for:
 
