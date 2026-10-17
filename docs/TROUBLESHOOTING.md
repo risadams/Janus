@@ -74,6 +74,14 @@ it names. A service installed before `janus update` existed is stopped
 by launchd after 20 seconds rather than a minute, cutting long answers
 short; run `janus service install` again to give it the minute.
 
+**`janus update` on Windows says the old binary could not be put back.**
+On Windows the running `janus.exe` is moved aside to `janus.exe.old`
+before the new one goes in. If the new one cannot go in, Janus moves the
+old one back; if that fails too, nothing is left at `janus.exe`, and the
+message names where the old binary is. Rename `janus.exe.old` to
+`janus.exe` and run `janus update` again. Another program holding the
+file open, such as antivirus scanning it, can cause this.
+
 **No notice of a new release at startup.** `update.check` asks GitHub at
 most once a day and says nothing when the check fails or when you have
 the newest release, so a release from this morning may not show until
