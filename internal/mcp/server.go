@@ -81,7 +81,9 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, name, version strin
 		}
 		write.Lock()
 		defer write.Unlock()
-		out.Write(append(line, '\n'))
+		// A write fails only when the client has gone, and then its end of
+		// the input closes too, which ends the loop below.
+		_, _ = out.Write(append(line, '\n'))
 	}
 	// When input ends, calls already asked for are allowed to finish and
 	// their answers are written: the client asked, and may still be
@@ -109,7 +111,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, name, version strin
 			var params struct {
 				ProtocolVersion string `json:"protocolVersion"`
 			}
-			json.Unmarshal(req.Params, &params)
+			_ = json.Unmarshal(req.Params, &params) // params that do not parse ask for no version, and get the default
 			send(response{ID: req.ID, Result: map[string]any{
 				"protocolVersion": agree(params.ProtocolVersion),
 				"capabilities":    map[string]any{"tools": map[string]any{}},
