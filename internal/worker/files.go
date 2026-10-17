@@ -270,7 +270,7 @@ func number(files []string, root string, chunkBytes int) (chunks []string, read 
 		}
 	}
 	for _, path := range files {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G304 -- resolve has refused anything outside the project root, links included
 		if err != nil {
 			return nil, 0, fmt.Errorf("%s could not be read: %v", rel(root, path), err)
 		}
