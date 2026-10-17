@@ -191,7 +191,8 @@ func (r *Restorer) emit(index int, deltaType, piece string) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
-	enc.Encode(map[string]any{
+	// Strings and an int always encode, into a Buffer that cannot fail.
+	_ = enc.Encode(map[string]any{
 		"type":  "content_block_delta",
 		"index": index,
 		"delta": map[string]string{"type": deltaType, field: restored},

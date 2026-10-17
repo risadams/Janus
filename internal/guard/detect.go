@@ -188,7 +188,7 @@ func (d *Detector) Scan(text string) []Finding {
 	for _, re := range d.Patterns {
 		fmt.Fprintf(h, "%q\x00", re.String())
 	}
-	io.WriteString(h, text)
+	_, _ = io.WriteString(h, text) // a hash never fails a write
 	var key [sha256.Size]byte
 	h.Sum(key[:0])
 
