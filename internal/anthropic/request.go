@@ -274,7 +274,7 @@ func (b Block) Text() string {
 		return ""
 	}
 	var t TextBlock
-	b.Decode(&t)
+	_ = b.Decode(&t) // a text block that does not decode has no text to give
 	return t.Text
 }
 

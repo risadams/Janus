@@ -94,7 +94,7 @@ func runClaude(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "janus claude: cannot find Claude Code (%q) on the PATH: %v\n", argv[0], err)
 		return 1
 	}
-	cmd := exec.Command(path, argv[1:]...)
+	cmd := exec.Command(path, argv[1:]...) // #nosec G204 G702 -- running the Claude Code the user asked for, with their arguments, is what janus claude is for
 	cmd.Env, cmd.Stdin, cmd.Stdout, cmd.Stderr = env, stdin, stdout, stderr
 
 	// Ctrl-C reaches Claude Code directly, from the terminal. Janus waits
@@ -148,7 +148,7 @@ func up(listen string) bool {
 	if err != nil {
 		return false
 	}
-	conn.Close()
+	_ = conn.Close() // only opened to see that it could be
 	return true
 }
 

@@ -422,6 +422,30 @@ func TestCorruptGzipIsRelayedAndReportedUnread(t *testing.T) {
 	}
 }
 
+func TestGzipThatExpandsPastTheLimitIsRelayedButNotRead(t *testing.T) {
+	old := maxDecompressed
+	maxDecompressed = 1 << 20
+	t.Cleanup(func() { maxDecompressed = old })
+
+	// 4 MiB of zeros compresses to about 4 KiB: a small bomb.
+	var bomb bytes.Buffer
+	zw := gzip.NewWriter(&bomb)
+	zw.Write(make([]byte, 4<<20))
+	zw.Close()
+	body, ex := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Write(bomb.Bytes())
+	}, "POST", "/v1/messages")
+
+	if !bytes.Equal(body, bomb.Bytes()) {
+		t.Error("body changed in transit")
+	}
+	if ex.Summary != nil || !strings.Contains(ex.Unread, "once decompressed") {
+		t.Errorf("summary=%+v unread=%q, want no summary and the limit as the reason", ex.Summary, ex.Unread)
+	}
+}
+
 func TestGzipStreamCutOffIsIncompleteNotUnread(t *testing.T) {
 	_, ex := serve(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

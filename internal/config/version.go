@@ -64,7 +64,7 @@ func upgrade(data []byte) (upgraded []byte, notes []string, err error) {
 // this by itself: an old config is upgraded in memory each time it is
 // read, and rewritten only when someone runs janus config upgrade.
 func Rewrite(path string) (notes []string, err error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- the config file the user named
 	if err != nil {
 		return nil, err
 	}
@@ -80,10 +80,10 @@ func Rewrite(path string) (notes []string, err error) {
 	if _, err := decode(upgraded, path); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(path+".bak", data, 0o600); err != nil {
+	if err := os.WriteFile(path+".bak", data, 0o600); err != nil { // #nosec G703 -- beside the config file the user named
 		return nil, fmt.Errorf("could not keep a copy of %s: %w", path, err)
 	}
-	if err := os.WriteFile(path, append(upgraded, '\n'), 0o600); err != nil {
+	if err := os.WriteFile(path, append(upgraded, '\n'), 0o600); err != nil { // #nosec G703 -- the config file the user named
 		return nil, err
 	}
 	return notes, nil

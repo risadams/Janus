@@ -277,7 +277,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
-			srv.Close()
+			_ = srv.Close() // the grace period is over; stopping is all that is left
 		}
 	}()
 

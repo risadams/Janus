@@ -68,7 +68,7 @@ func Fetch(ctx context.Context, client *http.Client, b backend.Backend, header h
 			if f.TTFB == 0 {
 				f.TTFB = time.Since(start)
 			}
-			observation.Write(buf[:n])
+			_, _ = observation.Write(buf[:n]) // an observation never fails a write
 			if room := limit - kept.Len(); n > room {
 				kept.Write(buf[:max(room, 0)])
 				f.Truncated = true

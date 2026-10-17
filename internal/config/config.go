@@ -357,7 +357,7 @@ func Load(path string) (cfg Config, created bool, err error) {
 // Read is Load for commands that only look: if path does not exist it
 // returns the defaults and writes nothing.
 func Read(path string) (Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- the config file the user named
 	if os.IsNotExist(err) {
 		return resolve(Default(), path), nil
 	}

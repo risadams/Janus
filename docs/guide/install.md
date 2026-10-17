@@ -273,6 +273,9 @@ the config file, since a service starts in no particular folder, and
 starts it. It refuses a config file that does not exist, or has
 problems, and a binary from `go run`, which is deleted when it exits:
 install janus first. Run `install` again after moving either.
+`uninstall` stops the service and removes the unit; if launchd or
+systemd cannot stop it, it says so and leaves the unit in place, so the
+service can still be stopped by name.
 
 On macOS it writes a launchd agent,
 `~/Library/LaunchAgents/com.github.risadams.janus.plist`, and the
