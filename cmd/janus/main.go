@@ -550,7 +550,7 @@ func newPipeline(cfg config.Config, local *backend.Local, policy *guard.Policy, 
 	}
 	digester := &digest.Digest{
 		Model:    &worker.Model{Local: local, ID: model.Model, Timeout: time.Duration(seconds) * time.Second},
-		Store:    digest.NewStore(filepath.Join(cfg.Logging.Dir, "originals"), cfg.Logging.RetainDays),
+		Store:    digest.NewStore(filepath.Join(cfg.Logging.Dir, "originals"), cfg.Logging.RetainDays, logger.Printf),
 		MinBytes: minBytes,
 		Tools:    d.Tools,
 		Logf:     logger.Printf,

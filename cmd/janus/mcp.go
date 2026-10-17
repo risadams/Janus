@@ -106,7 +106,7 @@ func runMCP(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	served := make(chan error, 1)
 	// tool_output fetches the originals of tool results the proxy
 	// digested; it reads them from where the proxy keeps them.
-	tools := append(w.Tools(), digest.Tool(digest.NewStore(filepath.Join(logDir, "originals"), cfg.Logging.RetainDays)))
+	tools := append(w.Tools(), digest.Tool(digest.NewStore(filepath.Join(logDir, "originals"), cfg.Logging.RetainDays, logger.Printf)))
 	go func() { served <- mcp.Serve(ctx, stdin, stdout, "janus", version, tools) }()
 	select {
 	case err := <-served:

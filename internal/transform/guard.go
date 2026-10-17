@@ -61,7 +61,9 @@ func ttl(req *anthropic.Request) string {
 			var cc struct {
 				TTL string `json:"ttl"`
 			}
-			json.Unmarshal(raw, &cc)
+			// A cache_control whose ttl is not a string is one the API
+			// refuses, so the request fails whatever it is priced at.
+			_ = json.Unmarshal(raw, &cc)
 			last = cc.TTL
 		}
 	}
