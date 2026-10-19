@@ -71,8 +71,9 @@ tar -xzf "${url##*/}"
 cd janus_*_darwin_arm64
 ```
 
-The checksum line should say `OK`. The newest release may be a release
-candidate; Janus has no 1.0 yet.
+The checksum line should say `OK`. Release candidates are on the
+[releases page](https://github.com/risadams/Janus/releases) too, for
+trying what is coming next.
 
 If you have the [GitHub CLI](https://cli.github.com), you can also check
 that the archive was built by this repository's release workflow, from the
