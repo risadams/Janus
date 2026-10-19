@@ -77,16 +77,21 @@ scripts/release.sh v0.9.0-rc.13
 diff <(curl -sL https://github.com/risadams/Janus/releases/download/v0.9.0-rc.13/checksums.txt) dist/checksums.txt
 ```
 
-No output from `diff` means every archive is the one published. The
+No output from `diff` means every archive is the one published. From
+the first release after v0.9.0-rc.16 the darwin archives hold binaries
+signed with a Developer ID and notarized by Apple, a signature a rebuild
+cannot make, so `diff` shows their two lines. Compare a rebuild with
+`checksums-before-codesign.txt` instead, which the release also carries:
+the sums of the archives as built, before the darwin binaries were
+signed. It is not signed with the release key; what a download is
+checked against is still `checksums.txt`. The
 build dates each file at the tagged commit's time and records no paths,
 build ID, or anything of the machine it ran on; on Windows, run it from
 Git Bash. The release workflow rebuilds every release this way on macOS
 before publishing it, and refuses to publish one that differs.
 
 Releases before v0.9.0-rc.14 were not built this way and do not rebuild
-the same. Once the macOS binaries are notarized (#262), they carry
-Apple's signature, which a rebuild cannot make: for those, the binary
-before signing is what matches.
+the same.
 
 ## Supported versions
 
