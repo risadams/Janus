@@ -5,6 +5,9 @@ keeps a record of every request and what it cost, and can send some of
 the work to a local model, keep secrets and private files from leaving,
 and keep a session going when Claude is down.
 
+![Where Janus sits: Claude Code sends every request to Janus, which forwards most to Anthropic, sends what its rules choose to LM Studio, and writes a ledger](../diagrams/architecture.svg#gh-light-mode-only)
+![Where Janus sits: Claude Code sends every request to Janus, which forwards most to Anthropic, sends what its rules choose to LM Studio, and writes a ledger](../diagrams/architecture-dark.svg#gh-dark-mode-only)
+
 Read these in order the first time:
 
 1. **[Before you start](before-you-start.md).** What to have in place
