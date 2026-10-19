@@ -92,9 +92,8 @@ cd janus_*_darwin_arm64
 
 For another machine, swap `darwin_arm64` for `darwin_amd64`,
 `linux_amd64`, or `linux_arm64`; Windows builds are `.zip` files on the
-releases page. The binaries themselves are not signed, so macOS
-quarantines a copy downloaded in a browser, and
-`xattr -d com.apple.quarantine janus` lets it run.
+releases page. The macOS binaries are signed with a Developer ID and
+notarized by Apple, so macOS runs them however they were downloaded.
 
 Check the setup, then start Janus (drop the `./` if you used
 `go install`):

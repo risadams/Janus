@@ -72,13 +72,17 @@ mkdir -p ~/.local/bin && mv janus ~/.local/bin/
 janus version
 ```
 
-On macOS, a copy downloaded in a browser rather than with `curl` is
-quarantined, because the binaries are not signed by Apple. If macOS says
-it cannot check the file for malicious software, clear the quarantine:
+The macOS binaries are signed with the project's Developer ID and
+notarized by Apple, so macOS runs them however they were downloaded. The
+first run of a copy downloaded in a browser checks with Apple, and needs
+the network. To see the signature:
 
 ```bash
-xattr -d com.apple.quarantine ~/.local/bin/janus
+codesign --verify --strict --verbose=2 ~/.local/bin/janus
+codesign --display --verbose=2 ~/.local/bin/janus 2>&1 | grep TeamIdentifier
 ```
+
+The team is `T5AXV72VU5`.
 
 ### Windows, from a release
 

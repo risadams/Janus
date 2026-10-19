@@ -49,9 +49,13 @@ The problems below are ones met while building and testing Janus.
 `~/go/bin`; from a release, wherever you moved it. Run it by its full
 path, or add the folder to `PATH` in your shell's profile.
 
-**macOS refuses to run the binary.** A copy downloaded with a browser is
-quarantined, and the binaries are not signed. Clear it with
-`xattr -d com.apple.quarantine janus`, or download with `curl`.
+**macOS refuses to run the binary.** Releases up to v0.9.0-rc.16 are not
+signed, and a copy of one downloaded with a browser is quarantined. Clear
+it with `xattr -d com.apple.quarantine janus`, or update to a later
+release, which is signed and notarized. A later release refused to run
+has been changed since it was signed, or was not downloaded from the
+releases page: check it against `checksums.txt` as the install guide
+says, and do not clear the quarantine.
 
 **Windows says it protected your PC.** SmartScreen warns about any
 program without a known publisher, and the binaries are not signed.
