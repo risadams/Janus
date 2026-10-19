@@ -20,7 +20,7 @@ out="${3:?$usage}"
 v="${version#v}"
 base="${4:-https://github.com/risadams/Janus/releases/download/${version}}"
 id=RisAdams.Janus
-schema=1.12.0
+schema=1.10.0
 
 sum() {
   local s
