@@ -16,8 +16,9 @@ cost?
   request) and was fixed here: the detector now remembers what it has
   already scanned. It costs that once per conversation and about 9 ms
   after.
-- **A synthetic soak is clean.** A soak on hours of real sessions has not
-  been done.
+- **Both soaks are clean.** The synthetic one, and a working day of real
+  Claude Code sessions through v0.9.0: memory, threads, and open files
+  stayed flat, every request ended, and none failed.
 
 ## Method
 
@@ -130,14 +131,49 @@ the entropy search, and the local-only policy all on:
 59 seconds, 682 requests a second, none failed, no stuck streams. Memory
 and goroutines are flat while it runs and fall away when it stops.
 
+## Soak with real sessions
+
+On 2026-10-19 the Janus in everyday use was sampled every five minutes
+(`ps` and `lsof`, with the day's ledger) while Claude Code worked through
+it. Routing and the guard were on, with captures, and two routing rules
+that stand in for Claude only when it is down. The day's first process,
+v0.9.0-rc.17, ran for 2 h 23 m and was stopped at 09:17 to upgrade. Its
+successor, v0.9.0, started at 09:35 and was sampled for 7 h 47 m, 94
+samples:
+
+| Local time | Memory (RSS) | Threads | Open files | TCP | Requests so far |
+| --- | --- | --- | --- | --- | --- |
+| 09:37 | 69.2 MB | 18 | 18 | 3 | 0 |
+| 10:37 | 70.6 MB | 18 | 21 | 5 | 10 |
+| 11:37 | 62.9 MB | 18 | 18 | 2 | 27 |
+| 12:37 | 63.0 MB | 18 | 19 | 3 | 31 |
+| 13:07 | 63.8 MB | 19 | 17 | 1 | 132 |
+| 14:07 | 40.5 MB | 19 | 17 | 1 | 132 |
+| 17:22 | 39.9 MB | 19 | 17 | 1 | 132 |
+
+- **No leak.** Memory peaked at 70.6 MB and fell to 40 MB once the work
+  stopped. Threads stayed between 18 and 19. Open files stayed between 17
+  and 21, and went back to 17 every time it was idle. TCP connections
+  went back to one, the listener.
+- **No stuck streams.** The v0.9.0 process recorded 139 requests: 135 of
+  them streamed, 134 main-loop turns, one compaction, and four token
+  counts. Every one ended `ok`. The median took 5.7 s and the longest
+  81 s. None were cancelled, and none waited more than 30 s for a first
+  byte.
+- **The rc.17 process before it** went from 50.6 to 68.9 MB over 2 h 23 m,
+  while it served its first 150 requests of the day. Its threads stayed
+  at 18 to 20 and its open files at 17 to 19.
+
 ## What this does not show
 
 - **Real latency.** Against the real API the network and the model
   dominate everything here.
-- **A real soak.** The synthetic run shows no leak under load. Hours of
-  real Claude Code sessions, with long streams, cancelled requests, and a
-  real LM Studio, have not been run as a soak. The sessions run during
-  development were minutes long.
+- **A heavy day.** The real soak served 139 requests in its 7 h 47 m,
+  most of them in the first three and a half hours; the busiest day of the
+  baseline week ([baseline.md](baseline.md)) had about a thousand. Every
+  request went to Claude, so the local model, escalation, and cancelled
+  requests were not exercised. The synthetic soak covers volume and
+  escalation, but not a real LM Studio.
 - **Other machines.** One fast machine. Pattern matching and JSON scale
   with a single core's speed.
 - **The local model.** How long LM Studio takes is in the
