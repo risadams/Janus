@@ -61,8 +61,10 @@ request class. The G1 target is restated from that report.
 Met on 2026-10-19 ([docs/research/baseline.md](research/baseline.md)):
 the main conversation reading its own cache is nearly all the cost, so
 routing, escalation, and compression each reach a percent or two of it.
-What is left in reach is keeping the cache warm through idle gaps (#334)
-and showing when a session's context makes turns expensive (#335).
+What is left in reach is showing when a session's context makes turns
+expensive (#335). Keeping the cache warm through idle gaps would work, but
+it needs Janus to hold your credential and send requests of its own, so it
+is not built ([keepwarm.md](research/keepwarm.md), #334).
 
 ### M2 — Route
 

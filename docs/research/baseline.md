@@ -25,8 +25,10 @@ least 30% below the baseline?
 3. **The one large saving in Janus's reach is the cache expiring while you
    are away.** Five idle gaps of 1 to 3 hours cost $20.34 in cache
    writes, 7% of the week; a cached read every hour of the gap, to keep
-   the cache alive, would have cost about $0.85. That is a spike, #334,
-   not a feature yet: it means Janus sending requests of its own.
+   the cache alive, would have cost about $0.85. The spike, #334, found
+   that this works but that Janus will not do it: it would mean Janus
+   holding your credential and sending requests of its own
+   ([keepwarm.md](keepwarm.md)).
 4. **The other large lever is how big a session's context grows, and it
    belongs to the user.** Turns above 600k tokens are 13% of turns and 33%
    of the main conversation's cost. Janus can show it as it happens, and
@@ -138,7 +140,7 @@ write it saved, so keeping a cache warm only pays for a few hours.
 | Route or escalate subagents, status, compaction | 0.9% | this note |
 | Digest large tool results | about 1.5% | [digest.md](digest.md) |
 | Prune superseded context | about 0% | [pruning.md](pruning.md) |
-| Keep the cache warm through idle gaps | about 7% | this note, #334 |
+| Keep the cache warm through idle gaps | about 7%, not taken | [keepwarm.md](keepwarm.md) |
 
 Auto mode's safety checks (10% where seen) are not on the list: they are
 a security decision, and sending them to a local model would weaken it.
