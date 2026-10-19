@@ -387,7 +387,11 @@ func TestWriteSavesTheCaptureAndReportsAFailedPrune(t *testing.T) {
 	w := New(dir, 7, 1024)
 	w.writes = pruneEvery - 1 // the next write prunes
 
-	name, err := w.Write(exchange())
+	// Dated now, since Write prunes by the clock: a fixed date would pass
+	// retention in a week, and the prune would delete the capture itself.
+	ex := exchange()
+	ex.Start = time.Now()
+	name, err := w.Write(ex)
 	if name == "" {
 		t.Fatalf("the capture was not saved: %v", err)
 	}
