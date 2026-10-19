@@ -5,8 +5,8 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Janus — Roadmap | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/ROADMAP"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Janus — Roadmap | Janus"><meta data-rh="true" name="description" content="Status 2026-10-16"><meta data-rh="true" property="og:description" content="Status 2026-10-16"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/ROADMAP"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/ROADMAP" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/ROADMAP" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Roadmap","item":"https://risadams.github.io/Janus/docs/ROADMAP"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.76b30571.css">
-<script src="/Janus/assets/js/runtime~main.cbfa4e73.js" defer="defer"></script>
-<script src="/Janus/assets/js/main.00b1beea.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.add77fce.js" defer="defer"></script>
+<script src="/Janus/assets/js/main.2ac56e66.js" defer="defer"></script>
 </head>
 <body>
 <svg style="display: none;"><defs>
@@ -56,8 +56,10 @@ request class. The G1 target is restated from that report.</p>
 <p>Met on 2026-10-19 (<a class="" href="/Janus/docs/research/baseline">docs/research/baseline.md</a>):
 the main conversation reading its own cache is nearly all the cost, so
 routing, escalation, and compression each reach a percent or two of it.
-What is left in reach is keeping the cache warm through idle gaps (#334)
-and showing when a session&#x27;s context makes turns expensive (#335).</p>
+What is left in reach is showing when a session&#x27;s context makes turns
+expensive (#335). Keeping the cache warm through idle gaps would work, but
+it needs Janus to hold your credential and send requests of its own, so it
+is not built (<a class="" href="/Janus/docs/research/keepwarm">keepwarm.md</a>, #334).</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="m2--route">M2 — Route<a href="#m2--route" class="hash-link" aria-label="Direct link to M2 — Route" title="Direct link to M2 — Route" translate="no">​</a></h3>
 <p>The local model starts answering. Lowest-risk requests first.</p>
 <ul>
