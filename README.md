@@ -61,7 +61,14 @@ You need Claude Code. LM Studio is only needed for the local-model
 features. [Before you start](docs/guide/before-you-start.md) says what each
 feature needs and which settings differ from their defaults.
 
-With Go 1.27 or later, install the newest release:
+On macOS or Linux with [Homebrew](https://brew.sh), from v0.9.0 on:
+
+```bash
+brew install risadams/tap/janus
+```
+
+`brew upgrade` then keeps it current, and the tab-completion scripts are
+installed with it. With Go 1.27 or later, install the newest release:
 
 ```bash
 go install github.com/risadams/janus/cmd/janus@latest

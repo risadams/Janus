@@ -10,7 +10,8 @@ and which settings differ from their defaults.
 
 ## 1. Install
 
-Download the archive for your machine from the
+On macOS or Linux, `brew install risadams/tap/janus` (from v0.9.0 on).
+Otherwise download the archive for your machine from the
 [releases page](https://github.com/risadams/Janus/releases) and unpack it,
 or build it with `go install github.com/risadams/janus/cmd/janus@latest`.
 [Installing](guide/install.md) has the commands for each platform and how
