@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Troubleshooting | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/TROUBLESHOOTING"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Troubleshooting | Janus"><meta data-rh="true" name="description" content="First steps"><meta data-rh="true" property="og:description" content="First steps"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/TROUBLESHOOTING"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/TROUBLESHOOTING" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/TROUBLESHOOTING" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"User guide","item":"https://risadams.github.io/Janus/docs/guide/"},{"@type":"ListItem","position":2,"name":"Troubleshooting","item":"https://risadams.github.io/Janus/docs/TROUBLESHOOTING"}]}</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.9b061ed5.css">
-<script src="/Janus/assets/js/runtime~main.50c898a5.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.f2b149fc.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.489f8898.js" defer="defer"></script>
 </head>
 <body>
@@ -99,9 +99,13 @@ why.</li>
 <code>PATH</code>. With <code>go install</code> it is in <code>$(go env GOPATH)/bin</code>, usually
 <code>~/go/bin</code>; from a release, wherever you moved it. Run it by its full
 path, or add the folder to <code>PATH</code> in your shell&#x27;s profile.</p>
-<p><strong>macOS refuses to run the binary.</strong> A copy downloaded with a browser is
-quarantined, and the binaries are not signed. Clear it with
-<code>xattr -d com.apple.quarantine janus</code>, or download with <code>curl</code>.</p>
+<p><strong>macOS refuses to run the binary.</strong> Releases up to v0.9.0-rc.16 are not
+signed, and a copy of one downloaded with a browser is quarantined. Clear
+it with <code>xattr -d com.apple.quarantine janus</code>, or update to a later
+release, which is signed and notarized. A later release refused to run
+has been changed since it was signed, or was not downloaded from the
+releases page: check it against <code>checksums.txt</code> as the install guide
+says, and do not clear the quarantine.</p>
 <p><strong>Windows says it protected your PC.</strong> SmartScreen warns about any
 program without a known publisher, and the binaries are not signed.
 Choose &quot;More info&quot;, then &quot;Run anyway&quot;.</p>
