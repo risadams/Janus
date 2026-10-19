@@ -184,6 +184,21 @@ func TestUpdateRefusesScoopsCopy(t *testing.T) {
 	wantLines(t, errOut, "installed with Scoop", "scoop update janus")
 }
 
+func TestUpdateRefusesWingetsCopy(t *testing.T) {
+	updateFrom(t)
+	pkg := filepath.Join(t.TempDir(), "Microsoft", "WinGet", "Packages", "RisAdams.Janus_Microsoft.Winget.Source_8wekyb3d8bbwe", "janus_0.7.0_windows_amd64")
+	os.MkdirAll(pkg, 0o755)
+	exe := filepath.Join(pkg, "janus")
+	os.WriteFile(exe, []byte("janus v0.7.0"), 0o755)
+	executable = func() (string, error) { return exe, nil }
+	_, errOut, code := runCLI(t, "update", "-config", noConfig(t))
+	if code != 1 {
+		t.Errorf("exit %d, want 1", code)
+	}
+	binaryIs(t, exe, "janus v0.7.0")
+	wantLines(t, errOut, "installed with winget", "winget upgrade RisAdams.Janus")
+}
+
 // The exact release, not @latest: the Go module proxy can be slow to list
 // a new tag, and @latest leaves pre-releases out once there is a stable
 // release, which would drop -pre.

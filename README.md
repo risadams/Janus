@@ -98,9 +98,10 @@ cd janus_*_darwin_arm64
 ```
 
 For another machine, swap `darwin_arm64` for `darwin_amd64`,
-`linux_amd64`, or `linux_arm64`. On Windows, Scoop installs stable
-releases (`scoop bucket add risadams https://github.com/risadams/scoop-bucket`,
-then `scoop install risadams/janus`); the Windows builds are also `.zip` files on the
+`linux_amd64`, or `linux_arm64`. On Windows, winget (`winget install RisAdams.Janus`) and Scoop
+(`scoop bucket add risadams https://github.com/risadams/scoop-bucket`, then
+`scoop install risadams/janus`) install stable releases; the Windows builds
+are also `.zip` files on the
 releases page. The macOS binaries are signed with a Developer ID and
 notarized by Apple, so macOS runs them however they were downloaded.
 

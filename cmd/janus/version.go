@@ -36,6 +36,7 @@ const (
 	goInstall                // go install ...@version
 	homebrew                 // brew install
 	scoop                    // scoop install
+	winget                   // winget install
 )
 
 // currentVersion is this binary's version and how it was installed. A
@@ -49,6 +50,8 @@ func currentVersion() (string, install) {
 				return version, homebrew
 			case isScoop(exe):
 				return version, scoop
+			case isWinget(exe):
+				return version, winget
 			}
 		}
 		return version, archive
@@ -86,6 +89,14 @@ func isScoop(exe string) bool {
 		}
 	}
 	return false
+}
+
+// isWinget reports whether exe is a portable package winget installed,
+// which it keeps under Microsoft/WinGet/Packages in the user's or the
+// machine's program data, with its own record of the version.
+func isWinget(exe string) bool {
+	path := strings.ToLower(strings.ReplaceAll(exe, `\`, "/"))
+	return strings.Contains(path, "/microsoft/winget/packages/risadams.janus")
 }
 
 // versionLine is what `janus version` prints.
@@ -165,6 +176,8 @@ func upgradeHow(how install, r update.Release) string {
 		return "To upgrade: brew upgrade janus"
 	case scoop:
 		return "To upgrade: scoop update janus"
+	case winget:
+		return "To upgrade: winget upgrade RisAdams.Janus"
 	}
 	return "To upgrade: janus update, which checks the download first.\nOr download it from " + r.URL + "\nand replace this binary, then restart janus."
 }

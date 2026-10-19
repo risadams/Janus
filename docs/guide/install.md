@@ -101,6 +101,21 @@ codesign --display --verbose=2 ~/.local/bin/janus 2>&1 | grep TeamIdentifier
 
 The team is `T5AXV72VU5`.
 
+### Windows, with winget
+
+Stable releases are submitted to winget, from v0.9.0 on; each appears
+once Microsoft has reviewed it, which for the first can take some days:
+
+```powershell
+winget install RisAdams.Janus
+janus version
+```
+
+The package installs the release's own archive, checked against its
+`checksums.txt`, and puts `janus` on your `PATH` (open a new terminal for
+it to take effect). `winget upgrade RisAdams.Janus` brings a new release;
+`janus update` leaves a winget copy alone and says to run that instead.
+
 ### Windows, with Scoop
 
 From v0.9.0 on, stable releases are in the project's
