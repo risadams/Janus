@@ -116,6 +116,12 @@ const config = {
             value: `<span class="navbar-version-badge">${version}</span>`,
           },
           {
+            href: 'https://github.com/sponsors/risadams',
+            label: 'Sponsor',
+            position: 'right',
+            className: 'header-sponsor-link',
+          },
+          {
             href: 'https://github.com/risadams/Janus',
             position: 'right',
             className: 'header-github-link',
@@ -140,6 +146,7 @@ const config = {
               <a href="https://github.com/risadams/Janus/releases">Releases</a>
               <a href="https://github.com/risadams/Janus/issues">Issues</a>
               <a href="https://github.com/risadams/Janus/security/policy">Security</a>
+              <a href="https://github.com/sponsors/risadams">Sponsor</a>
             </nav>
             <div class="footer-bar__copy">© ${new Date().getFullYear()} Ris Adams · MIT licence · ${version}</div>
           </div>
