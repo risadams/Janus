@@ -130,20 +130,20 @@ jobs:
         env:
           NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-          NOTARY_KEY_ISSUER_ID: ${{ secrets.NOTARY_KEY_ISSUER_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
           key="${RUNNER_TEMP}/notary.p8"
           printf '%s\n' "$NOTARY_KEY_P8" > "$key"
           ditto -c -k notarize "${RUNNER_TEMP}/notarize.zip"
           xcrun notarytool submit "${RUNNER_TEMP}/notarize.zip" \
-            --key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_KEY_ISSUER_ID" \
+            --key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
             --wait --timeout 30m --output-format json > "${RUNNER_TEMP}/notarized.json" || true
           cat "${RUNNER_TEMP}/notarized.json"
           status="$(jq -r '.status // empty' "${RUNNER_TEMP}/notarized.json")"
           if [ "$status" != "Accepted" ]; then
             id="$(jq -r '.id // empty' "${RUNNER_TEMP}/notarized.json")"
             [ -z "$id" ] || xcrun notarytool log "$id" \
-              --key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_KEY_ISSUER_ID"
+              --key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID"
             echo "Apple did not notarize the binaries (status: ${status:-none}); its log is above"
             exit 1
           fi
