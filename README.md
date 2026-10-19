@@ -61,7 +61,7 @@ You need Claude Code. LM Studio is only needed for the local-model
 features. [Before you start](docs/guide/before-you-start.md) says what each
 feature needs and which settings differ from their defaults.
 
-On macOS or Linux with [Homebrew](https://brew.sh), from v0.9.0 on:
+On macOS or Linux with [Homebrew](https://brew.sh), for stable releases:
 
 ```bash
 brew install risadams/tap/janus
