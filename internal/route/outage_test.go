@@ -150,6 +150,15 @@ func TestABriefFailureReachesClaudeCodeToRetry(t *testing.T) {
 		io.WriteString(w, `{"type":"message","role":"assistant","content":[],"model":"claude-opus-5-5","stop_reason":"end_turn"}`)
 	}
 	send()
+	// The router hears of the answer from the proxy's Done, which runs
+	// after the client has the response. Only a reused connection makes
+	// the next request wait for it; on a new one, the next overload can
+	// arrive first and count as a fourth. Wait for it.
+	waitFor(t, "the router to hear Claude answered", func() bool {
+		r.down.mu.Lock()
+		defer r.down.mu.Unlock()
+		return len(r.down.failures) == 0
+	})
 	answer = overloaded
 	if status, _ := send(); status != 529 {
 		t.Errorf("overload after Claude answered: client got %d, want 529", status)
@@ -165,5 +174,17 @@ func TestABriefFailureReachesClaudeCodeToRetry(t *testing.T) {
 	r.down.recovered()
 	if status, fellBack := send(); status != 200 || !strings.Contains(fellBack, "HTTP 429") {
 		t.Errorf("session limit: client got %d (fallback %q), want the stand-in", status, fellBack)
+	}
+}
+
+// waitFor polls until done reports true, failing the test if that takes
+// more than a few seconds. It is for state set after a response has ended.
+func waitFor(t *testing.T, what string, done func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); !done(); {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
