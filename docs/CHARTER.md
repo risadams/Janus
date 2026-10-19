@@ -54,12 +54,14 @@ Four mechanisms, combined:
 
 ## 4. Goals and success measures
 
-Targets are proposals. They get replaced with real numbers once the baseline
-(roadmap M1) exists.
+G1's target was restated from the baseline
+([docs/research/baseline.md](research/baseline.md)): the 30% first proposed
+is out of reach without breaking the prompt cache, since the cost is the
+conversation reading its own cache. The other targets stand as proposed.
 
 | # | Goal | Measured by | Proposed target |
 | --- | --- | --- | --- |
-| G1 | Cut upstream spend | Cache-weighted upstream cost per working session vs. the measured baseline | ≥ 30% lower, with no drop in task success |
+| G1 | Cut upstream spend | Median cache-weighted upstream cost per working session (a Claude Code session of 20 or more main-loop turns), against the baseline of $23.20 | Lower by what the baseline shows is in reach, about 9%, with no drop in task success; no mechanism ever costs more than it saves |
 | G2 | Keep private data local | Count of protected items found in upstream request bodies, over a test corpus and in real-use audit | Zero. Fails closed. |
 | G3 | Keep working when upstream doesn't | A session continues through a simulated outage / 429 storm / no network | Degraded but usable, clearly labelled |
 | G4 | Learn | Every request has a decision record explaining what Janus did and why; local and upstream answers can be compared offline | 100% of requests explained |

@@ -58,6 +58,12 @@ Janus replaces blush: a transparent proxy that also keeps the books.
 behavioural difference, and a baseline report showing where the cost goes by
 request class. The G1 target is restated from that report.
 
+Met on 2026-10-19 ([docs/research/baseline.md](research/baseline.md)):
+the main conversation reading its own cache is nearly all the cost, so
+routing, escalation, and compression each reach a percent or two of it.
+What is left in reach is keeping the cache warm through idle gaps (#334)
+and showing when a session's context makes turns expensive (#335).
+
 ### M2 — Route
 
 The local model starts answering. Lowest-risk requests first.
