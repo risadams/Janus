@@ -186,6 +186,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	printBanner(stdout, cfg, ln.Addr().String())
 
 	console := NewConsole(stderr, bool(newPainter(stderr)), prices(cfg))
+	console.WarnAtContext(cfg.Console.ContextWarn())
 	logger := console.Logger()
 	led := ledger.Open(filepath.Join(cfg.Logging.Dir, "ledger"))
 	var captures *capture.Writer
@@ -408,7 +409,7 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 	if err := led.Append(rec); err != nil {
 		console.Printf("janus: %v", err)
 	}
-	console.Request(ex, rec, slices.Concat(exchangeNotes(ex), guardNotes, outageNotes, console.QuotaNotes(rec.Quota)))
+	console.Request(ex, rec, slices.Concat(exchangeNotes(ex), guardNotes, outageNotes, console.QuotaNotes(rec.Quota), console.ContextNotes(rec)))
 	return rec
 }
 

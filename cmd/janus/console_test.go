@@ -576,3 +576,53 @@ func TestClaudeTakingAConversationBackIsMarked(t *testing.T) {
 		t.Error("the handback was marked twice")
 	}
 }
+
+func TestConsoleSaysOnceWhenAConversationHasGrownExpensive(t *testing.T) {
+	c := testConsole(io.Discard)
+	c.WarnAtContext(400_000)
+	turn := func(session, class string, prompt int) ledger.Record {
+		return ledger.Record{Session: session, Class: class, Backend: "upstream",
+			Usage: &ledger.Usage{Input: 0, CacheRead: n(prompt), CacheWrite: n(0)}, Response: &ledger.Response{Model: "claude-opus-5-5"}}
+	}
+	said := func(rec ledger.Record) []string {
+		var out []string
+		for _, n := range c.fresh(rec.Session, c.ContextNotes(rec)) {
+			out = append(out, fmt.Sprintf("%d %s", n.level, n.text))
+		}
+		return out
+	}
+
+	// Below the size, nothing. Past it, once, set beside what a turn cost
+	// when the conversation was small: reads at $0.20 a million tokens.
+	for _, p := range []int{60_000, 300_000} {
+		if got := said(turn("s1", "main", p)); got != nil {
+			t.Errorf("%d tokens: %q", p, got)
+		}
+	}
+	want := "1 this conversation is 450k tokens, and each turn reads all of it from the cache: about $0.09 a turn, against $0.01 when it was 60k. /compact, or a new session, would start it small again"
+	if got := said(turn("s1", "main", 450_000)); !slices.Equal(got, []string{want}) {
+		t.Errorf("past the size: %q, want %q", got, want)
+	}
+	if got := said(turn("s1", "main", 520_000)); got != nil {
+		t.Errorf("said twice: %q", got)
+	}
+
+	// A conversation first seen when already large has nothing to compare.
+	if got := said(turn("s2", "main", 450_000)); len(got) != 1 || strings.Contains(got[0], "against") {
+		t.Errorf("first seen large: %q", got)
+	}
+	// Only the main loop's turns to Claude count.
+	if got := said(turn("s3", "subagent", 900_000)); got != nil {
+		t.Errorf("a subagent: %q", got)
+	}
+	local := turn("s4", "main", 900_000)
+	local.Backend = "local"
+	if got := said(local); got != nil {
+		t.Errorf("a local answer: %q", got)
+	}
+	// Turned off, never.
+	c.WarnAtContext(0)
+	if got := said(turn("s5", "main", 900_000)); got != nil {
+		t.Errorf("turned off: %q", got)
+	}
+}

@@ -128,6 +128,14 @@ Local first (the local model tried, with Claude as the fallback)
        class  tried  accepted  rejected  failed  accepted %  attempt time
     subagent     58        44         5       9         76%         31.2s
 
+Main conversation by context size
+          context  turns  of turns  est. cost  of cost  per turn (median)
+       under 200k    151       57%    $5.8102      34%             $0.039
+        200k-400k     89       34%    $7.0215      41%             $0.077
+        400k-600k     23        9%    $4.3993      26%             $0.188
+  Each turn reads the whole conversation from the cache, so it costs more
+  as the conversation grows. /compact, or a new session, starts it small again.
+
 Why the local model did not answer, and what to do about it
   cause      tried  never tried  next step
   busy       0      6            raise maxConcurrent, if the machine has the memory
@@ -149,6 +157,13 @@ What to look for:
 - **`safety` and `status`.** In auto mode, Claude Code checks each tool
   call with a separate request (`safety`), and asks for short progress
   lines while subagents run (`status`). They can add up.
+- **Main conversation by context size.** Each turn reads the whole
+  conversation from the cache, so a turn at 600k tokens costs about four
+  times one under 200k. If the larger rows carry most of the cost, a
+  `/compact` sooner, or a new session for a new task, would cut it. The
+  console says so as it happens: once a conversation passes 400k tokens
+  (`console.contextWarnTokens`), a note under its line gives what a turn
+  costs now and what it cost when the conversation was small.
 - **Usage limits**, on a subscription: how much of the five-hour and
   weekly limits was used at the last answer, when each resets, and which
   kinds of request used the five-hour limit in the range. The shares are

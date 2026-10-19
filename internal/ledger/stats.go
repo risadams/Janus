@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -224,6 +225,9 @@ type Report struct {
 	// before them.
 	Handbacks       int `json:"handbacks,omitempty"`
 	HandedBackTurns int `json:"handed_back_turns,omitempty"`
+	// ByContext is the main conversation's turns to Claude by how large
+	// their prompt was (#335).
+	ByContext []ContextRow `json:"by_context,omitempty"`
 	// Outages are the runs of requests Claude could not answer, and how
 	// many of them the local model answered instead.
 	Outages []Outage `json:"outages,omitempty"`
@@ -262,6 +266,7 @@ func Summarise(records []Record, prices Prices) Report {
 	causes := map[string]*CauseRow{}
 	delegated := map[string]*delegatedTally{}
 	transforms := map[string]*TransformRow{}
+	contexts := make([][]int64, len(contextBounds)+1)
 	first := true
 	for _, rec := range records {
 		if rec.Worker != nil {
@@ -354,12 +359,14 @@ func Summarise(records []Record, prices Prices) Report {
 		}
 		group(byClass, rec.Class).add(rec, prices)
 		group(byBackend, rec.Backend).add(rec, prices)
+		addContext(contexts, rec, prices)
 		if rec.Usage != nil {
 			group(byModel, model(rec)).add(rec, prices)
 		}
 	}
 
 	rep.ByClass, rep.ByModel, rep.ByBackend = sorted(byClass), sorted(byModel), sorted(byBackend)
+	rep.ByContext = contextRows(contexts)
 	rep.Outages = Outages(records)
 	rep.Quota = summariseQuota(records)
 	for class, tally := range shadows {
@@ -387,6 +394,68 @@ func Summarise(records []Record, prices Prices) Report {
 	}
 	sort.Slice(rep.Transforms, func(i, j int) bool { return rep.Transforms[i].Name < rep.Transforms[j].Name })
 	return rep
+}
+
+// ContextRow is the main conversation's turns to Claude whose prompt was
+// within one range of sizes. A turn reads its whole conversation from the
+// cache, so its cost follows its size; in a week of ordinary use, turns
+// over 600k tokens were 13% of the turns and 33% of the cost
+// (docs/research/baseline.md).
+type ContextRow struct {
+	// FromTokens and ToTokens bound the prompt: FromTokens <= prompt <
+	// ToTokens. ToTokens is 0 for the last range, which has no bound.
+	FromTokens int     `json:"from_tokens"`
+	ToTokens   int     `json:"to_tokens,omitempty"`
+	Turns      int     `json:"turns"`
+	CostUSD    float64 `json:"cost_usd"`
+	// MedianUSD is the median cost of one turn in the range.
+	MedianUSD float64 `json:"median_usd"`
+}
+
+// contextBounds are where the ranges of ContextRow divide, in tokens:
+// the baseline's.
+var contextBounds = []int{200_000, 400_000, 600_000}
+
+// addContext counts rec in contexts, by its prompt's size, if it is a
+// priced turn of the main conversation that Claude answered. The costs
+// are kept in millionths of a dollar, for the median.
+func addContext(contexts [][]int64, rec Record, prices Prices) {
+	// The class's name as internal/route gives it, which this package
+	// cannot import.
+	if rec.Class != "main" || rec.Backend != "upstream" || rec.Usage == nil {
+		return
+	}
+	usd, unpriced := prices.Cost(model(rec), *rec.Usage)
+	if unpriced != "" {
+		return
+	}
+	u := rec.Usage
+	prompt := u.Input + deref(u.CacheRead) + deref(u.CacheWrite)
+	i := sort.SearchInts(contextBounds, prompt+1)
+	contexts[i] = append(contexts[i], int64(math.Round(usd*1e6)))
+}
+
+// contextRows turns what addContext counted into rows, leaving out the
+// ranges with no turns.
+func contextRows(contexts [][]int64) []ContextRow {
+	var rows []ContextRow
+	for i, costs := range contexts {
+		if len(costs) == 0 {
+			continue
+		}
+		row := ContextRow{Turns: len(costs), MedianUSD: float64(medianOf(costs)) / 1e6}
+		if i > 0 {
+			row.FromTokens = contextBounds[i-1]
+		}
+		if i < len(contextBounds) {
+			row.ToTokens = contextBounds[i]
+		}
+		for _, c := range costs {
+			row.CostUSD += float64(c) / 1e6
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 // DayRow is one day's headline figures, so that a week of use can be read

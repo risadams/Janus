@@ -41,6 +41,9 @@ type Console struct {
 	// since Claude last answered it. It outlives forgetAfter: a person
 	// who reached a limit often waits hours for it to reset.
 	handback map[string]*standIns
+	// contextWarn is the prompt size, in tokens, from which the console
+	// says a conversation's turns have grown expensive; 0 never says it.
+	contextWarn int
 }
 
 type said struct {
@@ -49,6 +52,9 @@ type said struct {
 	// standIn is when the local model last answered for Claude in this
 	// conversation.
 	standIn time.Time
+	// smallest is the smallest prompt, in tokens, of the conversation's
+	// main-loop turns to Claude that the console has seen.
+	smallest int
 }
 
 // forgetAfter is how long a conversation can be idle before the console
@@ -163,6 +169,57 @@ func (c *Console) StandingIn(session string) bool {
 	defer c.mu.Unlock()
 	s := c.conversation(session)
 	return !s.standIn.IsZero() && c.now().Sub(s.standIn) <= standingInFor
+}
+
+// WarnAtContext sets the prompt size, in tokens, from which the console
+// says a conversation's turns have grown expensive; 0 turns it off.
+func (c *Console) WarnAtContext(tokens int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.contextWarn = tokens
+}
+
+// ContextNotes says, once per conversation, when its main loop has grown
+// past the size set by WarnAtContext (#335). Claude Code does not show it,
+// and each turn reads the whole conversation from the cache, so a large
+// one costs several times what it did when small: turns over 600k tokens
+// were 13% of a week's turns and 33% of its cost
+// (docs/research/baseline.md). Janus cannot shrink what was already sent
+// without paying to write it again; a /compact or a new session can.
+func (c *Console) ContextNotes(rec ledger.Record) []note {
+	if rec.Class != "main" || rec.Backend != "upstream" || rec.Usage == nil || rec.Session == "" {
+		return nil
+	}
+	u := rec.Usage
+	prompt := u.Input + deref(u.CacheRead) + deref(u.CacheWrite)
+	c.mu.Lock()
+	s := c.conversation(rec.Session)
+	if s.smallest == 0 || prompt < s.smallest {
+		s.smallest = prompt
+	}
+	smallest, warnAt := s.smallest, c.contextWarn
+	c.mu.Unlock()
+	if warnAt <= 0 || prompt < warnAt {
+		return nil
+	}
+	model := ""
+	if rec.Response != nil {
+		model = rec.Response.Model
+	}
+	readCost := func(tokens int) (float64, bool) {
+		usd, unpriced := c.prices.Cost(model, ledger.Usage{CacheRead: &tokens})
+		return usd, unpriced == ""
+	}
+	now, ok := readCost(prompt)
+	if !ok {
+		return nil
+	}
+	text := fmt.Sprintf("this conversation is %s tokens, and each turn reads all of it from the cache: about $%.2f a turn", humanCount(prompt), now)
+	if then, ok := readCost(smallest); ok && smallest <= prompt/2 {
+		text += fmt.Sprintf(", against $%.2f when it was %s", then, humanCount(smallest))
+	}
+	text += ". /compact, or a new session, would start it small again"
+	return []note{{level: warn, text: text, once: "context"}}
 }
 
 // quotaNear is the share of a limit from which the console warns.

@@ -57,6 +57,33 @@ type Config struct {
 	// Update sets how janus looks for newer releases: when a command asks
 	// it to, and, if Check is set, once a day while it serves.
 	Update Update `json:"update,omitzero"`
+	// Console sets what the console says as janus works.
+	Console Console `json:"console,omitzero"`
+}
+
+// Console configures the console's notes.
+type Console struct {
+	// ContextWarnTokens is the prompt size, in tokens, past which the
+	// console says, once per conversation, that each turn has grown
+	// expensive. Zero means DefaultContextWarnTokens; a negative number
+	// turns the note off.
+	ContextWarnTokens int `json:"contextWarnTokens,omitempty"`
+}
+
+// DefaultContextWarnTokens is where the console's note about a large
+// conversation starts: from 400k tokens a turn cost about three times one
+// under 200k, in a week of ordinary use (docs/research/baseline.md).
+const DefaultContextWarnTokens = 400_000
+
+// ContextWarn is the prompt size the console warns from, or 0 for never.
+func (c Console) ContextWarn() int {
+	switch {
+	case c.ContextWarnTokens < 0:
+		return 0
+	case c.ContextWarnTokens == 0:
+		return DefaultContextWarnTokens
+	}
+	return c.ContextWarnTokens
 }
 
 // Update configures the check for newer releases made by `janus version

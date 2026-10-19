@@ -584,3 +584,34 @@ func TestReadSkipsRecordsFromANewerSchema(t *testing.T) {
 		t.Errorf("got %q, skipped %+v, err %v; want now-a and one newer record skipped", ids(recs), skipped, err)
 	}
 }
+
+func TestSummariseBreaksTheMainConversationDownByContextSize(t *testing.T) {
+	turn := func(id string, read int) Record {
+		return rec(id, at(10, 1), "main", &Usage{Input: 0, Output: 0, CacheRead: n(read), CacheWrite: n(0)})
+	}
+	small, edge, big1, big2 := turn("a", 100_000), turn("b", 200_000), turn("c", 700_000), turn("d", 900_000)
+	sub := rec("s", at(10, 2), "subagent", &Usage{CacheRead: n(700_000), CacheWrite: n(0)})
+	local := turn("l", 700_000)
+	local.Backend = "local"
+
+	rep := Summarise([]Record{small, edge, big1, big2, sub, local}, DefaultPrices)
+
+	// Reads at $0.20 a million: 100k is $0.02, 200k $0.04, 700k $0.14,
+	// 900k $0.18. A prompt of exactly 200k starts the second range. The
+	// subagent and the local answer are not the main conversation's turns
+	// to Claude.
+	want := []ContextRow{
+		{FromTokens: 0, ToTokens: 200_000, Turns: 1, CostUSD: 0.02, MedianUSD: 0.02},
+		{FromTokens: 200_000, ToTokens: 400_000, Turns: 1, CostUSD: 0.04, MedianUSD: 0.04},
+		{FromTokens: 600_000, Turns: 2, CostUSD: 0.32, MedianUSD: 0.18},
+	}
+	if len(rep.ByContext) != len(want) {
+		t.Fatalf("by context = %+v", rep.ByContext)
+	}
+	for i, w := range want {
+		g := rep.ByContext[i]
+		if g.FromTokens != w.FromTokens || g.ToTokens != w.ToTokens || g.Turns != w.Turns || !near(g.CostUSD, w.CostUSD) || !near(g.MedianUSD, w.MedianUSD) {
+			t.Errorf("range %d = %+v, want %+v", i, g, w)
+		}
+	}
+}
