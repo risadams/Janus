@@ -74,13 +74,13 @@ installed with it. With Go 1.27 or later, install the newest release:
 go install github.com/risadams/janus/cmd/janus@latest
 ```
 
-Or download a build. This finds the newest release on the
-[releases page](https://github.com/risadams/Janus/releases), release
-candidates included, downloads the build for macOS on Apple silicon, and
-checks it against the published checksums:
+Or download a build. This finds the newest stable release on the
+[releases page](https://github.com/risadams/Janus/releases), downloads
+the build for macOS on Apple silicon, and checks it against the
+published checksums:
 
 ```bash
-url=$(curl -s https://api.github.com/repos/risadams/Janus/releases | grep -m1 -o 'https://[^"]*_darwin_arm64\.tar\.gz')
+url=$(curl -s https://api.github.com/repos/risadams/Janus/releases/latest | grep -m1 -o 'https://[^"]*_darwin_arm64\.tar\.gz')
 curl -LO "$url"
 curl -LO "${url%/*}/checksums.txt"
 shasum -a 256 -c checksums.txt --ignore-missing
@@ -105,21 +105,24 @@ are also `.zip` files on the
 releases page. The macOS binaries are signed with a Developer ID and
 notarized by Apple, so macOS runs them however they were downloaded.
 
-Check the setup, then start Janus (drop the `./` if you used
-`go install`):
+Check the setup, then start Janus (drop the `./` if you installed with
+Homebrew or `go install`):
 
 ```bash
 ./janus doctor
 ./janus
 ```
 
-The first run writes `janus.config.json` in the current directory and
-prints the command that points Claude Code at Janus. Run it in another
-terminal:
+The first run writes `janus.config.json` in the current directory. In
+another terminal, start Claude Code through Janus:
 
 ```bash
-ANTHROPIC_BASE_URL=http://127.0.0.1:8787 ENABLE_TOOL_SEARCH=true claude
+./janus claude
 ```
+
+`janus claude` checks that Janus is answering, then runs `claude` with
+`ANTHROPIC_BASE_URL=http://127.0.0.1:8787` and `ENABLE_TOOL_SEARCH=true`
+set; Janus's startup banner shows how to set them yourself instead.
 
 Work as usual. Afterwards, see where the tokens went:
 
@@ -216,12 +219,12 @@ The [threat model](docs/THREAT-MODEL.md) covers the rest, and
 
 ## Status
 
-Janus is in pre-release. Observing, routing, escalation, worker tools,
-compression, and the guard are built and tested. The 1.0 release waits on
-a report that measures them against the [charter](docs/CHARTER.md)'s goals
-over a week of everyday use. The [roadmap](docs/ROADMAP.md) has the
-milestones, and the [research notes](docs/research/) the measurements
-behind each decision.
+Janus has stable releases but has not reached 1.0. Observing, routing,
+escalation, worker tools, compression, and the guard are built and tested.
+The 1.0 release waits on a report that measures them against the
+[charter](docs/CHARTER.md)'s goals over a week of everyday use. The
+[roadmap](docs/ROADMAP.md) has the milestones, and the [research
+notes](docs/research/) the measurements behind each decision.
 
 Diagrams for use outside GitHub are in [docs/diagrams](docs/diagrams/).
 

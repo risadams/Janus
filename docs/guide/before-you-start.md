@@ -32,8 +32,9 @@ Three settings point it at Janus, none of them a default:
 | `ENABLE_TOOL_SEARCH=true` | Claude Code turns tool search off when its base URL isn't Anthropic's, and then sends every tool's definition with every request. This turns it back on. |
 | `claude mcp add janus -- ...` | Only for the [worker tools](../recipes/workers.md), which Claude calls to hand reading to the local model. |
 
-[Installing](install.md#4-point-claude-code-at-janus) shows how to set the
-first two for one session, or for good.
+`janus claude` sets the first two for one session.
+[Installing](install.md#4-point-claude-code-at-janus) shows the other
+ways to set them, for one session or for good.
 
 ## LM Studio
 

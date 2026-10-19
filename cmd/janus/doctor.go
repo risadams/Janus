@@ -97,7 +97,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	fmt.Fprintf(stdout, "Start janus, then point Claude Code at it:\n\n")
-	printClaudeCommand(stdout, "http://"+cfg.Listen)
+	printClaudeCommand(stdout, "http://"+cfg.Listen, *configPath)
 	return 0
 }
 

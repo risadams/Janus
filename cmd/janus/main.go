@@ -183,7 +183,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		os.Getpid(), ln.Addr(), time.Now().Format("2006-01-02 15:04"))); err != nil {
 		fmt.Fprintf(stderr, "janus: %v\n", err)
 	}
-	printBanner(stdout, cfg, ln.Addr().String())
+	printBanner(stdout, cfg, ln.Addr().String(), *configPath)
 
 	console := NewConsole(stderr, bool(newPainter(stderr)), prices(cfg))
 	console.WarnAtContext(cfg.Console.ContextWarn())
@@ -660,22 +660,34 @@ func routingSummary(cfg config.Config) []string {
 	return lines
 }
 
-// printClaudeCommand gives the exact command that points Claude Code at
-// janus, so nobody has to look up the variable.
+// printClaudeCommand gives the exact command that starts Claude Code
+// through janus, so nobody has to look up the variables: janus claude
+// first, which checks that janus is answering, then the variables it sets,
+// for anyone setting them another way. configPath is the config janus was
+// given, so that janus claude reads the same one.
 //
 // ENABLE_TOOL_SEARCH is set because Claude Code turns tool search off when
 // its base URL is not Anthropic's own, and then sends every tool schema in
 // every request; setting it keeps the traffic shaped the way it is without
 // a proxy.
-func printClaudeCommand(w io.Writer, base string) {
-	fmt.Fprintf(w, "  # bash / zsh / fish\n")
+func printClaudeCommand(w io.Writer, base, configPath string) {
+	launch := "janus claude"
+	if configPath != config.DefaultPath {
+		if abs, err := filepath.Abs(configPath); err == nil {
+			configPath = abs
+		}
+		launch += " -config " + configPath
+	}
+	fmt.Fprintf(w, "  %s\n\n", launch)
+	fmt.Fprintf(w, "  # or set the variables yourself: bash / zsh / fish\n")
 	fmt.Fprintf(w, "  ANTHROPIC_BASE_URL=%s ENABLE_TOOL_SEARCH=true claude\n\n", base)
 	fmt.Fprintf(w, "  # PowerShell\n")
 	fmt.Fprintf(w, "  $env:ANTHROPIC_BASE_URL=\"%s\"; $env:ENABLE_TOOL_SEARCH=\"true\"; claude\n\n", base)
 }
 
-// printBanner says where janus is listening and what it will write.
-func printBanner(w io.Writer, cfg config.Config, addr string) {
+// printBanner says where janus is listening, what it will write, and how
+// to start Claude Code through it.
+func printBanner(w io.Writer, cfg config.Config, addr, configPath string) {
 	base := "http://" + addr
 	fmt.Fprintf(w, "%s\n\n", versionLine())
 	fmt.Fprintf(w, "  Listening   %s\n", base)
@@ -727,7 +739,7 @@ func printBanner(w io.Writer, cfg config.Config, addr string) {
 	} else {
 		fmt.Fprintf(w, "  Captures    off\n\n")
 	}
-	fmt.Fprintf(w, "Point Claude Code at janus:\n\n")
-	printClaudeCommand(w, base)
+	fmt.Fprintf(w, "Start Claude Code through janus:\n\n")
+	printClaudeCommand(w, base, configPath)
 	fmt.Fprintf(w, "Press Ctrl+C to stop.\n\n")
 }

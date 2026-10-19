@@ -58,12 +58,12 @@ per platform:
 | Linux on x86-64 | `_linux_amd64.tar.gz` |
 | Linux on ARM64 | `_linux_arm64.tar.gz` |
 
-These commands download the newest release for a Mac with Apple silicon
+These commands download the newest stable release for a Mac with Apple silicon
 and check it. For another machine, change `darwin_arm64` in the first and
 last lines.
 
 ```bash
-url=$(curl -s https://api.github.com/repos/risadams/Janus/releases | grep -m1 -o 'https://[^"]*_darwin_arm64\.tar\.gz')
+url=$(curl -s https://api.github.com/repos/risadams/Janus/releases/latest | grep -m1 -o 'https://[^"]*_darwin_arm64\.tar\.gz')
 curl -LO "$url"
 curl -LO "${url%/*}/checksums.txt"
 shasum -a 256 -c checksums.txt --ignore-missing    # on Linux: sha256sum -c checksums.txt --ignore-missing
@@ -192,7 +192,14 @@ step. Leave it running.
 
 ## 4. Point Claude Code at Janus
 
-In another terminal:
+In another terminal, start Claude Code through Janus:
+
+```bash
+janus claude
+```
+
+It checks that Janus is answering, then starts `claude` with two
+variables set for that session. To set them yourself instead:
 
 ```bash
 ANTHROPIC_BASE_URL=http://127.0.0.1:8787 ENABLE_TOOL_SEARCH=true claude
@@ -215,12 +222,14 @@ Janus.
 
 ### Making it stick
 
-Typing both variables every time gets old. Three ways to make it
-permanent:
+Three ways to send your sessions through Janus without thinking about
+it:
 
-**`janus claude`** starts Claude Code through Janus, setting both
-variables for that session only. Run it in your Janus folder, or pass
-`-config` with the file Janus runs with:
+**`janus claude`** in place of `claude`, setting both variables for that
+session only. With the config Janus wrote, it works from any folder; once
+you change `listen` or turn on the guard, run it in your Janus folder, or
+pass `-config` with the file Janus runs with (Janus's startup banner
+prints the command with it):
 
 ```bash
 janus claude                                # instead of claude

@@ -45,24 +45,32 @@ for the next step. Leave it running.
 
 ## 3. Point Claude Code at it
 
-In another terminal:
+In another terminal, start Claude Code through Janus:
+
+```bash
+janus claude
+```
+
+Use Claude Code as usual. Nothing is different: your login is passed
+through, and every request goes to Anthropic as before. Janus prints a
+line for each one. Claude Code's own arguments go after it, as in
+`janus claude --resume`.
+
+`janus claude` checks first that Janus is answering, then starts
+`claude` with two variables set for that session:
 
 ```bash
 ANTHROPIC_BASE_URL=http://127.0.0.1:8787 ENABLE_TOOL_SEARCH=true claude
 ```
 
-Use Claude Code as usual. Nothing is different: your login is passed
-through, and every request goes to Anthropic as before. Janus prints a
-line for each one.
-
-`janus claude` does the same in fewer keystrokes, and checks first that
-Janus is running; [installing](guide/install.md#making-it-stick) says
-what it does when Janus isn't.
-
-`ENABLE_TOOL_SEARCH=true` is there because Claude Code turns tool search
-off when it is pointed anywhere but Anthropic, and then sends every tool's
-definition with every request. Setting it keeps requests the size they
-would be without Janus.
+The first sends Claude Code's requests to Janus. The second is there
+because Claude Code turns tool search off when it is pointed anywhere but
+Anthropic, and then sends every tool's definition with every request;
+setting it keeps requests the size they would be without Janus. With the
+settings Janus wrote, `janus claude` works from any folder. Once you
+change `listen` or turn on the guard, run it from Janus's folder or give
+it `-config`; [installing](guide/install.md#making-it-stick) says more,
+including what it does when Janus isn't running.
 
 ## 4. See where the tokens go
 
