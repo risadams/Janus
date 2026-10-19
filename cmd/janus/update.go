@@ -124,6 +124,10 @@ func updateRefusal(how install, r update.Release) string {
 		// Scoop keeps a folder per version and its own record of which is
 		// current; replacing the binary would put the two out of step.
 		return "this janus was installed with Scoop, which upgrades it too.\n" + upgradeHow(how, r)
+	case winget:
+		// winget records the version it installed, and would go on
+		// offering the upgrade this one had already made.
+		return "this janus was installed with winget, which upgrades it too.\n" + upgradeHow(how, r)
 	}
 	return ""
 }

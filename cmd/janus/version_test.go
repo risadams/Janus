@@ -119,6 +119,7 @@ func TestUpgradeAdviceFitsHowJanusWasInstalled(t *testing.T) {
 		goInstall: "go install github.com/risadams/janus/cmd/janus@v0.8.0",
 		homebrew:  "brew upgrade janus",
 		scoop:     "scoop update janus",
+		winget:    "winget upgrade RisAdams.Janus",
 	} {
 		r := release(t, "v0.8.0", "https://github.com/risadams/Janus/releases/tag/v0.8.0")
 		if got := upgradeHow(how, r); !strings.Contains(got, want) {
@@ -152,6 +153,15 @@ func TestScoopIsRecognisedByItsAppsFolder(t *testing.T) {
 		if isScoop(exe) {
 			t.Errorf("%s was taken for Scoop's", exe)
 		}
+	}
+}
+
+func TestWingetIsRecognisedByItsPackagesFolder(t *testing.T) {
+	if !isWinget(`C:\Users\ris\AppData\Local\Microsoft\WinGet\Packages\RisAdams.Janus_Microsoft.Winget.Source_8wekyb3d8bbwe\janus_0.9.0_windows_amd64\janus.exe`) {
+		t.Error("a binary winget installed was not taken for winget's")
+	}
+	if isWinget(`C:\Users\ris\AppData\Local\Microsoft\WinGet\Packages\Other.Tool_x\janus.exe`) || isWinget(`C:\Users\ris\bin\janus.exe`) {
+		t.Error("a binary winget did not install as Janus was taken for winget's")
 	}
 }
 
