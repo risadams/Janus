@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-[![test](https://github.com/risadams/Janus/actions/workflows/test.yml/badge.svg)](https://github.com/risadams/Janus/actions/workflows/test.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/risadams/Janus/badge)](https://scorecard.dev/viewer/?uri=github.com/risadams/Janus) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15550/badge)](https://www.bestpractices.dev/projects/15550)
+[![release](https://img.shields.io/github/v/release/risadams/Janus?include_prereleases&sort=semver)](https://github.com/risadams/Janus/releases) [![test](https://github.com/risadams/Janus/actions/workflows/test.yml/badge.svg)](https://github.com/risadams/Janus/actions/workflows/test.yml) [![Go](https://img.shields.io/github/go-mod/go-version/risadams/Janus)](go.mod) [![licence](https://img.shields.io/github/license/risadams/Janus)](LICENSE) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/risadams/Janus/badge)](https://scorecard.dev/viewer/?uri=github.com/risadams/Janus) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15550/badge)](https://www.bestpractices.dev/projects/15550)
 
 **Documentation: [risadams.github.io/Janus](https://risadams.github.io/Janus/)**
 
