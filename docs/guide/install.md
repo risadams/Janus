@@ -101,6 +101,22 @@ codesign --display --verbose=2 ~/.local/bin/janus 2>&1 | grep TeamIdentifier
 
 The team is `T5AXV72VU5`.
 
+### Windows, with Scoop
+
+From v0.9.0 on, stable releases are in the project's
+[Scoop](https://scoop.sh) bucket:
+
+```powershell
+scoop bucket add risadams https://github.com/risadams/scoop-bucket
+scoop install risadams/janus
+janus version
+```
+
+The manifest installs the release's own archive, checked against its
+`checksums.txt`. `scoop update janus` brings a new release; `janus
+update` leaves a Scoop copy alone and says to run that instead. Release
+candidates are not in the bucket.
+
 ### Windows, from a release
 
 Download the `_windows_amd64.zip` (or `_windows_arm64.zip` on an ARM

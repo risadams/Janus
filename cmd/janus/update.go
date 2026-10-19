@@ -120,6 +120,10 @@ func updateRefusal(how install, r update.Release) string {
 	case homebrew:
 		// Brew owns the cellar, and would put the old version back.
 		return "this janus was installed with Homebrew, which upgrades it too.\n" + upgradeHow(how, r)
+	case scoop:
+		// Scoop keeps a folder per version and its own record of which is
+		// current; replacing the binary would put the two out of step.
+		return "this janus was installed with Scoop, which upgrades it too.\n" + upgradeHow(how, r)
 	}
 	return ""
 }
