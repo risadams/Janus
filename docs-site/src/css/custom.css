@@ -1076,3 +1076,25 @@ details summary {
   .hero-title { font-size: 2.75rem; }
   .doc-links-grid { grid-template-columns: 1fr; }
 }
+
+/* ─── Page not found ────────────────────────────────── */
+/* Three cards rather than the homepage's four, centred, and stacked on a
+   phone. */
+.doc-links-grid--three {
+  grid-template-columns: repeat(3, 1fr);
+  max-width: 780px;
+}
+
+@media (max-width: 768px) {
+  .doc-links-grid--three { grid-template-columns: 1fr; max-width: 420px; }
+}
+
+.not-found-report {
+  text-align: center;
+  margin-top: 2rem;
+  color: var(--dr-muted);
+}
+
+[data-theme='dark'] .not-found-report {
+  color: var(--dr-faint);
+}

@@ -48,6 +48,11 @@ const config = {
   },
 
   headTags: [
+    // What a phone shows for the site saved to its home screen.
+    {
+      tagName: 'link',
+      attributes: { rel: 'apple-touch-icon', href: `${baseUrl}img/apple-touch-icon.png` },
+    },
     {
       tagName: 'link',
       attributes: {
