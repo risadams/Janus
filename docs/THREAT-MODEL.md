@@ -231,9 +231,9 @@ the response. It adds no identifying header to what it sends upstream.
   archives were built. SECURITY.md says how to check it by hand.
 - **The Windows and Linux binaries are not code-signed.** The macOS ones
   are signed with the owner's Developer ID and notarized by Apple (#262),
-  after v0.9.0-rc.16; the certificate and the notary key are Actions
-  secrets, used only by the release workflow on a tag, and only through
-  Apple's own tools (ADR-004). Build from source if you would rather not
+  after v0.9.0-rc.16; the certificate and the notary key are secrets of
+  the `release` environment, which GitHub gives only to a run for a `v*`
+  tag (#324), and only Apple's own tools use them (ADR-004). Build from source if you would rather not
   trust a release at all.
 
 ## Review findings

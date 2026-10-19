@@ -53,6 +53,10 @@ jobs:
   codesign:
     needs: build
     runs-on: macos-latest
+    # The certificate and the notary key are secrets of the release
+    # environment, which GitHub gives only to a run for a v* tag (#324). A
+    # pull request's run uses no environment, and no secret.
+    environment: ${{ github.ref_type == 'tag' && 'release' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
