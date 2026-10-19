@@ -118,6 +118,7 @@ func TestUpgradeAdviceFitsHowJanusWasInstalled(t *testing.T) {
 		archive:   "To upgrade: janus update",
 		goInstall: "go install github.com/risadams/janus/cmd/janus@v0.8.0",
 		homebrew:  "brew upgrade janus",
+		scoop:     "scoop update janus",
 	} {
 		r := release(t, "v0.8.0", "https://github.com/risadams/Janus/releases/tag/v0.8.0")
 		if got := upgradeHow(how, r); !strings.Contains(got, want) {
@@ -132,6 +133,25 @@ func TestHomebrewIsRecognisedByItsCellar(t *testing.T) {
 	}
 	if isHomebrew("/usr/local/bin/janus") {
 		t.Error("a binary outside the cellar was taken for Homebrew's")
+	}
+}
+
+func TestScoopIsRecognisedByItsAppsFolder(t *testing.T) {
+	t.Setenv("SCOOP", `D:\Tools\Scoop`)
+	t.Setenv("SCOOP_GLOBAL", "")
+	for _, exe := range []string{
+		`C:\Users\ris\scoop\apps\janus\current\janus.exe`,
+		`C:\Users\ris\scoop\apps\janus\0.9.0\janus.exe`,
+		`D:\Tools\Scoop\apps\janus\current\janus.exe`,
+	} {
+		if !isScoop(exe) {
+			t.Errorf("%s was not taken for Scoop's", exe)
+		}
+	}
+	for _, exe := range []string{`C:\Users\ris\bin\janus.exe`, `C:\Users\ris\scoop\apps\other\current\janus.exe`} {
+		if isScoop(exe) {
+			t.Errorf("%s was taken for Scoop's", exe)
+		}
 	}
 }
 

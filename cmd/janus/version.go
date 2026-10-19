@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -34,6 +35,7 @@ const (
 	archive                  // a release archive, unpacked by hand
 	goInstall                // go install ...@version
 	homebrew                 // brew install
+	scoop                    // scoop install
 )
 
 // currentVersion is this binary's version and how it was installed. A
@@ -41,8 +43,13 @@ const (
 // install ...@v1.2.3` takes it from the module; anything else is "dev".
 func currentVersion() (string, install) {
 	if version != "dev" {
-		if exe, err := executable(); err == nil && isHomebrew(exe) {
-			return version, homebrew
+		if exe, err := executable(); err == nil {
+			switch {
+			case isHomebrew(exe):
+				return version, homebrew
+			case isScoop(exe):
+				return version, scoop
+			}
 		}
 		return version, archive
 	}
@@ -59,6 +66,26 @@ func isHomebrew(exe string) bool {
 		exe = real
 	}
 	return strings.Contains(filepath.ToSlash(exe), "/Cellar/")
+}
+
+// isScoop reports whether exe is one of Scoop's apps, where scoop, not
+// janus, decides what is installed. Scoop keeps each app under
+// <root>/apps/<name>/, its root being ~/scoop unless SCOOP or SCOOP_GLOBAL
+// moves it.
+func isScoop(exe string) bool {
+	// Backslashes by hand: filepath.ToSlash changes them only on Windows,
+	// and the tests check Windows paths everywhere.
+	slash := func(p string) string { return strings.ToLower(strings.ReplaceAll(p, `\`, "/")) }
+	path := slash(exe)
+	if strings.Contains(path, "/scoop/apps/janus/") {
+		return true
+	}
+	for _, root := range []string{os.Getenv("SCOOP"), os.Getenv("SCOOP_GLOBAL")} {
+		if root != "" && strings.HasPrefix(path, strings.TrimSuffix(slash(root), "/")+"/apps/janus/") {
+			return true
+		}
+	}
+	return false
 }
 
 // versionLine is what `janus version` prints.
@@ -136,6 +163,8 @@ func upgradeHow(how install, r update.Release) string {
 		return "To upgrade: go install github.com/risadams/janus/cmd/janus@" + r.Tag
 	case homebrew:
 		return "To upgrade: brew upgrade janus"
+	case scoop:
+		return "To upgrade: scoop update janus"
 	}
 	return "To upgrade: janus update, which checks the download first.\nOr download it from " + r.URL + "\nand replace this binary, then restart janus."
 }

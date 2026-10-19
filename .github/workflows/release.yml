@@ -358,6 +358,43 @@ jobs:
             test -s "${prefix}/${f}" || { echo "the formula did not install ${f}"; exit 1; }
           done
 
+  # The Scoop manifest, installed from the archives this run built, served
+  # from this runner, so that a change which breaks it fails a pull request
+  # rather than the bucket (#261).
+  scoop:
+    needs: [build, seal]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Write the manifest
+        shell: bash
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: scripts/scoop-manifest.sh "$VERSION" dist/checksums.txt http://127.0.0.1:8901 > janus.json
+      - name: Install it with Scoop and run it
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          $server = Start-Process python -ArgumentList '-m', 'http.server', '8901', '--bind', '127.0.0.1', '--directory', 'dist' -PassThru
+          try {
+            Invoke-Expression "& {$(Invoke-RestMethod https://get.scoop.sh)} -RunAsAdmin"
+            $env:PATH = "$env:USERPROFILE\scoop\shims;$env:PATH"
+            scoop install .\janus.json
+            if ($LASTEXITCODE -ne 0) { throw "scoop install failed" }
+            $got = (janus version | Out-String).Trim()
+            Write-Output $got
+            if ($got -ne "janus $env:VERSION") { throw "expected janus $env:VERSION" }
+          } finally {
+            Stop-Process -Id $server.Id
+          }
+
   publish:
     if: github.ref_type == 'tag'
     needs: [seal, reproduce, attest-sbom]
@@ -439,6 +476,43 @@ jobs:
         run: |
           git add Formula/janus.rb
           if git diff --cached --quiet; then echo "the tap already has ${GITHUB_REF_NAME}"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "janus ${GITHUB_REF_NAME#v}"
+          git push -q origin HEAD
+
+  # On a stable tag, once the release is public, the manifest in
+  # risadams/scoop-bucket moves to it, so scoop update finds it (#261). As
+  # for the tap: release candidates never reach it, the deploy key writes
+  # there and nowhere else, and running it again changes nothing.
+  bucket:
+    if: github.ref_type == 'tag' && !contains(github.ref_name, '-')
+    needs: [publish, scoop]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: risadams/scoop-bucket
+          ssh-key: ${{ secrets.SCOOP_BUCKET_KEY }}
+          path: bucket
+      - name: Write the manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --pattern checksums.txt --dir "${RUNNER_TEMP}"
+          mkdir -p bucket/bucket
+          scripts/scoop-manifest.sh "${GITHUB_REF_NAME}" "${RUNNER_TEMP}/checksums.txt" > bucket/bucket/janus.json
+          jq -r '.architecture[].url' bucket/bucket/janus.json | while read -r url; do
+            curl -fsSLI -o /dev/null "$url" || { echo "the manifest names ${url}, which does not download"; exit 1; }
+          done
+      - name: Push it to the bucket
+        working-directory: bucket
+        run: |
+          git add bucket/janus.json
+          if git diff --cached --quiet; then echo "the bucket already has ${GITHUB_REF_NAME}"; exit 0; fi
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -q -m "janus ${GITHUB_REF_NAME#v}"
           git push -q origin HEAD
