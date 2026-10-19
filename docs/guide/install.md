@@ -13,6 +13,23 @@ what each feature needs, and the settings that differ from the defaults.
 
 Janus is one file with no dependencies. Pick one way to get it.
 
+### With Homebrew, on macOS and Linux
+
+From v0.9.0 on, stable releases are in the project's tap:
+
+```bash
+brew install risadams/tap/janus
+janus version
+```
+
+The formula installs the release's own archive, checked against its
+`checksums.txt`, so it is the same signed and attested binary as a
+download. It installs the tab-completion scripts for bash, zsh, and fish
+too (skip the "Tab completion" section below). `brew upgrade janus` brings a new
+release. `janus update` leaves a Homebrew copy alone and says to run
+that instead, since Homebrew owns the files it installed. Release
+candidates are not in the tap.
+
 ### With Go
 
 If you have Go 1.27 or later:
@@ -83,6 +100,22 @@ codesign --display --verbose=2 ~/.local/bin/janus 2>&1 | grep TeamIdentifier
 ```
 
 The team is `T5AXV72VU5`.
+
+### Windows, with Scoop
+
+From v0.9.0 on, stable releases are in the project's
+[Scoop](https://scoop.sh) bucket:
+
+```powershell
+scoop bucket add risadams https://github.com/risadams/scoop-bucket
+scoop install risadams/janus
+janus version
+```
+
+The manifest installs the release's own archive, checked against its
+`checksums.txt`. `scoop update janus` brings a new release; `janus
+update` leaves a Scoop copy alone and says to run that instead. Release
+candidates are not in the bucket.
 
 ### Windows, from a release
 

@@ -169,6 +169,21 @@ func TestUpdateRefusesHomebrewsCopy(t *testing.T) {
 	wantLines(t, errOut, "installed with Homebrew", "brew upgrade janus")
 }
 
+func TestUpdateRefusesScoopsCopy(t *testing.T) {
+	updateFrom(t)
+	apps := filepath.Join(t.TempDir(), "scoop", "apps", "janus", "current")
+	os.MkdirAll(apps, 0o755)
+	exe := filepath.Join(apps, "janus")
+	os.WriteFile(exe, []byte("janus v0.7.0"), 0o755)
+	executable = func() (string, error) { return exe, nil }
+	_, errOut, code := runCLI(t, "update", "-config", noConfig(t))
+	if code != 1 {
+		t.Errorf("exit %d, want 1", code)
+	}
+	binaryIs(t, exe, "janus v0.7.0")
+	wantLines(t, errOut, "installed with Scoop", "scoop update janus")
+}
+
 // The exact release, not @latest: the Go module proxy can be slow to list
 // a new tag, and @latest leaves pre-releases out once there is a stable
 // release, which would drop -pre.

@@ -61,7 +61,14 @@ You need Claude Code. LM Studio is only needed for the local-model
 features. [Before you start](docs/guide/before-you-start.md) says what each
 feature needs and which settings differ from their defaults.
 
-With Go 1.27 or later, install the newest release:
+On macOS or Linux with [Homebrew](https://brew.sh), for stable releases:
+
+```bash
+brew install risadams/tap/janus
+```
+
+`brew upgrade` then keeps it current, and the tab-completion scripts are
+installed with it. With Go 1.27 or later, install the newest release:
 
 ```bash
 go install github.com/risadams/janus/cmd/janus@latest
@@ -91,7 +98,9 @@ cd janus_*_darwin_arm64
 ```
 
 For another machine, swap `darwin_arm64` for `darwin_amd64`,
-`linux_amd64`, or `linux_arm64`; Windows builds are `.zip` files on the
+`linux_amd64`, or `linux_arm64`. On Windows, Scoop installs stable
+releases (`scoop bucket add risadams https://github.com/risadams/scoop-bucket`,
+then `scoop install risadams/janus`); the Windows builds are also `.zip` files on the
 releases page. The macOS binaries are signed with a Developer ID and
 notarized by Apple, so macOS runs them however they were downloaded.
 
