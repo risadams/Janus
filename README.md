@@ -16,15 +16,10 @@ when you want it: sending some of the work to a local model in LM Studio,
 keeping secrets and private files on your machine, or keeping a session
 going after Claude goes down or your usage runs out.
 
-```mermaid
-flowchart LR
-  cc["Claude Code"] -->|"every request"| janus["Janus<br/>127.0.0.1:8787"]
-  janus -->|"most requests"| api["Anthropic API"]
-  janus -.->|"what your rules send local"| lms["LM Studio<br/>local model"]
-  cc -.->|"MCP tools"| mcp["janus mcp"]
-  mcp -.-> lms
-  janus --> logs[("logs/<br/>ledger and captures")]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/architecture-dark.svg">
+  <img src="docs/diagrams/architecture.svg" alt="Claude Code sends every request to Janus on 127.0.0.1:8787. Janus forwards most to the Anthropic API, sends what its rules choose to a local model in LM Studio, and writes a ledger and captures to logs/. The janus mcp server gives Claude tools that the local model carries out.">
+</picture>
 
 While Claude Code works, Janus prints a line for each request: who answered,
 how long it took, how it ended, the tokens and how many came from the
@@ -137,21 +132,10 @@ troubleshooting in full.
 
 ## What happens to a request
 
-```mermaid
-flowchart TD
-  req["Request from Claude Code"] --> policy{"Holds local-only<br/>content?"}
-  policy -->|"withheld, or none"| plan{"Plan: model alias,<br/>override, or rule"}
-  policy -->|"action: local"| local
-  plan -->|"upstream"| prep["Repair history, apply transforms,<br/>replace secrets"]
-  plan -->|"local or local-then-escalate"| local["Local model answers"]
-  local --> check{"Answer usable?"}
-  check -->|"no, or LM Studio down"| prep
-  prep --> api["Anthropic API"]
-  api -->|"down, and the rule has ifDown"| local
-  check -->|"yes"| relay["Restore secrets,<br/>relay the answer"]
-  api --> relay
-  relay --> ledger[("Ledger line<br/>and capture")]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/request-flow-dark.svg">
+  <img src="docs/diagrams/request-flow.svg" alt="A request is checked for local-only content, then planned. Upstream requests are prepared (history repaired, transforms applied, secrets replaced) and sent to Anthropic; local ones go to the local model, whose answer is checked and falls back to Anthropic if unusable. If Anthropic is down and the rule allows, the local model answers. The answer is relayed with secrets restored, and recorded in the ledger.">
+</picture>
 
 A request that the local-only policy keeps on your machine has no path to
 Anthropic: if the local model cannot answer it, Janus refuses it. Each step
@@ -226,7 +210,7 @@ The 1.0 release waits on a report that measures them against the
 [roadmap](docs/ROADMAP.md) has the milestones, and the [research
 notes](docs/research/) the measurements behind each decision.
 
-Diagrams for use outside GitHub are in [docs/diagrams](docs/diagrams/).
+The diagrams' sources, for use elsewhere, are in [docs/diagrams](docs/diagrams/).
 
 ## Development
 

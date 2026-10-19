@@ -1098,3 +1098,11 @@ details summary {
 [data-theme='dark'] .not-found-report {
   color: var(--dr-faint);
 }
+
+/* Diagrams come in a light and a dark version, marked as GitHub marks them
+   (#gh-light-mode-only, #gh-dark-mode-only), so the same Markdown picks
+   the right one on GitHub and here. */
+[data-theme='light'] img[src*='#gh-dark-mode-only'],
+[data-theme='dark'] img[src*='#gh-light-mode-only'] {
+  display: none;
+}
