@@ -404,3 +404,11 @@ func TestStarterFileLeavesGuardOut(t *testing.T) {
 		t.Errorf("starter file has an empty guard section:\n%s", data)
 	}
 }
+
+func TestContextWarnDefaultsAndCanBeTurnedOff(t *testing.T) {
+	for set, want := range map[int]int{0: DefaultContextWarnTokens, 250_000: 250_000, -1: 0} {
+		if got := (Console{ContextWarnTokens: set}).ContextWarn(); got != want {
+			t.Errorf("contextWarnTokens %d: %d, want %d", set, got, want)
+		}
+	}
+}

@@ -280,6 +280,7 @@ func printReport(w io.Writer, p painter, dir string, rep ledger.Report) {
 		printTable(w, "backend", rep.ByBackend, nil)
 	}
 	printDays(w, rep.ByDay)
+	printContext(w, rep.ByContext)
 	printQuota(w, p, rep.Quota, time.Now())
 
 	printLocalSaving(w, rep.LocalSaving)
@@ -530,6 +531,42 @@ func printDays(w io.Writer, rows []ledger.DayRow) {
 	}
 	_ = tw.Flush()
 	fmt.Fprintf(w, "  Days are local dates. \"failed\" leaves out requests the client cancelled.\n")
+}
+
+// printContext reports the main conversation's turns to Claude by how large
+// their prompt was, since that, more than anything, is what a turn costs
+// (#335, docs/research/baseline.md).
+func printContext(w io.Writer, rows []ledger.ContextRow) {
+	if len(rows) == 0 {
+		return
+	}
+	var turns int
+	var usd float64
+	for _, r := range rows {
+		turns += r.Turns
+		usd += r.CostUSD
+	}
+	fmt.Fprintf(w, "\nMain conversation by context size\n")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintf(tw, "  context\tturns\tof turns\test. cost\tof cost\tper turn (median)\t\n")
+	for _, r := range rows {
+		span := fmt.Sprintf("%dk-%dk", r.FromTokens/1000, r.ToTokens/1000)
+		switch {
+		case r.FromTokens == 0:
+			span = fmt.Sprintf("under %dk", r.ToTokens/1000)
+		case r.ToTokens == 0:
+			span = fmt.Sprintf("%dk and over", r.FromTokens/1000)
+		}
+		ofCost := "-"
+		if usd > 0 {
+			ofCost = fmt.Sprintf("%.0f%%", 100*r.CostUSD/usd)
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%.0f%%\t$%.4f\t%s\t$%.3f\t\n", span, commas(r.Turns),
+			100*float64(r.Turns)/float64(turns), r.CostUSD, ofCost, r.MedianUSD)
+	}
+	_ = tw.Flush()
+	fmt.Fprintln(w, "  Each turn reads the whole conversation from the cache, so it costs more")
+	fmt.Fprintln(w, "  as the conversation grows. /compact, or a new session, starts it small again.")
 }
 
 // printLocalSaving reports what the local model's answers would have cost

@@ -617,3 +617,17 @@ func TestStatsReportsLocalOnly(t *testing.T) {
 		t.Logf("exit %d, report was:\n%s", code, out)
 	}
 }
+
+func TestStatsShowsTheMainConversationByContextSize(t *testing.T) {
+	var b strings.Builder
+	printContext(&b, []ledger.ContextRow{
+		{FromTokens: 0, ToTokens: 200_000, Turns: 3, CostUSD: 0.06, MedianUSD: 0.02},
+		{FromTokens: 600_000, Turns: 1, CostUSD: 0.18, MedianUSD: 0.18},
+	})
+	wantLines(t, b.String(), "Main conversation by context size", "under 200k", "600k and over", "75%", "$0.180", "/compact, or a new session")
+	b.Reset()
+	printContext(&b, nil)
+	if b.Len() != 0 {
+		t.Errorf("with no turns it printed %q", b.String())
+	}
+}
