@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Quickstart | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/QUICKSTART"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Quickstart | Janus"><meta data-rh="true" name="description" content="From nothing to Claude Code running through Janus, then the first saving."><meta data-rh="true" property="og:description" content="From nothing to Claude Code running through Janus, then the first saving."><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/QUICKSTART"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/QUICKSTART" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/QUICKSTART" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Quick start","item":"https://risadams.github.io/Janus/docs/QUICKSTART"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.76b30571.css">
-<script src="/Janus/assets/js/runtime~main.add77fce.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.22e111de.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.2ac56e66.js" defer="defer"></script>
 </head>
 <body>
@@ -41,18 +41,23 @@ yet, do not matter now.</p>
 started from, and prints the address it is listening on and the command
 for the next step. Leave it running.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="3-point-claude-code-at-it">3. Point Claude Code at it<a href="#3-point-claude-code-at-it" class="hash-link" aria-label="Direct link to 3. Point Claude Code at it" title="Direct link to 3. Point Claude Code at it" translate="no">​</a></h2>
-<p>In another terminal:</p>
-<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#ebdbb2;--prism-background-color:#292828"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#ebdbb2;background-color:#292828"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#ebdbb2"><span class="token assign-left variable" style="color:#ea6962">ANTHROPIC_BASE_URL</span><span class="token operator" style="color:#a89984">=</span><span class="token plain">http://127.0.0.1:8787 </span><span class="token assign-left variable" style="color:#ea6962">ENABLE_TOOL_SEARCH</span><span class="token operator" style="color:#a89984">=</span><span class="token plain">true claude</span><br></div></code></pre></div></div>
+<p>In another terminal, start Claude Code through Janus:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#ebdbb2;--prism-background-color:#292828"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#ebdbb2;background-color:#292828"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#ebdbb2"><span class="token plain">janus claude</span><br></div></code></pre></div></div>
 <p>Use Claude Code as usual. Nothing is different: your login is passed
 through, and every request goes to Anthropic as before. Janus prints a
-line for each one.</p>
-<p><code>janus claude</code> does the same in fewer keystrokes, and checks first that
-Janus is running; <a class="" href="/Janus/docs/guide/install#making-it-stick">installing</a> says
-what it does when Janus isn&#x27;t.</p>
-<p><code>ENABLE_TOOL_SEARCH=true</code> is there because Claude Code turns tool search
-off when it is pointed anywhere but Anthropic, and then sends every tool&#x27;s
-definition with every request. Setting it keeps requests the size they
-would be without Janus.</p>
+line for each one. Claude Code&#x27;s own arguments go after it, as in
+<code>janus claude --resume</code>.</p>
+<p><code>janus claude</code> checks first that Janus is answering, then starts
+<code>claude</code> with two variables set for that session:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#ebdbb2;--prism-background-color:#292828"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#ebdbb2;background-color:#292828"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#ebdbb2"><span class="token assign-left variable" style="color:#ea6962">ANTHROPIC_BASE_URL</span><span class="token operator" style="color:#a89984">=</span><span class="token plain">http://127.0.0.1:8787 </span><span class="token assign-left variable" style="color:#ea6962">ENABLE_TOOL_SEARCH</span><span class="token operator" style="color:#a89984">=</span><span class="token plain">true claude</span><br></div></code></pre></div></div>
+<p>The first sends Claude Code&#x27;s requests to Janus. The second is there
+because Claude Code turns tool search off when it is pointed anywhere but
+Anthropic, and then sends every tool&#x27;s definition with every request;
+setting it keeps requests the size they would be without Janus. With the
+settings Janus wrote, <code>janus claude</code> works from any folder. Once you
+change <code>listen</code> or turn on the guard, run it from Janus&#x27;s folder or give
+it <code>-config</code>; <a class="" href="/Janus/docs/guide/install#making-it-stick">installing</a> says more,
+including what it does when Janus isn&#x27;t running.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="4-see-where-the-tokens-go">4. See where the tokens go<a href="#4-see-where-the-tokens-go" class="hash-link" aria-label="Direct link to 4. See where the tokens go" title="Direct link to 4. See where the tokens go" translate="no">​</a></h2>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#ebdbb2;--prism-background-color:#292828"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#ebdbb2;background-color:#292828"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#ebdbb2"><span class="token plain">janus stats </span><span class="token parameter variable" style="color:#ea6962">-since</span><span class="token plain"> 24h</span><br></div></code></pre></div></div>
 <p>This is the first thing Janus is for: tokens, cache use, and cost at list
