@@ -322,19 +322,6 @@ div[class^="codeBlockTitle"] {
   border-bottom: 2px solid var(--dr-rose) !important;
 }
 
-/* Light-mode code block: override dracula dark bg until oneLight prism theme is active after restart */
-[data-theme='light'] .theme-code-block,
-[data-theme='light'] [class*="codeBlockContainer"] {
-  --prism-background-color: var(--dr-parchment);
-  background-color: var(--dr-parchment) !important;
-  border: 1px solid rgba(26, 22, 20, 0.10);
-}
-
-[data-theme='light'] .prism-code {
-  background-color: var(--dr-parchment) !important;
-  color: var(--dr-ink) !important;
-}
-
 /* ─── Admonitions (callouts) ────────────────────────── */
 .alert {
   border-radius: 2px;

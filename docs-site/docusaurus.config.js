@@ -1,6 +1,6 @@
 // @ts-check
 const { execSync } = require('child_process');
-const { themes: prismThemes } = require('prism-react-renderer');
+const risInk = require('./src/prism/ris-ink');
 const repoLinks = require('./src/remark/repo-links');
 
 // The version shown in the navbar is the newest release tag. A checkout
@@ -158,8 +158,8 @@ const config = {
         `,
       },
       prism: {
-        theme: prismThemes.oneLight,
-        darkTheme: prismThemes.gruvboxMaterialDark,
+        theme: risInk.light,
+        darkTheme: risInk.dark,
         additionalLanguages: ['bash', 'json', 'go', 'powershell', 'ini', 'diff'],
       },
     }),
