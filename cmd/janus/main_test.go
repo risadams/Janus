@@ -112,8 +112,9 @@ func TestRunExplainsABusyPort(t *testing.T) {
 
 func TestBannerGivesTheClaudeCodeCommand(t *testing.T) {
 	var out bytes.Buffer
-	printBanner(&out, config.Default(), "127.0.0.1:8787")
+	printBanner(&out, config.Default(), "127.0.0.1:8787", config.DefaultPath)
 	for _, want := range []string{
+		"  janus claude\n",
 		"ANTHROPIC_BASE_URL=http://127.0.0.1:8787 ENABLE_TOOL_SEARCH=true claude",
 		`$env:ANTHROPIC_BASE_URL="http://127.0.0.1:8787"`,
 		"https://api.anthropic.com",
@@ -124,6 +125,15 @@ func TestBannerGivesTheClaudeCodeCommand(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("banner is missing %q:\n%s", want, out.String())
 		}
+	}
+}
+
+func TestBannerPassesJanusClaudeTheSameConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "elsewhere.json")
+	var out bytes.Buffer
+	printBanner(&out, config.Default(), "127.0.0.1:8787", path)
+	if want := "janus claude -config " + path + "\n"; !strings.Contains(out.String(), want) {
+		t.Errorf("banner is missing %q:\n%s", want, out.String())
 	}
 }
 

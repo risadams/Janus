@@ -25,10 +25,13 @@ janus vX.Y.Z
   Ledger      /Users/you/janus/logs/ledger
   Captures    /Users/you/janus/logs/captures (full prompts and responses)
 
-Point Claude Code at janus:
+Start Claude Code through janus:
 
-  # bash / zsh / fish
+  janus claude
+
+  # or set the variables yourself: bash / zsh / fish
   ANTHROPIC_BASE_URL=http://127.0.0.1:8787 ENABLE_TOOL_SEARCH=true claude
+  ...
 ```
 
 Read the `Routing` lines after any config change: they are the rules as

@@ -96,15 +96,15 @@ function QuickInstall() {
       <div className="quick-install-block">
         <div className="quick-install-label">Quick start</div>
         <pre className="quick-install-pre">{
-`# Install with Go 1.27+, or download a release build
-go install github.com/risadams/janus/cmd/janus@latest
+`# Install with Homebrew, winget, Scoop, or Go 1.27+
+brew install risadams/tap/janus
 
 # Check the setup, then start it
 janus doctor
 janus
 
-# In another terminal, point Claude Code at it
-ANTHROPIC_BASE_URL=http://127.0.0.1:8787 ENABLE_TOOL_SEARCH=true claude`
+# In another terminal, start Claude Code through it
+janus claude`
         }</pre>
       </div>
     </section>
