@@ -345,12 +345,50 @@ What counts as protected content:
 
 | Content | Why |
 | --- | --- |
-| The whole result of a tool call that named a protected path | `Read secrets/db.yaml`, `cat .env \| head`, an MCP tool given the path. For Claude Code's own tools the path is looked for in the path arguments and the command; for any other tool, in every argument. What Write writes, what Edit replaces, a command's description, and a heredoc a command only copies to a file or uses as an issue or commit text are not searched: they mention a path, they don't read it. |
+| The whole result of a tool call that named a protected path | `Read secrets/db.yaml`, `cat .env \| head`, an MCP tool given the path. For Claude Code's own tools the path is looked for in the path arguments and the command; for any other tool, in every argument. Some arguments are not searched, because they mention a path without reading it (see [What is not a read](#what-is-not-a-read)). |
 | Any message text or tool result carrying a marker | The whole block is protected, not only the marker. |
 | A line of other tool output that quotes a protected file | A search across the tree prints `secrets/db.yaml:2:...` without the call ever naming that file. Those lines go, and the lines of context around them; the rest of the output stays. |
 
 A line that only names a protected file, as a directory listing does, is
 left alone: Claude can know the file exists.
+
+### What is not a read
+
+A session about secrets names its patterns all the time: in a search,
+in a jq path such as `.environments[]`, in the text of an issue. None of
+these reads a file, so none of them withholds a result:
+
+- What Write writes, what Edit replaces, a command's description, and the
+  Grep tool's pattern.
+- A heredoc a command only copies to a file, or uses as the text of an
+  issue or commit.
+- In a shell command:
+  - the filter of `jq`, and the `--jq` of `gh`
+  - the pattern of `grep`, `git grep`, and `rg`
+  - the `--title` and `--body` of `gh issue` or `gh pr` `create`, `edit`, or `comment`
+
+Janus reads the command as the shell would, quotes and all, and lets an
+argument off only when it is sure what the command does with it:
+
+- **The program's options are all ones Janus knows.** An unknown option
+  might take the next word as its value. `grep --include '*.pem'` still
+  withholds, because `--include` names files to read.
+- **What the command prints goes only to Claude.** That includes passing
+  it through a pipe to `head`, `sort`, `grep`, and the like. A command
+  whose output goes on to `xargs`, a loop, a file, or a `$(...)` could
+  read that output as a path, so every word of it is searched.
+- **Nothing in it runs code.** A command with a shell, an interpreter,
+  `eval`, or `xargs` is searched whole. So is anything Janus does not
+  follow: `$(...)`, `<(...)`, a subshell, a comment, a heredoc it keeps.
+- **The expression is the one the program sees.** An unquoted glob or a
+  variable could become something else, and a jq program with `import`
+  or `include` reads files. These are searched.
+
+Every other argument is a path as far as the policy is concerned, so a
+pattern in it still withholds the result. This is safe, and in a
+repository that talks about its secret files it is still the commonest
+false positive: in a week of use, about half of what is still withheld came from
+heredocs given to `python3` and from `$(gh issue create ...)`.
 
 ### What happens to it
 
@@ -435,7 +473,9 @@ Be clear about these before relying on it.
 - **A heredoc that may be code is searched as part of the command.** If
   the command runs a shell or an interpreter, pipes the heredoc on, or
   runs a file a heredoc wrote, Janus can't tell a mention from a read, so
-  a protected path quoted in the heredoc still withholds the result.
+  a protected path quoted in the heredoc still withholds the result. The
+  same goes for any command it cannot follow (see
+  [What is not a read](#what-is-not-a-read)).
 - **Paths with spaces in them** are not recognised in a shell command or
   in search output. They are in a tool argument that is only the path.
 - **The system prompt and tool definitions** are not checked for markers.

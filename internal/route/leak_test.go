@@ -26,6 +26,10 @@ var localOnlyContent = []string{
 	"margin on the Halden account",     // context line of that search
 	"layoffs are planned for the west", // in a document carrying a marker
 	"our bid will be four million",     // in a message carrying a marker
+	// Read by the programs whose expressions are not searched (#353).
+	"the vendor is Brightline",    // a file given to jq
+	"headcount drops to forty",    // a path jq printed, read by xargs
+	"the reserve price is ninety", // a file given to grep beside its pattern
 }
 
 // forbidden is everything that must not reach the upstream: each secret in
@@ -109,6 +113,14 @@ func seeded(stream bool) string {
 			// Local-only, by marker.
 			use("t5", "Read", map[string]any{"file_path": "/app/docs/memo.md"}),
 			result("t5", []map[string]any{text("COMPANY CONFIDENTIAL\nlayoffs are planned for the west")}),
+			// Local-only, read by commands whose other arguments are
+			// expressions.
+			use("t6", "Bash", map[string]any{"command": "gh api x --jq '.a' >/dev/null; jq -r '.vendor' /app/secrets/plan.json"}),
+			result("t6", "the vendor is Brightline"),
+			use("t7", "Bash", map[string]any{"command": `jq -rn '"secrets/plan.md"' | xargs cat`}),
+			result("t7", "headcount drops to forty"),
+			use("t8", "Bash", map[string]any{"command": "grep -h -e 'price' secrets/notes.txt | head"}),
+			result("t8", "the reserve price is ninety"),
 			{"role": "user", "content": []map[string]any{text("COMPANY CONFIDENTIAL: our bid will be four million"), text("now carry on")}},
 		},
 	})
