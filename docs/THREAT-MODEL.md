@@ -4,6 +4,20 @@ What Janus protects, against whom, and what it does not. Written for 1.0
 from a review of the code as it stands; each finding is marked as fixed,
 accepted, or a limit to know about.
 
+Why a threat model for a small local proxy? Because of where it sits.
+Every prompt, every file Claude Code reads, and your credential pass
+through Janus on their way out. That is what makes it useful, and it is
+also what makes a flaw in it expensive: it can expose everything Claude
+Code touches. So it is worth writing down what it
+guards against, and just as important, what it does not, so that you
+don't rely on it for something it was never built to do.
+
+When its goals pull against each other, Janus ranks them: privacy, then
+correctness, then availability, then savings
+([charter](CHARTER.md#5-design-principles)). It refuses a request rather
+than send protected content to keep a session going, and that ranking is
+behind most of the choices below.
+
 ## What Janus is trusted with
 
 Janus sits in the path of everything Claude Code sends and receives, so it
@@ -27,6 +41,16 @@ It runs as you, on your machine, and has no privileges of its own.
 | Another user account on your machine | Partly | Files are private to you on macOS and Linux; the port is not. |
 | A program running as you | No | It can read everything Janus can. Nothing here helps. |
 | A local model that answers badly or maliciously | No | See [The local model's answers](#the-local-models-answers). |
+
+![Where Janus's trust boundaries are: Claude Code, Janus, its log folder, and ideally LM Studio on your machine; Anthropic over HTTPS on the internet; LM Studio on another machine over plain HTTP on your network](diagrams/trust-boundaries.svg#gh-light-mode-only)
+![Where Janus's trust boundaries are: Claude Code, Janus, its log folder, and ideally LM Studio on your machine; Anthropic over HTTPS on the internet; LM Studio on another machine over plain HTTP on your network](diagrams/trust-boundaries-dark.svg#gh-dark-mode-only)
+
+The boundary that matters most is your machine's. Inside it, everything
+runs as you, so Janus cannot protect you from a program you run, and does
+not try. What it guards is what crosses the line: your content and
+credential going out to Anthropic, requests coming in from anything that
+is not you, and traffic to an LM Studio that lives elsewhere on your
+network.
 
 ## The listening port
 
@@ -195,9 +219,9 @@ right or safe.
 
 Janus changes a request only in ways it records: the model name for a
 local route, repairs for a mixed history, placeholders, withheld content,
-and digests of large tool results. Each is named in the ledger, and `janus audit` shows them. It
-narrows `Accept-Encoding` to gzip on Messages requests so that it can read
-the response. It adds no identifying header to what it sends upstream.
+and digests of large tool results. Each is named in the ledger, and
+`janus audit` shows them. It narrows `Accept-Encoding` to gzip on
+Messages requests so that it can read the response. It adds no identifying header to what it sends upstream.
 
 ## Supply chain
 
@@ -213,7 +237,6 @@ the response. It adds no identifying header to what it sends upstream.
   before it writes anything, so a replaced release page cannot get a
   binary installed; what it cannot catch is a stolen signing key
   ([ADR-003](adr/003-signed-checksums.md)).
-
 - Janus uses the Go standard library and nothing else, by
   [decision](adr/001-dependencies.md). There are no third-party modules to
   compromise.
@@ -233,8 +256,8 @@ the response. It adds no identifying header to what it sends upstream.
   are signed with the owner's Developer ID and notarized by Apple (#262),
   after v0.9.0-rc.16; the certificate and the notary key are secrets of
   the `release` environment, which GitHub gives only to a run for a `v*`
-  tag (#324), and only Apple's own tools use them (ADR-004). Build from source if you would rather not
-  trust a release at all.
+  tag (#324), and only Apple's own tools use them ([ADR-004](adr/004-release-tooling.md)). Build from
+  source if you would rather not trust a release at all.
 
 ## Review findings
 
