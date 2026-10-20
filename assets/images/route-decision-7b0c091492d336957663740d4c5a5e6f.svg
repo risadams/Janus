@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 584" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="route-decision-title route-decision-desc" id="route-decision-root">
+        <title id="route-decision-title">How Janus chooses where a request goes</title>
+        <desc id="route-decision-desc">A route header decides first, then a request for a model alias, then the routing rules in order, the first that matches deciding between upstream, shadow, local-then-escalate, and local; a request nothing matches goes to Claude untouched.</desc>
+        <defs>
+      <style>#route-decision-root { --color-paper:   #faf6ef;
+      --color-ink:     #1a1614;
+      --color-muted:   #6b625a;
+      --color-accent:  #CB0162;
+      --font-sans:     'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-serif:    'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-mono:     'JetBrains Mono', ui-monospace, monospace; }
+      #route-decision-root { font-family: var(--font-serif); color: var(--color-ink); }
+      #route-decision-root .diagram-container { width: 100%; overflow-x: auto; }
+      #route-decision-root .diagram-container { overflow-x: visible; }</style>
+          <marker id="route-decision-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6b625a"/></marker>
+          <marker id="route-decision-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#CB0162"/></marker>
+          <marker id="route-decision-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1a5b6e"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#faf6ef"/>
+
+        <!-- Arrows first -->
+        <path d="M 200,60 V 78" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#route-decision-arrow)"/>
+        <path d="M 200,160 V 188" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#route-decision-arrow)"/>
+        <rect x="210" y="169" width="24" height="12" rx="2" fill="#faf6ef"/>
+        <text x="222" y="178" fill="#776e65" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">NO</text>
+        <path d="M 200,270 V 298" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#route-decision-arrow)"/>
+        <rect x="210" y="279" width="24" height="12" rx="2" fill="#faf6ef"/>
+        <text x="222" y="288" fill="#776e65" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">NO</text>
+        <path d="M 200,380 V 418" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#route-decision-arrow)"/>
+        <rect x="210" y="395" width="24" height="12" rx="2" fill="#faf6ef"/>
+        <text x="222" y="404" fill="#776e65" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">NO</text>
+        <path d="M 290,120 H 418" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#route-decision-arrow)"/>
+        <rect x="340" y="99" width="28" height="12" rx="2" fill="#faf6ef"/>
+        <text x="354" y="108" fill="#776e65" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">YES</text>
+        <path d="M 290,230 H 418" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#route-decision-arrow)"/>
+        <rect x="340" y="209" width="28" height="12" rx="2" fill="#faf6ef"/>
+        <text x="354" y="218" fill="#776e65" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">YES</text>
+        <path d="M 290,340 H 418" fill="none" stroke="#CB0162" stroke-width="1.4" marker-end="url(#route-decision-arrow-accent)"/>
+        <rect x="317" y="319" width="74" height="12" rx="2" fill="#faf6ef"/>
+        <text x="354" y="328" fill="#776e65" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">FIRST MATCH</text>
+
+        <!-- Nodes -->
+        <rect x="120" y="20" width="160" height="40" rx="20" fill="#faf6ef"/>
+        <rect x="120" y="20" width="160" height="40" rx="20" fill="#6b625a" stroke="#776e65" stroke-width="1" fill-opacity="0.10"/>
+        <text x="200" y="44" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">A request</text>
+        <polygon points="200,80 290,120 200,160 110,120" fill="#faf6ef"/>
+        <polygon points="200,80 290,120 200,160 110,120" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="200" y="117" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Route header</text>
+        <text x="200" y="131" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">sent?</text>
+        <polygon points="200,190 290,230 200,270 110,230" fill="#faf6ef"/>
+        <polygon points="200,190 290,230 200,270 110,230" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="200" y="227" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Asks for a</text>
+        <text x="200" y="241" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">model alias?</text>
+        <polygon points="200,300 290,340 200,380 110,340" fill="#faf6ef"/>
+        <polygon points="200,300 290,340 200,380 110,340" fill="#cb0162" stroke="#CB0162" stroke-width="1.2" fill-opacity="0.08"/>
+        <text x="200" y="337" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">A rule</text>
+        <text x="200" y="351" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">matches?</text>
+        <rect x="100" y="420" width="200" height="40" rx="20" fill="#faf6ef"/>
+        <rect x="100" y="420" width="200" height="40" rx="20" fill="#1a1614" stroke="#6b625a" stroke-width="1" fill-opacity="0.05"/>
+        <text x="200" y="444" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Claude, untouched</text>
+        <rect x="420" y="92" width="260" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="420" y="92" width="260" height="56" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="550" y="118" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">The route it names</text>
+        <text x="550" y="134" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">forced local: refused if it can’t</text>
+        <rect x="420" y="202" width="260" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="420" y="202" width="260" height="56" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="550" y="228" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">That local model</text>
+        <text x="550" y="244" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">refused if it can’t take it</text>
+        <rect x="420" y="288" width="510" height="196" rx="6" fill="#faf6ef"/>
+        <rect x="420" y="288" width="510" height="196" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="440" y="314" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">The rule’s route</text>
+        <text x="440" y="346" fill="#1a1614" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">upstream</text>
+        <text x="588" y="346" fill="#6b625a" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Claude answers; with ifDown, the local model when Claude can’t</text>
+        <text x="440" y="382" fill="#1a1614" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">shadow</text>
+        <text x="588" y="382" fill="#6b625a" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Claude answers; the local model answers a copy, to compare</text>
+        <text x="440" y="418" fill="#1a1614" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">local-then-escalate</text>
+        <text x="588" y="418" fill="#6b625a" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">the local model answers, held and checked; Claude if broken</text>
+        <text x="440" y="454" fill="#1a1614" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">local</text>
+        <text x="588" y="454" fill="#6b625a" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">the local model answers, streamed; Claude if it can’t take it</text>
+        <text x="675" y="512" fill="#6b625a" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-style="italic">a rule never fails a request: when the local model can’t help, Claude answers</text>
+        <line x1="30" y1="536" x2="930" y2="536" stroke="#1a1614" stroke-width="0.8" stroke-opacity="0.10"/>
+        <text x="30" y="564" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">LEGEND</text>
+        <rect x="100" y="553" width="24" height="14" rx="3" fill="#cb0162" stroke="#CB0162" stroke-width="1" fill-opacity="0.08"/>
+        <text x="132" y="564" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Where most requests are decided</text>
+        <line x1="330" y1="560" x2="362" y2="560" stroke="#6b625a" stroke-width="1.2" marker-end="url(#route-decision-arrow)"/>
+        <text x="370" y="564" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">The path a request takes</text>
+      </svg>

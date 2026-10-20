@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 504" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="trust-ladder-title trust-ladder-desc" id="trust-ladder-root">
+        <title id="trust-ladder-title">Trusting a local model a step at a time</title>
+        <desc id="trust-ladder-desc">Four ways to give work to the local model, from replaying past requests offline, through shadowing where Claude still answers, and local-first where Janus checks each local answer, to plain local routing where nothing is checked.</desc>
+        <defs>
+      <style>#trust-ladder-root { --color-paper:   #faf6ef;
+      --color-ink:     #1a1614;
+      --color-muted:   #6b625a;
+      --color-accent:  #CB0162;
+      --font-sans:     'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-serif:    'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-mono:     'JetBrains Mono', ui-monospace, monospace; }
+      #trust-ladder-root { font-family: var(--font-serif); color: var(--color-ink); }
+      #trust-ladder-root .diagram-container { width: 100%; overflow-x: auto; }
+      #trust-ladder-root .diagram-container { overflow-x: visible; }</style>
+          <marker id="trust-ladder-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6b625a"/></marker>
+          <marker id="trust-ladder-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#CB0162"/></marker>
+          <marker id="trust-ladder-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1a5b6e"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#faf6ef"/>
+
+        <!-- The direction of trust -->
+        <path d="M 60,52 H 900" fill="none" stroke="#CB0162" stroke-width="1.4" marker-end="url(#trust-ladder-arrow-accent)"/>
+        <rect x="380" y="40" width="200" height="16" rx="2" fill="#faf6ef"/>
+        <text x="480" y="52" fill="#CB0162" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">TRUST THE MODEL WITH MORE</text>
+        <rect x="30" y="212" width="210" height="192" rx="6" fill="#faf6ef"/>
+        <rect x="30" y="212" width="210" height="192" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="46" y="238" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">Replay</text>
+        <text x="46" y="256" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">janus replay</text>
+        <text x="46" y="282" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Requests you already made, run</text>
+        <text x="46" y="297" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">again on the local model and</text>
+        <text x="46" y="312" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">compared.</text>
+        <text x="46" y="352" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">CLIENT SEES</text>
+        <text x="46" y="366" fill="#1a1614" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">nothing: it runs offline</text>
+        <text x="46" y="384" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">AT RISK</text>
+        <text x="46" y="398" fill="#1a1614" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">nothing</text>
+        <rect x="260" y="172" width="210" height="232" rx="6" fill="#faf6ef"/>
+        <rect x="260" y="172" width="210" height="232" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="276" y="198" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">Shadow</text>
+        <text x="276" y="216" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">"route": "shadow"</text>
+        <text x="276" y="242" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Claude answers. The local</text>
+        <text x="276" y="257" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">model answers a copy</text>
+        <text x="276" y="272" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">afterwards, only to compare.</text>
+        <text x="276" y="352" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">CLIENT SEES</text>
+        <text x="276" y="366" fill="#1a1614" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Claude</text>
+        <text x="276" y="384" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">AT RISK</text>
+        <text x="276" y="398" fill="#1a1614" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">nothing</text>
+        <rect x="490" y="132" width="210" height="272" rx="6" fill="#faf6ef"/>
+        <rect x="490" y="132" width="210" height="272" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="506" y="158" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">Local first</text>
+        <text x="506" y="176" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">local-then-escalate</text>
+        <text x="506" y="202" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">The local model answers. Janus</text>
+        <text x="506" y="217" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">checks it, and asks Claude if</text>
+        <text x="506" y="232" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">it is broken.</text>
+        <text x="506" y="352" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">CLIENT SEES</text>
+        <text x="506" y="366" fill="#1a1614" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">a checked local answer</text>
+        <text x="506" y="384" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">AT RISK</text>
+        <text x="506" y="398" fill="#1a1614" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">answers that are wrong but well formed</text>
+        <rect x="720" y="92" width="210" height="312" rx="6" fill="#faf6ef"/>
+        <rect x="720" y="92" width="210" height="312" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="736" y="118" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">Local</text>
+        <text x="736" y="136" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">"route": "local"</text>
+        <text x="736" y="162" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">The local model answers,</text>
+        <text x="736" y="177" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">streamed as it comes,</text>
+        <text x="736" y="192" fill="#1a1614" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">unchecked.</text>
+        <text x="736" y="352" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">CLIENT SEES</text>
+        <text x="736" y="366" fill="#1a1614" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">the local model</text>
+        <text x="736" y="384" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">AT RISK</text>
+        <text x="736" y="398" fill="#CB0162" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">anything it gets wrong</text>
+        <text x="480" y="436" fill="#6b625a" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-style="italic">move up a step once the one below has shown you the model does the work</text>
+        <line x1="30" y1="456" x2="930" y2="456" stroke="#1a1614" stroke-width="0.8" stroke-opacity="0.10"/>
+        <text x="30" y="484" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">LEGEND</text>
+        <rect x="100" y="473" width="24" height="14" rx="3" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="132" y="484" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">A way to send work to the local model</text>
+        <line x1="360" y1="480" x2="392" y2="480" stroke="#CB0162" stroke-width="1.4" marker-end="url(#trust-ladder-arrow-accent)"/>
+        <text x="400" y="484" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Each step trusts the local model more than the last</text>
+      </svg>
