@@ -8,23 +8,17 @@ usable and has an exit test. Issues for each milestone are on the
 
 ## Shape
 
-```
-M0 Foundations ─▶ M1 Observe ─▶ M2 Route ─▶ M3 Escalate ─▶ M4 Delegate ─▶ M5 Compress ─▶ M7 1.0
-                                    │                                                      ▲
-                                    └──────────────▶ M6 Guard ─────────────────────────────┘
-                                                    │
-                                                    └──────▶ M8 Pace (beside M7)
-
-M9 Distribution: beside M7; its package managers wait for the first stable tag
-```
+![How the milestones depend on each other: M0 to M5 lead in order to M7, the 1.0 release; M6 Guard needs only M2 and leads to 1.0; M8 Pace needs M3 and, like M9 Distribution, runs beside 1.0](diagrams/roadmap.svg#gh-light-mode-only)
+![How the milestones depend on each other: M0 to M5 lead in order to M7, the 1.0 release; M6 Guard needs only M2 and leads to 1.0; M8 Pace needs M3 and, like M9 Distribution, runs beside 1.0](diagrams/roadmap-dark.svg#gh-dark-mode-only)
 
 M6 depends only on M2, so it can be pulled forward if privacy becomes the
 pressing goal. M8 depends on M3's fallback and runs beside M7: it does not
 hold up 1.0, and its first piece, recording the limits, starts at once so
 that the 1.0 report has the data. M9 depends on nothing but the release
 pipeline, so its command-line work starts at once; what it publishes to
-package managers starts with the first stable tag. Everything else is ordered by two rules: measure before
-changing anything, and take the cheapest, safest savings first.
+package managers starts with the first stable tag. Everything else is
+ordered by two rules: measure before changing anything, and take the
+cheapest, safest savings first.
 
 ## Milestones
 

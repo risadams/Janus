@@ -11,6 +11,9 @@ at all, and it shows you what the guard catches before you let it change
 your requests, so a false match surprises you in a report and not in the
 middle of a deploy.
 
+![Three levels of keeping things in: find out what leaves, replace secrets with placeholders, and keep named files local](../diagrams/privacy-levels.svg#gh-light-mode-only)
+![Three levels of keeping things in: find out what leaves, replace secrets with placeholders, and keep named files local](../diagrams/privacy-levels-dark.svg#gh-dark-mode-only)
+
 ## 1. Find out what is leaving
 
 ```json

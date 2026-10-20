@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How the milestones depend on each other</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=JetBrains+Mono:wght@400;500;600&family=Caveat:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #faf6ef;
+      --color-ink:     #1a1614;
+      --color-muted:   #6b625a;
+      --color-accent:  #CB0162;
+      --font-sans:     'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-serif:    'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-mono:     'JetBrains Mono', ui-monospace, monospace;
+    }
+    body { font-family: var(--font-serif); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-variation-settings: "SOFT" 60, "WONK" 1; font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Dependency graph · Janus · Ris Ink</p>
+    <h1>How the milestones depend on each other</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 960 416" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="roadmap-title roadmap-desc">
+        <title id="roadmap-title">How the milestones depend on each other</title>
+        <desc id="roadmap-desc">Milestones M0 to M5 lead in order to M7, the 1.0 release; M6 Guard needs only M2 and also leads to 1.0; M8 Pace needs M3 and, like M9 Distribution, runs beside 1.0 without holding it up.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6b625a"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#CB0162"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1a5b6e"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#faf6ef"/>
+
+        <!-- Arrows first -->
+        <path d="M 138,88 H 160" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 270,88 H 292" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 402,88 H 424" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 534,88 H 556" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 666,88 H 688" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 798,88 H 820" fill="none" stroke="#CB0162" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <path d="M 348,116 V 198" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 348,256 V 292 Q 348,300 356,300 H 868 Q 876,300 876,292 V 118" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 480,116 V 220 Q 480,228 488,228 H 556" fill="none" stroke="#6b625a" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- Milestones -->
+        <rect x="30" y="60" width="108" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="30" y="60" width="108" height="56" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="84" y="82" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">M0</text>
+        <text x="84" y="102" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Foundations</text>
+        <rect x="162" y="60" width="108" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="162" y="60" width="108" height="56" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="216" y="82" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">M1</text>
+        <text x="216" y="102" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Observe</text>
+        <rect x="294" y="60" width="108" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="294" y="60" width="108" height="56" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="348" y="82" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">M2</text>
+        <text x="348" y="102" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Route</text>
+        <rect x="426" y="60" width="108" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="426" y="60" width="108" height="56" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="480" y="82" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">M3</text>
+        <text x="480" y="102" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Escalate</text>
+        <rect x="558" y="60" width="108" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="558" y="60" width="108" height="56" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="612" y="82" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">M4</text>
+        <text x="612" y="102" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Delegate</text>
+        <rect x="690" y="60" width="108" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="690" y="60" width="108" height="56" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="744" y="82" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">M5</text>
+        <text x="744" y="102" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Compress</text>
+        <rect x="822" y="60" width="108" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="822" y="60" width="108" height="56" rx="6" fill="rgba(203,1,98,0.08)" stroke="#CB0162" stroke-width="1.2"/>
+        <text x="876" y="82" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">M7</text>
+        <text x="876" y="102" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">1.0</text>
+        <rect x="294" y="200" width="108" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="294" y="200" width="108" height="56" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="348" y="222" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">M6</text>
+        <text x="348" y="242" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Guard</text>
+        <rect x="558" y="200" width="108" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="558" y="200" width="108" height="56" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1" stroke-dasharray="5,4"/>
+        <text x="612" y="222" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">M8</text>
+        <text x="612" y="242" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Pace</text>
+        <rect x="690" y="200" width="108" height="56" rx="6" fill="#faf6ef"/>
+        <rect x="690" y="200" width="108" height="56" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1" stroke-dasharray="5,4"/>
+        <text x="744" y="222" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">M9</text>
+        <text x="744" y="242" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Distribution</text>
+        <text x="30" y="348" fill="#6b625a" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-style="italic">measure before changing anything, and take the cheapest, safest savings first</text>
+        <text x="930" y="348" fill="#6b625a" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="end" font-style="italic">M8 and M9 run beside 1.0 and don’t hold it up</text>
+        <line x1="30" y1="368" x2="930" y2="368" stroke="rgba(26,22,20,0.10)" stroke-width="0.8"/>
+        <text x="30" y="396" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">LEGEND</text>
+        <rect x="100" y="385" width="24" height="14" rx="3" fill="rgba(203,1,98,0.08)" stroke="#CB0162" stroke-width="1"/>
+        <text x="132" y="396" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">The 1.0 release</text>
+        <rect x="240" y="385" width="24" height="14" rx="3" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="272" y="396" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">A milestone</text>
+        <line x1="360" y1="392" x2="392" y2="392" stroke="#6b625a" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="400" y="396" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Needs the one before</text>
+        <rect x="560" y="385" width="24" height="14" rx="3" fill="#fffdf8" stroke="#1a1614" stroke-width="1" stroke-dasharray="5,4"/>
+        <text x="592" y="396" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Runs beside 1.0</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

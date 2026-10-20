@@ -5,6 +5,14 @@ the local model read files and answer a question about them. Claude gets a
 short answer with `file:line` references, and the files themselves never
 enter its context.
 
+![Handing reading to the local model: Claude calls ask_files, janus mcp has the local model read the files in passes, and Claude gets a short answer instead of the files](../diagrams/ask-files.svg#gh-light-mode-only)
+![Handing reading to the local model: Claude calls ask_files, janus mcp has the local model read the files in passes, and Claude gets a short answer instead of the files](../diagrams/ask-files-dark.svg#gh-dark-mode-only)
+
+Why would that help? Everything Claude reads stays in its context and is
+read again, from the cache, on every later turn. Twelve files read once
+are paid for on every turn after. A few hundred words about them cost
+far less to carry.
+
 **Read this first.** It trades time for upstream usage, and the rate is
 steep. Measured on two tasks:
 

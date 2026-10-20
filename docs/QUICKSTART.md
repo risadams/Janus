@@ -1,7 +1,14 @@
 # Quickstart
 
-From nothing to Claude Code running through Janus, then the first saving.
-About ten minutes, most of it LM Studio loading a model.
+From nothing to Claude Code running through Janus, then your first work
+on a local model. About ten minutes, most of it LM Studio loading a model.
+
+![Where Janus sits: Claude Code sends every request to Janus, which forwards most to Anthropic, sends what its rules choose to LM Studio, and writes a ledger](diagrams/architecture.svg#gh-light-mode-only)
+![Where Janus sits: Claude Code sends every request to Janus, which forwards most to Anthropic, sends what its rules choose to LM Studio, and writes a ledger](diagrams/architecture-dark.svg#gh-dark-mode-only)
+
+The first half needs only Claude Code and changes nothing about how it
+works: Janus just watches and writes down. The second half adds a local
+model, one step at a time.
 
 You need Claude Code working already, and for the second half,
 [LM Studio](https://lmstudio.ai) with a model downloaded.
@@ -81,13 +88,19 @@ janus stats -since 24h
 This is the first thing Janus is for: tokens, cache use, and cost at list
 price, split by the kind of request, the model, and the backend. Use it
 for a day before changing anything, so that you know what there is to
-save. [The ledger](LEDGER.md) explains the figures.
+save. Over the week Janus was measured on, nearly all of the cost was
+the main conversation reading itself back from the cache, growing with
+how long the conversation was ([why](guide/use.md#where-the-tokens-went-janus-stats)). [The ledger](LEDGER.md) explains the figures.
 
-## 5. The first saving: subagents on the local model
+## 5. Subagents on the local model
 
 Claude Code's subagents, the helpers it starts to search and read, are the
-part of its work a local model does best. Sending them to LM Studio is the
-change that saved the most in testing.
+part of its work a local model does best, and the safest to try it on:
+the main conversation reads what they report before acting on it. Don't
+expect a large saving from this. Over a week of real use subagents were
+0.3% of the cost ([results](research/results-1.0.md)); what it gives you
+is turns that don't count against your usage limits, and a local model
+you have watched at work before you need it in an outage.
 
 Start LM Studio's server, load a model, and note its id. Then in
 `janus.config.json`:
@@ -103,17 +116,17 @@ Start LM Studio's server, load a model, and note its id. Then in
 "features": { "route": true, "escalate": false, "compress": false, "guard": false }
 ```
 
-Set `local.baseUrl` to wherever your LM Studio runs; `http://127.0.0.1:1234`
-is right when it is on this machine. The default, `http://studio.local:1234`,
-is the Janus developer's own machine and a placeholder only. Run `janus doctor` again: it
-now checks that LM Studio has the model and how much context it is loaded
-with. Restart Janus.
+Set `local.baseUrl` to wherever your LM Studio runs;
+`http://127.0.0.1:1234` is right when it is on this machine. The default,
+`http://studio.local:1234`, is the Janus developer's own machine and a
+placeholder only. Run `janus doctor` again: it now checks that LM Studio
+has the model and how much context it is loaded with. Restart Janus.
 
 With `local-then-escalate` the local model answers each subagent request,
 Janus checks the answer, and anything broken goes to Claude instead. The
 main conversation stays with Claude throughout. Console lines for local
-answers name the model with `(local)`, and `janus stats` shows them at no upstream
-cost.
+answers name the model with `(local)`, and `janus stats` shows them at no
+upstream cost.
 
 Expect subagents to be slower: seconds per turn become tens of seconds.
 [The recipe](recipes/claude-code.md) has what else to expect and how to

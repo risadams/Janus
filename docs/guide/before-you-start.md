@@ -14,7 +14,8 @@ cover installing it; this page says what Janus needs from it.
 
 Start with the first row. Janus is useful on its own, and a week of
 `janus stats` tells you what there is to save before you set up a local
-model.
+model. Setting up a local model is the expensive part, in time and
+memory, so it is worth knowing first whether it would pay.
 
 ## Claude Code
 
@@ -75,6 +76,13 @@ Two things to avoid:
   yours.
 
 ## Where things run
+
+Janus always runs beside Claude Code. LM Studio can be on the same
+machine or another one, usually because a local model needs more memory
+than a laptop has.
+
+![One machine or two: Janus always beside Claude Code; LM Studio either on the same machine on loopback, or on another machine with more memory, reached over the network](../diagrams/machines.svg#gh-light-mode-only)
+![One machine or two: Janus always beside Claude Code; LM Studio either on the same machine on loopback, or on another machine with more memory, reached over the network](../diagrams/machines-dark.svg#gh-dark-mode-only)
 
 **One machine.** Claude Code, Janus, and LM Studio all on your computer.
 `local.baseUrl` is `http://127.0.0.1:1234`, and nothing is exposed to the

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Three levels of keeping things in</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=JetBrains+Mono:wght@400;500;600&family=Caveat:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #1a1614;
+      --color-ink:     #f4ecdd;
+      --color-muted:   #a89e8f;
+      --color-accent:  #e24a8a;
+      --font-sans:     'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-serif:    'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-mono:     'JetBrains Mono', ui-monospace, monospace;
+    }
+    body { font-family: var(--font-serif); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-variation-settings: "SOFT" 60, "WONK" 1; font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Steps · Janus · Ris Ink</p>
+    <h1>Three levels of keeping things in</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 960 464" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="privacy-levels-dark-title privacy-levels-dark-desc">
+        <title id="privacy-levels-dark-title">Three levels of keeping things in</title>
+        <desc id="privacy-levels-dark-desc">The guard first only finds secrets and records them; with redaction it replaces them with placeholders on the way to Anthropic and restores them in the answer; with a local-only policy it withholds named files, folders, and marked text whatever they contain.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#a89e8f"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#e24a8a"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5ba3b8"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#1a1614"/>
+
+        <!-- The direction of protection -->
+        <path d="M 60,52 H 900" fill="none" stroke="#e24a8a" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="370" y="40" width="220" height="16" rx="2" fill="#1a1614"/>
+        <text x="480" y="52" fill="#e24a8a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">KEEP MORE ON YOUR MACHINE</text>
+        <rect x="30" y="172" width="280" height="192" rx="6" fill="#1a1614"/>
+        <rect x="30" y="172" width="280" height="192" rx="6" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="46" y="198" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">1. Find out</text>
+        <text x="46" y="216" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">"guard": true</text>
+        <text x="46" y="242" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Looks at every request going to</text>
+        <text x="46" y="257" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Anthropic and records the secrets in it.</text>
+        <text x="46" y="272" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Changes nothing.</text>
+        <text x="46" y="312" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">ANTHROPIC SEES</text>
+        <text x="46" y="326" fill="#e24a8a" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">the secret, as before</text>
+        <text x="46" y="344" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">CATCHES</text>
+        <text x="46" y="358" fill="#f4ecdd" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">secrets, by pattern</text>
+        <rect x="340" y="128" width="280" height="236" rx="6" fill="#1a1614"/>
+        <rect x="340" y="128" width="280" height="236" rx="6" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="356" y="154" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">2. Replace secrets</text>
+        <text x="356" y="172" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">"redact": true</text>
+        <text x="356" y="198" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Swaps each secret for a placeholder on</text>
+        <text x="356" y="213" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">the way out, and puts it back in the</text>
+        <text x="356" y="228" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">answer.</text>
+        <text x="356" y="312" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">ANTHROPIC SEES</text>
+        <text x="356" y="326" fill="#f4ecdd" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">a placeholder</text>
+        <text x="356" y="344" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">CATCHES</text>
+        <text x="356" y="358" fill="#f4ecdd" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">secrets, by pattern</text>
+        <rect x="650" y="84" width="280" height="280" rx="6" fill="#1a1614"/>
+        <rect x="650" y="84" width="280" height="280" rx="6" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="666" y="110" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">3. Keep files local</text>
+        <text x="666" y="128" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">"localOnly": {...}</text>
+        <text x="666" y="154" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Withholds the files, folders, and marked</text>
+        <text x="666" y="169" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">text you name, whatever is in them.</text>
+        <text x="666" y="312" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">ANTHROPIC SEES</text>
+        <text x="666" y="326" fill="#f4ecdd" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">a notice, or nothing</text>
+        <text x="666" y="344" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">CATCHES</text>
+        <text x="666" y="358" fill="#f4ecdd" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">anything in the places you name</text>
+        <text x="480" y="396" fill="#a89e8f" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-style="italic">start at 1 and read what it finds before turning on 2 and 3</text>
+        <line x1="30" y1="416" x2="930" y2="416" stroke="rgba(244,236,221,0.10)" stroke-width="0.8"/>
+        <text x="30" y="444" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">LEGEND</text>
+        <rect x="100" y="433" width="24" height="14" rx="3" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="132" y="444" fill="#a89e8f" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">A level of the guard, each a setting</text>
+        <line x1="360" y1="440" x2="392" y2="440" stroke="#e24a8a" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="400" y="444" fill="#a89e8f" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Each keeps more from Anthropic than the last</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

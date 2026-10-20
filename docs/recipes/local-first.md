@@ -5,7 +5,9 @@ Claude answer instead when the local one is broken. Claude Code receives
 one normal response either way.
 
 Use this in place of a plain `local` rule when you are not yet sure the
-local model is up to the work, which at the start is always.
+local model is up to the work, which at the start is always. It is the
+third of four steps in [trusting a local model](claude-code.md#before-you-switch-shadow-it):
+replay, shadow, local first, local.
 
 The reason it exists is that a local model fails in ways you would want
 to catch: it stops halfway, calls a tool that is not there, or says it

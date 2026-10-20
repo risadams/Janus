@@ -47,6 +47,14 @@ it is loaded. Then start `janus`.
 
 ## Before you switch: shadow it
 
+A local model is cheaper than Claude and worse than it, and you can't know
+how much worse on your own work until you try. So try it in steps, each
+one trusting it with a little more, and move up only when the step below
+has shown it can do the work:
+
+![Trusting a local model a step at a time: replay past requests offline, shadow where Claude still answers, local first where Janus checks each local answer, then plain local routing](../diagrams/trust-ladder.svg#gh-light-mode-only)
+![Trusting a local model a step at a time: replay past requests offline, shadow where Claude still answers, local first where Janus checks each local answer, then plain local routing](../diagrams/trust-ladder-dark.svg#gh-dark-mode-only)
+
 To see how the local model would do on your own subagent traffic without
 it answering anything, start with a shadow rule:
 

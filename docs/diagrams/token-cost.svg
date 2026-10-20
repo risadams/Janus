@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 276" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="token-cost-title token-cost-desc" id="token-cost-root">
+        <title id="token-cost-title">Where the money goes, by kind of token</title>
+        <desc id="token-cost-desc">Over a week of real use, cache reads were 63% of the cost, one-hour cache writes 23%, and output 14%; uncached input and five-minute cache writes were under 1% each.</desc>
+        <defs>
+      <style>#token-cost-root { --color-paper:   #faf6ef;
+      --color-ink:     #1a1614;
+      --color-muted:   #6b625a;
+      --color-accent:  #CB0162;
+      --font-sans:     'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-serif:    'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-mono:     'JetBrains Mono', ui-monospace, monospace; }
+      #token-cost-root { font-family: var(--font-serif); color: var(--color-ink); }
+      #token-cost-root .diagram-container { width: 100%; overflow-x: auto; }
+      #token-cost-root .diagram-container { overflow-x: visible; }</style>
+          <marker id="token-cost-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6b625a"/></marker>
+          <marker id="token-cost-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#CB0162"/></marker>
+          <marker id="token-cost-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1a5b6e"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#faf6ef"/>
+
+        <!-- One bar: a week of cost, by kind of token -->
+        <text x="30" y="40" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">SHARE OF A WEEK’S COST</text>
+        <rect x="30" y="56" width="567" height="56" fill="#1a5b6e" stroke="#1a5b6e" stroke-width="1" fill-opacity="0.18"/>
+        <text x="42" y="82" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">Cache reads</text>
+        <text x="42" y="100" fill="#1a5b6e" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">63%</text>
+        <text x="42" y="136" fill="#6b625a" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">a tenth of the input price</text>
+        <rect x="597" y="56" width="207" height="56" fill="#6b3a6e" stroke="#6b3a6e" stroke-width="1" fill-opacity="0.18"/>
+        <text x="609" y="82" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">Cache writes, 1 hour</text>
+        <text x="609" y="100" fill="#6b3a6e" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">23%</text>
+        <text x="609" y="136" fill="#6b625a" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">twice the input price</text>
+        <rect x="804" y="56" width="126" height="56" fill="#8a5a3c" stroke="#8a5a3c" stroke-width="1" fill-opacity="0.18"/>
+        <text x="816" y="82" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">Output</text>
+        <text x="816" y="100" fill="#8a5a3c" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">14%</text>
+        <text x="816" y="136" fill="#6b625a" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">thinking included</text>
+        <text x="930" y="156" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="end">uncached input and 5-minute writes: under 1% each</text>
+        <text x="30" y="188" fill="#6b625a" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-style="italic">Claude Code reads nearly everything from the cache, 98.8% of input here, so the cache read price</text>
+        <text x="30" y="206" fill="#6b625a" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-style="italic">moves the total more than anything else, and a change that breaks the cache costs most of all</text>
+        <line x1="30" y1="228" x2="930" y2="228" stroke="#1a1614" stroke-width="0.8" stroke-opacity="0.10"/>
+        <text x="30" y="256" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">SOURCE</text>
+        <text x="100" y="256" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">The baseline research note, priced at list price as janus stats prices it</text>
+        <text x="930" y="256" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="end">a week of real use, 12 to 19 October 2026</text>
+      </svg>
