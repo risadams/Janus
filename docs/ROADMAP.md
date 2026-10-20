@@ -131,7 +131,8 @@ session edits a file containing a redacted secret correctly.
 - Results report against the charter's goals.
 
 **Exit:** tagged 1.0 with binaries, and a report that states, with data,
-how G1–G5 came out.
+how G1–G5 came out. The report is
+[docs/research/results-1.0.md](research/results-1.0.md).
 
 ### M8 — Pace
 
