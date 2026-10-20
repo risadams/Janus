@@ -5,6 +5,17 @@ day-to-day use is: leave it running, use Claude Code as usual, and look at
 what Janus wrote down when you want to know something. This page shows
 what Janus prints and what each command tells you.
 
+Each command answers one question you could not easily answer before:
+
+| Question | Command |
+| --- | --- |
+| Where did my usage go? | [`janus stats`](#where-the-tokens-went-janus-stats) |
+| What left my machine? | [`janus audit`](#what-left-your-machine-janus-audit) |
+| What will this rule do? | [`janus route`](#where-would-this-go-janus-route) |
+| Is the local model good enough for this work? | [`janus replay`](#is-the-local-model-good-enough-janus-replay) |
+
+Most days you only need the console.
+
 ## Starting and stopping
 
 ```bash
@@ -22,8 +33,8 @@ janus vX.Y.Z
   Routing     model "janus-local" -> local qwen/qwen3.8-27b
               rule main: class main -> upstream, or local qwen/qwen3.8-27b if Claude cannot answer
               rule subagents: class subagent -> upstream, or local qwen/qwen3.8-27b if Claude cannot answer
-  Ledger      /Users/you/janus/logs/ledger
-  Captures    /Users/you/janus/logs/captures (full prompts and responses)
+  Ledger      /Users/you/Library/Application Support/janus/ledger
+  Captures    /Users/you/Library/Application Support/janus/captures (full prompts and responses)
 
 Start Claude Code through janus:
 
@@ -35,7 +46,9 @@ Start Claude Code through janus:
 ```
 
 Read the `Routing` lines after any config change: they are the rules as
-Janus understood them.
+Janus understood them, which is not always what you meant. The first rule
+that matches a request decides where it goes, so a broad rule above a
+narrow one hides it, and these lines show the order.
 
 Press Ctrl+C to stop. Answers still streaming get up to a minute to
 finish, and new ones are refused meanwhile; press Ctrl+C again to stop at
@@ -50,7 +63,6 @@ Each request gets one line when it finishes. In color, it looks like this:
 
 <sub>Made-up requests against stand-in backends. Another example follows
 as plain text.</sub>
-
 
 ```
 main       Opus 5.5                ✓ 20.6s   tool call   151k in · 98% cached    2.3k out   $0.092
@@ -105,12 +117,11 @@ janus stats -since 24h
 ```
 
 `-since` and `-until` take an age (`24h`, `7d`), a date (`2026-10-01`),
-or a time.
-`-daily` adds a row per day, to compare one day with the next after a
+or a time. `-daily` adds a row per day, to compare one day with the next after a
 change. `-json` gives the same figures as JSON. A report looks like this:
 
 ```
-Ledger /Users/you/janus/logs/ledger
+Ledger /Users/you/Library/Application Support/janus/ledger
 2026-10-14 09:00 to 2026-10-14 17:30 (local time), 412 requests
 
 By class
@@ -156,7 +167,9 @@ What to look for:
 
 - **The cache hit rate.** Claude Code reads most of each request from the
   prompt cache, so cache reads dominate. A rate that drops sharply after a
-  change means something is making requests differ from turn to turn.
+  change means something is making requests differ from turn to turn,
+  and each miss is paid for at twenty times the price of a read
+  ([why](../WHAT-JANUS-CHANGES.md#why-the-list-is-short)).
 - **`safety` and `status`.** In auto mode, Claude Code checks each tool
   call with a separate request (`safety`), and asks for short progress
   lines while subagents run (`status`). They can add up.
@@ -166,7 +179,16 @@ What to look for:
   `/compact` sooner, or a new session for a new task, would cut it. The
   console says so as it happens: once a conversation passes 400k tokens
   (`console.contextWarnTokens`), a note under its line gives what a turn
-  costs now and what it cost when the conversation was small.
+  costs now and what it cost when the conversation was small. Over a week
+  of real use it looked like this:
+
+  ![What a turn costs as the conversation grows: the median main-conversation turn cost $0.041 under 200k tokens, $0.076 from 200k to 400k, $0.124 from 400k to 600k, and $0.181 over 600k, where an eighth of the turns made a third of the cost](../diagrams/context-cost.svg#gh-light-mode-only)
+  ![What a turn costs as the conversation grows: the median main-conversation turn cost $0.041 under 200k tokens, $0.076 from 200k to 400k, $0.124 from 400k to 600k, and $0.181 over 600k, where an eighth of the turns made a third of the cost](../diagrams/context-cost-dark.svg#gh-dark-mode-only)
+
+  This is the biggest thing you control. Janus cannot shrink a
+  conversation without breaking the cache, but you can, at the moment it
+  costs least: between tasks. The [baseline](../research/baseline.md) has
+  the full figures.
 - **Usage limits**, on a subscription: how much of the five-hour and
   weekly limits was used at the last answer, when each resets, and which
   kinds of request used the five-hour limit in the range. The shares are
@@ -221,7 +243,10 @@ beside Claude Code. Piped or redirected, it prints once and exits.
 janus audit -since 24h
 ```
 
-The summary counts the requests carrying your content by where they went:
+The ledger records what Janus meant to do with each request. `audit`
+reads it back to answer the question that matters for privacy, which is
+not what Janus intended but what actually left. The summary counts the
+requests carrying your content by where they went:
 to Anthropic as your client sent them, to Anthropic changed by Janus (a
 secret replaced, a private file withheld), to the local model only, or
 nowhere. It then lists any secrets found.
@@ -230,9 +255,11 @@ nowhere. It then lists any secrets found.
 janus audit -verify -since 24h
 ```
 
-`-verify` reads again what was actually sent, with the guard's current
-detectors, to catch anything that slipped past them at the time. Use it
-after adding a pattern to `guard.patterns`.
+`-verify` does not take the ledger's word for it: it reads again what was
+actually sent, with the guard's current detectors, to catch anything that
+slipped past them at the time. Use it after adding a pattern to
+`guard.patterns`, to learn whether that secret had already gone. It exits
+non-zero when it finds something, so it can run from a script.
 
 To look at one request, give its id:
 
@@ -246,7 +273,7 @@ Request 20261014T123040.721-24a02d
   What      POST /v1/messages, class main
   Went to   Anthropic
   Why       rule main
-  Sent      /Users/you/janus/logs/captures/2026-10-14/20261014T123040.721-24a02d_v1-messages.sent.txt
+  Sent      /Users/you/Library/Application Support/janus/captures/2026-10-14/20261014T123040.721-24a02d_v1-messages.sent.txt
             (as janus sent it; your client's original is beside it as .request.txt)
 ```
 
@@ -255,6 +282,9 @@ suffix. It is the `id` on each line of the ledger
 (`logs/ledger/<date>.jsonl`) and the start of the capture's file name, so
 to find a request you saw on the console, look for its time. Add `-body`
 to print exactly what was sent.
+
+In the commands below, `logs` stands for the log folder, as in
+[configuring](configure.md#logs-and-captures).
 
 ## Where would this go: `janus route`
 
@@ -276,9 +306,10 @@ Decision  local first: qwen/qwen3.8-27b answers, and its whole answer is checked
           sees any of it. If it passes it is reported as claude-opus-5-5; if not, Claude answers.
           changes on the way: set_model, lift_tool_additions, fold_system_messages, drop_deferred_tools
 ```
- Use it after
-editing `routing` to check a rule matches what you meant, before
-restarting Janus. `-class` treats the request as another class, and
+
+Use it after editing `routing` to check a rule matches what you meant,
+before restarting Janus. It is quicker than finding out from the console,
+and it sends nothing anywhere. `-class` treats the request as another class, and
 `-override` as if it had asked for a route itself.
 
 ## Is the local model good enough: `janus replay`
@@ -290,7 +321,9 @@ janus replay -class subagent -limit 20 logs/captures/2026-10-14
 `replay` sends saved requests to the local model and compares each answer
 with the one Claude gave: did it stop for the same reason, and call the
 same tools? Nothing goes to Anthropic. It is the cheapest way to try a
-model on your own work before routing anything to it. Each answer is
+model on your own work before routing anything to it: no session waits
+on it, and a model that does badly costs you nothing but the time it
+ran. Each answer is
 saved beside its capture as `.replay.md`.
 
 "Same" compares the shape of the answers, not whether they are right;
@@ -342,7 +375,10 @@ lasts:
   yourself until Claude is back.
 
 When Claude answers again, the next request goes to it as usual. Nothing
-needs switching back.
+needs switching back. Janus notes Claude's first answer to the main
+conversation afterwards, since Claude reads the local model's turns as
+its own: it is a good moment to ask Claude to check what was done
+([outage recipe](../recipes/outage.md#what-to-expect)).
 
 ## Choosing the route yourself
 
@@ -357,7 +393,8 @@ ANTHROPIC_CUSTOM_HEADERS="X-Janus-Route: upstream" claude
 ```
 
 Forcing `local` is a promise the request never goes to Anthropic: if the
-local model can't take it, it is refused. The
+local model can't take it, it is refused rather than quietly sent to
+Claude, since keeping it from Anthropic may be the reason you forced it. The
 [configuration reference](../CONFIG.md#choosing-the-route-yourself) has
 the details.
 

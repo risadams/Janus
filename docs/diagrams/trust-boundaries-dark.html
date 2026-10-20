@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Where Janus’s trust boundaries are</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=JetBrains+Mono:wght@400;500;600&family=Caveat:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #1a1614;
+      --color-ink:     #f4ecdd;
+      --color-muted:   #a89e8f;
+      --color-accent:  #e24a8a;
+      --font-sans:     'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-serif:    'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-mono:     'JetBrains Mono', ui-monospace, monospace;
+    }
+    body { font-family: var(--font-serif); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-variation-settings: "SOFT" 60, "WONK" 1; font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Architecture · Janus · Ris Ink</p>
+    <h1>Where Janus’s trust boundaries are</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 960 416" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="trust-boundaries-dark-title trust-boundaries-dark-desc">
+        <title id="trust-boundaries-dark-title">Where Janus’s trust boundaries are</title>
+        <desc id="trust-boundaries-dark-desc">Claude Code, Janus, its log folder, and ideally LM Studio run on your machine as you; Janus refuses other machines and web pages, sends your credential to Anthropic over HTTPS, and reaches an LM Studio on another machine over plain HTTP that the network can read and a spoofed name can redirect.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#a89e8f"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#e24a8a"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5ba3b8"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#1a1614"/>
+
+        <!-- Trust zones -->
+        <rect x="30" y="40" width="560" height="300" rx="8" fill="none" stroke="rgba(244,236,221,0.30)" stroke-width="1" stroke-dasharray="6,4"/>
+        <text x="46" y="62" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">YOUR MACHINE · EVERYTHING RUNS AS YOU</text>
+        <rect x="640" y="40" width="290" height="140" rx="8" fill="none" stroke="rgba(244,236,221,0.30)" stroke-width="1" stroke-dasharray="6,4"/>
+        <text x="656" y="62" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">THE INTERNET</text>
+        <rect x="640" y="200" width="290" height="140" rx="8" fill="none" stroke="rgba(244,236,221,0.30)" stroke-width="1" stroke-dasharray="6,4"/>
+        <text x="656" y="222" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">YOUR NETWORK</text>
+
+        <!-- Arrows first -->
+        <path d="M 230,124 H 338" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="256" y="103" width="56" height="12" rx="2" fill="#1a1614"/>
+        <text x="284" y="112" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">LOOPBACK</text>
+        <path d="M 520,112 H 698" fill="none" stroke="#5ba3b8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+        <rect x="594" y="91" width="40" height="12" rx="2" fill="#1a1614"/>
+        <text x="614" y="100" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">HTTPS</text>
+        <path d="M 430,152 V 230" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="443" y="185" width="46" height="12" rx="2" fill="#1a1614"/>
+        <text x="466" y="194" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">WRITES</text>
+        <path d="M 340,140 H 300 Q 292,140 292,148 V 252 Q 292,260 284,260 H 232" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="245" y="195" width="34" height="12" rx="2" fill="#1a1614"/>
+        <text x="262" y="204" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">HTTP</text>
+        <path d="M 520,136 H 600 Q 608,136 608,144 V 272 Q 608,280 616,280 H 698" fill="none" stroke="#a89e8f" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+        <rect x="617" y="259" width="80" height="12" rx="2" fill="#1a1614"/>
+        <text x="657" y="268" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">IF ELSEWHERE</text>
+
+        <!-- Nodes -->
+        <rect x="60" y="96" width="170" height="56" rx="6" fill="#1a1614"/>
+        <rect x="60" y="96" width="170" height="56" rx="6" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="145" y="122" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Claude Code</text>
+        <text x="145" y="138" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">your credential</text>
+        <rect x="340" y="96" width="180" height="56" rx="6" fill="#1a1614"/>
+        <rect x="340" y="96" width="180" height="56" rx="6" fill="rgba(226,74,138,0.10)" stroke="#e24a8a" stroke-width="1.2"/>
+        <text x="430" y="122" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Janus</text>
+        <text x="430" y="138" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">127.0.0.1:8787</text>
+        <rect x="60" y="232" width="170" height="56" rx="6" fill="#1a1614"/>
+        <rect x="60" y="232" width="170" height="56" rx="6" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="145" y="258" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">LM Studio</text>
+        <text x="145" y="274" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">127.0.0.1:1234</text>
+        <rect x="340" y="232" width="180" height="56" rx="6" fill="#1a1614"/>
+        <rect x="340" y="232" width="180" height="56" rx="6" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="430" y="258" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Log folder</text>
+        <text x="430" y="274" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">owner-only files</text>
+        <rect x="700" y="92" width="180" height="56" rx="6" fill="#1a1614"/>
+        <rect x="700" y="92" width="180" height="56" rx="6" fill="rgba(244,236,221,0.03)" stroke="rgba(244,236,221,0.30)" stroke-width="1"/>
+        <text x="790" y="118" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Anthropic API</text>
+        <text x="790" y="134" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">gets the credential</text>
+        <rect x="700" y="252" width="180" height="56" rx="6" fill="#1a1614"/>
+        <rect x="700" y="252" width="180" height="56" rx="6" fill="rgba(244,236,221,0.03)" stroke="rgba(244,236,221,0.30)" stroke-width="1" stroke-dasharray="5,4"/>
+        <text x="790" y="278" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">LM Studio</text>
+        <text x="790" y="294" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">plain HTTP · mDNS</text>
+
+        <!-- Callouts -->
+        <text x="430" y="82" fill="#a89e8f" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-style="italic">refuses other machines and web pages</text>
+        <text x="430" y="318" fill="#a89e8f" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-style="italic">captures hold what was sent, before redaction</text>
+
+        <!-- Legend -->
+        <line x1="30" y1="368" x2="930" y2="368" stroke="rgba(244,236,221,0.10)" stroke-width="0.8"/>
+        <text x="30" y="396" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">LEGEND</text>
+        <rect x="100" y="385" width="24" height="14" rx="3" fill="rgba(244,236,221,0.02)" stroke="rgba(244,236,221,0.30)" stroke-width="1" stroke-dasharray="6,4"/>
+        <text x="132" y="396" fill="#a89e8f" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">A trust boundary</text>
+        <line x1="250" y1="392" x2="282" y2="392" stroke="#5ba3b8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+        <text x="290" y="396" fill="#a89e8f" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Encrypted, to Anthropic</text>
+        <line x1="420" y1="392" x2="452" y2="392" stroke="#a89e8f" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+        <text x="460" y="396" fill="#a89e8f" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Only if LM Studio is on another machine: unencrypted, and the name can be spoofed</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

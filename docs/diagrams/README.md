@@ -109,6 +109,33 @@ Shown in [Troubleshooting](../TROUBLESHOOTING.md). Source:
 [where-it-fails.html](where-it-fails.html),
 [where-it-fails-dark.html](where-it-fails-dark.html).
 
+## What a turn costs as the conversation grows
+
+![What a turn costs as the conversation grows](context-cost.svg#gh-light-mode-only)
+![What a turn costs as the conversation grows](context-cost-dark.svg#gh-dark-mode-only)
+
+The median cost of a main-conversation turn by context size, over a week
+of real use. Turns over 600k tokens were an eighth of the turns and a
+third of the cost, which is why a /compact between tasks pays.
+
+Shown in [Using
+Janus](../guide/use.md#where-the-tokens-went-janus-stats). Source:
+[context-cost.html](context-cost.html),
+[context-cost-dark.html](context-cost-dark.html).
+
+## Where Janus’s trust boundaries are
+
+![Where Janus’s trust boundaries are](trust-boundaries.svg#gh-light-mode-only)
+![Where Janus’s trust boundaries are](trust-boundaries-dark.svg#gh-dark-mode-only)
+
+Your machine, the internet, and your network, and what crosses between
+them: the credential to Anthropic over HTTPS, and, if LM Studio runs
+elsewhere, plain HTTP to it.
+
+Shown in [The threat model](../THREAT-MODEL.md#who-it-defends-against).
+Source: [trust-boundaries.html](trust-boundaries.html),
+[trust-boundaries-dark.html](trust-boundaries-dark.html).
+
 ## How they are made
 
 The HTML files are the source. They were made with the
