@@ -205,8 +205,10 @@ The [threat model](docs/THREAT-MODEL.md) covers the rest, and
 
 Janus has stable releases but has not reached 1.0. Observing, routing,
 escalation, worker tools, compression, and the guard are built and tested.
-The 1.0 release waits on a report that measures them against the
-[charter](docs/CHARTER.md)'s goals over a week of everyday use. The
+The [results report](docs/research/results-1.0.md) measures them
+against the [charter](docs/CHARTER.md)'s goals over a week of everyday
+use. Privacy, availability, explanation, and pass-through met their
+targets. The saving did not: about 0.3%, against about 9%. The
 [roadmap](docs/ROADMAP.md) has the milestones, and the [research
 notes](docs/research/) the measurements behind each decision.
 
