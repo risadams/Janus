@@ -4,6 +4,18 @@ Claude stays the brain: the main conversation goes to Anthropic as usual.
 Subagents, which do the reading and the legwork, run on the model in LM
 Studio and cost nothing upstream.
 
+Why subagents, and not the rest? A subagent's job is to read, search,
+and report back, which a local model can do, and the main conversation
+reads the report before it acts on it. The main conversation is where the
+judgement is, so it stays with Claude.
+
+Be clear about what this buys you. Over a week of real use, subagents were
+0.3% of the cost, so on its own this saves very little money
+([results](../research/results-1.0.md)). What it gives you is room under
+your usage limits, since local turns don't count against them, and a
+local model you have already watched at work before the day you need it
+to [stand in](outage.md) for Claude.
+
 Checked on 2026-10-11 with Claude Code 2.1.296 and `qwen/qwen3.8-27b`. All
 three ways of sending subagents local described below were run end to end.
 

@@ -440,6 +440,14 @@ Off by default, and best left off for now: on a day of ordinary use it
 would have saved about 1.5% and added minutes of waiting. See
 [the evaluation](research/digest.md).
 
+Why so little, when tool output can be huge? Because most of what a turn
+costs is reading the conversation so far from the prompt cache, and that
+part cannot be made smaller without writing it all to the cache again
+([why](WHAT-JANUS-CHANGES.md#why-the-list-is-short)). A digest can only
+shrink a result the first time it is sent. On the day measured, cache
+reads were more than half the cost, and large tool results were a small
+part of what was read.
+
 With `features.compress` on, a tool result going upstream that is larger
 than a threshold is replaced by a digest the local model writes: errors,
 paths, identifiers, numbers, and the outcome kept, repetition and progress

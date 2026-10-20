@@ -254,8 +254,10 @@ room.
 
 ## Logs and captures
 
-Janus writes to `logging.dir`, by default a folder per user (macOS `~/Library/Application Support/janus`, Linux `$XDG_STATE_HOME/janus` (or `~/.local/state/janus`), Windows `%LocalAppData%\janus`). Below, and in the examples elsewhere, `logs` stands
-for that folder:
+Janus writes to `logging.dir`, by default a folder per user: macOS
+`~/Library/Application Support/janus`, Linux `$XDG_STATE_HOME/janus` (or
+`~/.local/state/janus`), Windows `%LocalAppData%\janus`. Below, and in the
+examples elsewhere, `logs` stands for that folder:
 
 | What | Where | Kept |
 | --- | --- | --- |

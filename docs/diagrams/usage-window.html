@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>One five-hour window, with pacing and a stand-in</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=JetBrains+Mono:wght@400;500;600&family=Caveat:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #faf6ef;
+      --color-ink:     #1a1614;
+      --color-muted:   #6b625a;
+      --color-accent:  #CB0162;
+      --font-sans:     'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-serif:    'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-mono:     'JetBrains Mono', ui-monospace, monospace;
+    }
+    body { font-family: var(--font-serif); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-variation-settings: "SOFT" 60, "WONK" 1; font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Timeline · Janus · Ris Ink</p>
+    <h1>One five-hour window, with pacing and a stand-in</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 960 472" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="usage-window-title usage-window-desc">
+        <title id="usage-window-title">One five-hour window, with pacing and a stand-in</title>
+        <desc id="usage-window-desc">As the five-hour usage limit fills, Claude answers everything; past 80% a pacing rule moves subagents to the local model while the main conversation stays on Claude; when the limit is reached the local model stands in for the main conversation too; when the limit resets Claude answers again and Janus notes the hand-back.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6b625a"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#CB0162"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1a5b6e"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#faf6ef"/>
+
+        <!-- Usage of the five-hour limit -->
+        <text x="30" y="44" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">FIVE-HOUR LIMIT</text>
+        <text x="30" y="58" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">USED</text>
+        <text x="188" y="43" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="end">100%</text>
+        <text x="188" y="75" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="end">80%</text>
+        <text x="188" y="203" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="end">0%</text>
+        <line x1="200" y1="200" x2="920" y2="200" stroke="rgba(26,22,20,0.30)" stroke-width="1"/>
+        <line x1="200" y1="40" x2="920" y2="40" stroke="rgba(26,22,20,0.10)" stroke-width="0.8"/>
+        <line x1="200" y1="72" x2="920" y2="72" stroke="#CB0162" stroke-width="1.2" stroke-dasharray="5,4"/>
+        <rect x="208" y="54" width="112" height="12" rx="2" fill="#faf6ef"/>
+        <text x="212" y="63" fill="#CB0162" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" >ifUsageAbove 0.8</text>
+        <line x1="584" y1="40" x2="584" y2="328" stroke="rgba(26,22,20,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="680" y1="40" x2="680" y2="328" stroke="rgba(26,22,20,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="800" y1="40" x2="800" y2="328" stroke="rgba(26,22,20,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+        <polyline points="200,200 260,184 300,168 360,150 420,128 480,108 540,88 584,72 620,62 650,52 680,40 800,40 800,200 840,190 880,176 920,164" fill="none" stroke="#1a5b6e" stroke-width="1.6"/>
+
+        <!-- Who answers -->
+        <text x="30" y="252" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">Main conversation</text>
+        <text x="30" y="268" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">class main</text>
+        <rect x="200" y="236" width="480" height="36" rx="4" fill="#faf6ef"/>
+        <rect x="200" y="236" width="480" height="36" rx="4" fill="rgba(26,91,110,0.10)" stroke="#1a5b6e" stroke-width="1"/>
+        <text x="440" y="257" fill="#1a1614" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">Claude</text>
+        <rect x="680" y="236" width="120" height="36" rx="4" fill="#faf6ef"/>
+        <rect x="680" y="236" width="120" height="36" rx="4" fill="rgba(107,98,90,0.10)" stroke="#776e65" stroke-width="1"/>
+        <text x="740" y="257" fill="#1a1614" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">local, ifDown</text>
+        <rect x="800" y="236" width="120" height="36" rx="4" fill="#faf6ef"/>
+        <rect x="800" y="236" width="120" height="36" rx="4" fill="rgba(26,91,110,0.10)" stroke="#1a5b6e" stroke-width="1"/>
+        <text x="860" y="257" fill="#1a1614" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">Claude</text>
+        <text x="30" y="308" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">Subagents</text>
+        <text x="30" y="324" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">class subagent</text>
+        <rect x="200" y="292" width="384" height="36" rx="4" fill="#faf6ef"/>
+        <rect x="200" y="292" width="384" height="36" rx="4" fill="rgba(26,91,110,0.10)" stroke="#1a5b6e" stroke-width="1"/>
+        <text x="392" y="313" fill="#1a1614" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">Claude</text>
+        <rect x="584" y="292" width="216" height="36" rx="4" fill="#faf6ef"/>
+        <rect x="584" y="292" width="216" height="36" rx="4" fill="rgba(107,98,90,0.10)" stroke="#776e65" stroke-width="1"/>
+        <text x="692" y="313" fill="#1a1614" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">local, paced</text>
+        <rect x="800" y="292" width="120" height="36" rx="4" fill="#faf6ef"/>
+        <rect x="800" y="292" width="120" height="36" rx="4" fill="rgba(26,91,110,0.10)" stroke="#1a5b6e" stroke-width="1"/>
+        <text x="860" y="313" fill="#1a1614" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">Claude</text>
+        <circle cx="800" cy="254" r="5" fill="#CB0162"/>
+
+        <!-- What happened at each line -->
+        <text x="392" y="352" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">CLAUDE ANSWERS ALL</text>
+        <text x="632" y="352" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">PACING</text>
+        <text x="740" y="352" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">LIMIT REACHED</text>
+        <text x="860" y="352" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">LIMIT RESETS</text>
+        <text x="632" y="380" fill="#6b625a" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-style="italic">the work you care least about moves first; main stays on Claude</text>
+        <text x="920" y="404" fill="#6b625a" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="end" font-style="italic">hand-back: check what the local turns did</text>
+
+        <!-- Legend -->
+        <line x1="30" y1="424" x2="930" y2="424" stroke="rgba(26,22,20,0.10)" stroke-width="0.8"/>
+        <text x="30" y="452" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">LEGEND</text>
+        <rect x="100" y="441" width="24" height="14" rx="4" fill="#faf6ef"/>
+        <rect x="100" y="441" width="24" height="14" rx="4" fill="rgba(26,91,110,0.10)" stroke="#1a5b6e" stroke-width="1"/>
+        <text x="132" y="452" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Claude answers</text>
+        <rect x="250" y="441" width="24" height="14" rx="4" fill="#faf6ef"/>
+        <rect x="250" y="441" width="24" height="14" rx="4" fill="rgba(107,98,90,0.10)" stroke="#776e65" stroke-width="1"/>
+        <text x="282" y="452" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">The local model answers</text>
+        <line x1="440" y1="448" x2="464" y2="448" stroke="#CB0162" stroke-width="1.2" stroke-dasharray="5,4"/>
+        <text x="472" y="452" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">A rule’s threshold</text>
+        <circle cx="642" cy="448" r="5" fill="#CB0162"/>
+        <text x="654" y="452" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Janus notes the hand-back</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
