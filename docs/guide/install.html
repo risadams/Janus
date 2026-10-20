@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Installing Janus | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/guide/install"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Installing Janus | Janus"><meta data-rh="true" name="description" content="This page takes you from nothing to Claude Code talking to Anthropic"><meta data-rh="true" property="og:description" content="This page takes you from nothing to Claude Code talking to Anthropic"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/guide/install"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/guide/install" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/guide/install" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"User guide","item":"https://risadams.github.io/Janus/docs/guide/"},{"@type":"ListItem","position":2,"name":"Installing","item":"https://risadams.github.io/Janus/docs/guide/install"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.31295cc3.css">
-<script src="/Janus/assets/js/runtime~main.29ea4d09.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.47c70a3f.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.80c3c652.js" defer="defer"></script>
 </head>
 <body>
@@ -17,8 +17,8 @@
 through Janus. It covers macOS, Linux, and Windows, setting up LM Studio
 for the local-model features, making the Claude Code setting stick,
 running Janus in the background, and updating or removing it.</p>
-<p>You need Claude Code working already. LM Studio is optional: without it Janus still keeps the
-books and runs the guard. <a class="" href="/Janus/docs/guide/before-you-start">Before you start</a> lists
+<p>You need Claude Code working already. LM Studio is optional: without it
+Janus still keeps the books and runs the guard. <a class="" href="/Janus/docs/guide/before-you-start">Before you start</a> lists
 what each feature needs, and the settings that differ from the defaults.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="1-get-the-binary">1. Get the binary<a href="#1-get-the-binary" class="hash-link" aria-label="Direct link to 1. Get the binary" title="Direct link to 1. Get the binary" translate="no">​</a></h2>
 <p>Janus is one file with no dependencies. Pick one way to get it.</p>
@@ -28,8 +28,8 @@ what each feature needs, and the settings that differ from the defaults.</p>
 <p>The formula installs the release&#x27;s own archive, checked against its
 <code>checksums.txt</code>, so it is the same signed and attested binary as a
 download. It installs the tab-completion scripts for bash, zsh, and fish
-too (skip the &quot;Tab completion&quot; section below). <code>brew upgrade janus</code> brings a new
-release. <code>janus update</code> leaves a Homebrew copy alone and says to run
+too (skip the &quot;Tab completion&quot; section below). <code>brew upgrade janus</code>
+brings a new release. <code>janus update</code> leaves a Homebrew copy alone and says to run
 that instead, since Homebrew owns the files it installed. Release
 candidates are not in the tap.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="with-go">With Go<a href="#with-go" class="hash-link" aria-label="Direct link to With Go" title="Direct link to With Go" translate="no">​</a></h3>
@@ -68,16 +68,21 @@ per platform:</p>
 
 
 <table><thead><tr><th>Machine</th><th>Archive ends in</th></tr></thead><tbody><tr><td>Mac with Apple silicon (M1 and later)</td><td><code>_darwin_arm64.tar.gz</code></td></tr><tr><td>Mac with an Intel processor</td><td><code>_darwin_amd64.tar.gz</code></td></tr><tr><td>Linux on x86-64</td><td><code>_linux_amd64.tar.gz</code></td></tr><tr><td>Linux on ARM64</td><td><code>_linux_arm64.tar.gz</code></td></tr></tbody></table>
-<p>These commands download the newest stable release for a Mac with Apple silicon
-and check it. For another machine, change <code>darwin_arm64</code> in the first and
+<p>These commands download the newest stable release for a Mac with Apple
+silicon and check it. For another machine, change <code>darwin_arm64</code> in the first and
 last lines.</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#f0e6d2;--prism-background-color:#1a1210"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#f0e6d2;background-color:#1a1210"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#f0e6d2"><span class="token assign-left variable" style="color:#b8875f">url</span><span class="token operator" style="color:#b183b5">=</span><span class="token variable" style="color:#b8875f">$(</span><span class="token variable function" style="color:#b183b5">curl</span><span class="token variable" style="color:#b8875f"> </span><span class="token variable parameter variable" style="color:#b8875f">-s</span><span class="token variable" style="color:#b8875f"> https://api.github.com/repos/risadams/Janus/releases/latest </span><span class="token variable operator" style="color:#b183b5">|</span><span class="token variable" style="color:#b8875f"> </span><span class="token variable function" style="color:#b183b5">grep</span><span class="token variable" style="color:#b8875f"> </span><span class="token variable parameter variable" style="color:#b8875f">-m1</span><span class="token variable" style="color:#b8875f"> </span><span class="token variable parameter variable" style="color:#b8875f">-o</span><span class="token variable" style="color:#b8875f"> </span><span class="token variable string" style="color:#5ba3b8">&#x27;https://[^&quot;]*_darwin_arm64\.tar\.gz&#x27;</span><span class="token variable" style="color:#b8875f">)</span><span class="token plain"></span><br></div><div class="token-line" style="color:#f0e6d2"><span class="token plain"></span><span class="token function" style="color:#b183b5">curl</span><span class="token plain"> </span><span class="token parameter variable" style="color:#b8875f">-LO</span><span class="token plain"> </span><span class="token string" style="color:#5ba3b8">&quot;</span><span class="token string variable" style="color:#b8875f">$url</span><span class="token string" style="color:#5ba3b8">&quot;</span><span class="token plain"></span><br></div><div class="token-line" style="color:#f0e6d2"><span class="token plain"></span><span class="token function" style="color:#b183b5">curl</span><span class="token plain"> </span><span class="token parameter variable" style="color:#b8875f">-LO</span><span class="token plain"> </span><span class="token string" style="color:#5ba3b8">&quot;</span><span class="token string variable" style="color:#b8875f">${url</span><span class="token string variable operator" style="color:#b183b5">%</span><span class="token string variable operator" style="color:#b183b5">/</span><span class="token string variable" style="color:#b8875f">*}</span><span class="token string" style="color:#5ba3b8">/checksums.txt&quot;</span><span class="token plain"></span><br></div><div class="token-line" style="color:#f0e6d2"><span class="token plain"></span><span class="token function command" style="color:#b183b5">shasum</span><span class="token plain"> </span><span class="token parameter variable" style="color:#b8875f">-a</span><span class="token plain"> </span><span class="token number" style="color:#c48a1e">256</span><span class="token plain"> </span><span class="token parameter variable" style="color:#b8875f">-c</span><span class="token plain"> checksums.txt --ignore-missing    </span><span class="token comment" style="color:#a49a8e;font-style:italic"># on Linux: sha256sum -c checksums.txt --ignore-missing</span><span class="token plain"></span><br></div><div class="token-line" style="color:#f0e6d2"><span class="token plain"></span><span class="token function" style="color:#b183b5">tar</span><span class="token plain"> </span><span class="token parameter variable" style="color:#b8875f">-xzf</span><span class="token plain"> </span><span class="token string" style="color:#5ba3b8">&quot;</span><span class="token string variable" style="color:#b8875f">${url</span><span class="token string variable operator" style="color:#b183b5">##</span><span class="token string variable" style="color:#b8875f">*</span><span class="token string variable operator" style="color:#b183b5">/</span><span class="token string variable" style="color:#b8875f">}</span><span class="token string" style="color:#5ba3b8">&quot;</span><span class="token plain"></span><br></div><div class="token-line" style="color:#f0e6d2"><span class="token plain"></span><span class="token builtin class-name" style="color:#b8875f">cd</span><span class="token plain"> janus_*_darwin_arm64</span><br></div></code></pre></div></div>
-<p>The checksum line should say <code>OK</code>. Release candidates are on the
+<p>The checksum line should say <code>OK</code>. It is worth the extra minute. Every
+prompt you send passes through Janus, and so does your login, so you want
+to know the binary is the one that was published: the checksum says the
+archive arrived whole and matches the release. Release candidates are on the
 <a href="https://github.com/risadams/Janus/releases" target="_blank" rel="noopener noreferrer" class="">releases page</a> too, for
 trying what is coming next.</p>
 <p>If you have the <a href="https://cli.github.com" target="_blank" rel="noopener noreferrer" class="">GitHub CLI</a>, you can also check
 that the archive was built by this repository&#x27;s release workflow, from the
-tagged commit:</p>
+tagged commit. That answers a different question: not &quot;is this what was
+published?&quot; but &quot;was what was published built from the public source, by
+GitHub, and not on someone&#x27;s laptop?&quot;:</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#f0e6d2;--prism-background-color:#1a1210"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#f0e6d2;background-color:#1a1210"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#f0e6d2"><span class="token function command" style="color:#b183b5">gh</span><span class="token plain"> attestation verify </span><span class="token string" style="color:#5ba3b8">&quot;../</span><span class="token string variable" style="color:#b8875f">${url</span><span class="token string variable operator" style="color:#b183b5">##</span><span class="token string variable" style="color:#b8875f">*</span><span class="token string variable operator" style="color:#b183b5">/</span><span class="token string variable" style="color:#b8875f">}</span><span class="token string" style="color:#5ba3b8">&quot;</span><span class="token plain"> </span><span class="token parameter variable" style="color:#b8875f">--repo</span><span class="token plain"> risadams/Janus</span><br></div></code></pre></div></div>
 <p>Move the binary somewhere on your <code>PATH</code>:</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#f0e6d2;--prism-background-color:#1a1210"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#f0e6d2;background-color:#1a1210"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#f0e6d2"><span class="token function" style="color:#b183b5">mkdir</span><span class="token plain"> </span><span class="token parameter variable" style="color:#b8875f">-p</span><span class="token plain"> ~/.local/bin </span><span class="token operator" style="color:#b183b5">&amp;&amp;</span><span class="token plain"> </span><span class="token function" style="color:#b183b5">mv</span><span class="token plain"> janus ~/.local/bin/</span><br></div><div class="token-line" style="color:#f0e6d2"><span class="token plain"></span><span class="token function command" style="color:#b183b5">janus</span><span class="token plain"> version</span><br></div></code></pre></div></div>
@@ -115,19 +120,27 @@ characters). Then unpack it and check the binary runs:</p>
 since the binaries are not signed. Choose &quot;More info&quot;, then &quot;Run anyway&quot;.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="2-give-janus-a-folder">2. Give Janus a folder<a href="#2-give-janus-a-folder" class="hash-link" aria-label="Direct link to 2. Give Janus a folder" title="Direct link to 2. Give Janus a folder" translate="no">​</a></h2>
 <p>By default Janus reads <code>janus.config.json</code> from the folder you start it
-in, and writes its ledger and captures to a folder per user (macOS <code>~/Library/Application Support/janus</code>, Linux <code>$XDG_STATE_HOME/janus</code> (or <code>~/.local/state/janus</code>), Windows <code>%LocalAppData%\janus</code>), so they are in one place whichever folder that is. Give the
-config a folder of its own:</p>
+in, and writes its ledger and captures to a folder per user: macOS
+<code>~/Library/Application Support/janus</code>, Linux <code>$XDG_STATE_HOME/janus</code> (or
+<code>~/.local/state/janus</code>), Windows <code>%LocalAppData%\janus</code>. Give the config a
+folder of its own:</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#f0e6d2;--prism-background-color:#1a1210"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#f0e6d2;background-color:#1a1210"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#f0e6d2"><span class="token function" style="color:#b183b5">mkdir</span><span class="token plain"> </span><span class="token parameter variable" style="color:#b8875f">-p</span><span class="token plain"> ~/janus </span><span class="token operator" style="color:#b183b5">&amp;&amp;</span><span class="token plain"> </span><span class="token builtin class-name" style="color:#b8875f">cd</span><span class="token plain"> ~/janus</span><br></div></code></pre></div></div>
-<p>Every <code>janus</code> command takes <code>-config</code> to name the file instead, so you can
-keep it anywhere and run commands from any folder.</p>
+<p>The logs go to one folder per user so that <code>janus stats</code> and <code>janus audit</code> find the same ledger whichever folder you run them in. Every
+<code>janus</code> command also takes <code>-config</code> to name the file, so you can keep it
+anywhere.</p>
+<p><img decoding="async" loading="lazy" alt="Where Janus keeps things: Claude Code reaches Janus through ANTHROPIC_BASE_URL, an optional service starts it, Janus reads its config, and the config names the log folder where the ledger, captures, and the rest are written" src="/Janus/assets/images/where-things-live-6b81731a3e92d11774afbbb075c243dc.svg#gh-light-mode-only" width="960" height="432" class="img_ev3q">
+<img decoding="async" loading="lazy" alt="Where Janus keeps things: Claude Code reaches Janus through ANTHROPIC_BASE_URL, an optional service starts it, Janus reads its config, and the config names the log folder where the ledger, captures, and the rest are written" src="/Janus/assets/images/where-things-live-dark-87ff5c892babac6c2946605fd979a3d3.svg#gh-dark-mode-only" width="960" height="432" class="img_ev3q"></p>
+<p>Each arrow is something that can point at the wrong place, and many of
+the problems in <a class="" href="/Janus/docs/TROUBLESHOOTING">troubleshooting</a> are one of them
+doing so.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="3-check-then-start">3. Check, then start<a href="#3-check-then-start" class="hash-link" aria-label="Direct link to 3. Check, then start" title="Direct link to 3. Check, then start" translate="no">​</a></h2>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#f0e6d2;--prism-background-color:#1a1210"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#f0e6d2;background-color:#1a1210"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#f0e6d2"><span class="token function command" style="color:#b183b5">janus</span><span class="token plain"> doctor</span><br></div></code></pre></div></div>
 <p><code>doctor</code> checks the config, the port, that Anthropic answers, LM Studio,
 and the log folder, and says what to fix. It changes nothing. Its last
 two lines say when the ledger last recorded a request and whether Claude
 Code is pointed at Janus; until you have used Janus, <code>claude</code> warns that
-it isn&#x27;t. Before you
-set up LM Studio it will warn about it; that is fine for now.</p>
+it isn&#x27;t. Before you set up LM Studio it will warn about it; that is
+fine for now.</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#f0e6d2;--prism-background-color:#1a1210"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#f0e6d2;background-color:#1a1210"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#f0e6d2"><span class="token function command" style="color:#b183b5">janus</span><br></div></code></pre></div></div>
 <p>The first run writes <code>janus.config.json</code> with the defaults, then prints
 where it is listening, where it writes, and the command for the next
@@ -149,7 +162,37 @@ every request. Setting it keeps requests the size they would be without
 Janus.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="making-it-stick">Making it stick<a href="#making-it-stick" class="hash-link" aria-label="Direct link to Making it stick" title="Direct link to Making it stick" translate="no">​</a></h3>
 <p>Three ways to send your sessions through Janus without thinking about
-it:</p>
+it. They differ in one thing that matters: what happens when Janus is not
+running.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Way</th><th>Goes through Janus</th><th>If Janus is not running</th></tr></thead><tbody><tr><td><code>janus claude</code></td><td>Sessions started with it</td><td>Says so, and starts Claude Code going straight to Anthropic; refuses if the guard is on</td></tr><tr><td>A shell alias</td><td>Sessions started with the alias</td><td>That session cannot connect; plain <code>claude</code> still works</td></tr><tr><td>Claude Code&#x27;s settings file</td><td>Every session</td><td>No session can connect, until Janus starts or the setting goes</td></tr></tbody></table>
+<p>Start with <code>janus claude</code>: it is the hardest to get wrong. Move to the
+settings file once Janus runs <a href="#6-run-janus-in-the-background-optional" class="">in the background</a>
+and you want every session counted.</p>
 <p><strong><code>janus claude</code></strong> in place of <code>claude</code>, setting both variables for that
 session only. With the config Janus wrote, it works from any folder; once
 you change <code>listen</code> or turn on the guard, run it in your Janus folder, or
@@ -219,8 +262,11 @@ needs it and it isn&#x27;t loaded, Janus has LM Studio load it, with a
 <p>Nothing goes to the local model until you turn on a feature that uses it.
 <a class="" href="/Janus/docs/guide/configure">Configuring Janus</a> has complete configs for each.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="6-run-janus-in-the-background-optional">6. Run Janus in the background (optional)<a href="#6-run-janus-in-the-background-optional" class="hash-link" aria-label="Direct link to 6. Run Janus in the background (optional)" title="Direct link to 6. Run Janus in the background (optional)" translate="no">​</a></h2>
-<p>Running Janus in a terminal is fine for trying it. To have it start when
-you log in, and again if it stops, run it as a service. From your Janus
+<p>Running Janus in a terminal is fine for trying it. Once Claude Code
+depends on it, which it does as soon as you use the settings file, a
+Janus that is not running is a Claude Code that cannot work, so have it
+start when you log in, and again if it stops, by running it as a
+service. From your Janus
 folder:</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#f0e6d2;--prism-background-color:#1a1210"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#f0e6d2;background-color:#1a1210"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#f0e6d2"><span class="token function command" style="color:#b183b5">janus</span><span class="token plain"> </span><span class="token function" style="color:#b183b5">service</span><span class="token plain"> </span><span class="token function" style="color:#b183b5">install</span><span class="token plain">            </span><span class="token comment" style="color:#a49a8e;font-style:italic"># or: janus service install -config ~/janus/janus.config.json</span><span class="token plain"></span><br></div><div class="token-line" style="color:#f0e6d2"><span class="token plain"></span><span class="token function command" style="color:#b183b5">janus</span><span class="token plain"> </span><span class="token function" style="color:#b183b5">service</span><span class="token plain"> status</span><br></div><div class="token-line" style="color:#f0e6d2"><span class="token plain"></span><span class="token function command" style="color:#b183b5">janus</span><span class="token plain"> </span><span class="token function" style="color:#b183b5">service</span><span class="token plain"> uninstall</span><br></div></code></pre></div></div>
 <p><code>install</code> writes the unit with the full paths of the janus binary and
@@ -289,7 +335,10 @@ stable releases are offered unless you add <code>-pre</code>, or set
 <code>update.prerelease</code> in the config, to count pre-releases too. The check
 asks GitHub for the list of releases and sends nothing else, and only
 when you run one of these commands.</p>
-<p>To hear about a new release without asking, set <code>&quot;update&quot;: {&quot;check&quot;: true}</code> in the config. Janus then looks when it starts, at most once a
+<p>It asks only then because a proxy that sees your prompts should not make
+connections you did not expect: out of the box, Janus talks to Anthropic,
+LM Studio, and nothing else. To hear about a new release without asking,
+set <code>&quot;update&quot;: {&quot;check&quot;: true}</code> in the config. Janus then looks when it starts, at most once a
 day, and prints a line on the console if a newer release is out. It
 never updates itself.</p>
 <p><code>janus update</code> upgrades a copy installed from a release archive. It
@@ -304,8 +353,9 @@ for <code>janus version -check</code>.</p>
 <p>A copy from <code>go install</code> or Homebrew is refused, since those upgrade it
 themselves: run the <code>go install</code> command again, or <code>brew upgrade janus</code>.
 You can also download the new release as in step 1 and replace the
-binary by hand. Your config, ledger, and captures are left as they are. <code>janus version</code> says which version you
-have, and the console prints it at the top when Janus starts.</p>
+binary by hand. Your config, ledger, and captures are left as they are.
+<code>janus version</code> says which version you have, and the console prints it at
+the top when Janus starts.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="removing-janus">Removing Janus<a href="#removing-janus" class="hash-link" aria-label="Direct link to Removing Janus" title="Direct link to Removing Janus" translate="no">​</a></h2>
 <ol>
 <li class="">Stop Janus, and remove its service if you made one (<code>janus service uninstall</code>).</li>
