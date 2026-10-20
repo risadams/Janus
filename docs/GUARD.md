@@ -1,7 +1,25 @@
 # The guard
 
-The guard deals with secrets in requests on their way to Anthropic. It has
-two levels.
+The guard looks for secrets in requests on their way to Anthropic, and
+can swap them for placeholders so that Claude never sees them.
+
+## Why it exists
+
+Claude Code sends Anthropic whatever it reads. Ask it to fix a failing
+deploy and it may open `.env`, print a config file, or run a command
+whose output has a token in it, and all of that goes upstream as part of
+the conversation. It goes again on every later turn, because each turn
+resends the whole conversation. Nobody decided to share the key; it was
+just in the way.
+
+Once a secret has left your machine you cannot call it back, so the only
+useful moment to catch it is before it goes. Janus already sees every
+request, which makes it the one place that can look. The guard is
+cautious on purpose. It starts by only watching, so you can see what it
+finds before you let it change anything, and when it cannot check a
+request, it refuses to send it rather than guess.
+
+## Two levels
 
 **Detect.** With `features.guard` on, Janus scans each request that goes
 upstream and records what it finds: how many secrets, of what kinds, and
@@ -97,6 +115,15 @@ secret was, and can use it: pass it to a command, write it to a file, put
 it in a URL. When the answer comes back, Janus replaces each placeholder
 with the secret it stands for before the client sees it. The tool call
 that runs on your machine has the real value.
+
+Why a placeholder, and not just a blank? Because the work often needs the
+secret to go somewhere: into a deploy script, a `curl` header, a config
+file. Deleting it would break that work, and you would turn redaction off
+to get it done. With a placeholder, Claude can move the secret around
+without knowing what it is.
+
+![A secret's round trip: Claude Code sends a tool result holding a key, Janus sends a placeholder to Anthropic in its place, Claude answers with a tool call that uses the placeholder, and Janus puts the real key back before Claude Code acts](diagrams/redaction.svg#gh-light-mode-only)
+![A secret's round trip: Claude Code sends a tool result holding a key, Janus sends a placeholder to Anthropic in its place, Claude answers with a tool call that uses the placeholder, and Janus puts the real key back before Claude Code acts](diagrams/redaction-dark.svg#gh-dark-mode-only)
 
 ```
 Read .env                       ->  Claude is sent  AWS_ACCESS_KEY_ID=JANUS_REDACTED_3f9a1c07b2e4
@@ -323,6 +350,12 @@ past on any route, not that everything is recognised.
 Detectors go by what content looks like. The local-only policy goes by
 where it came from: you name files, directories, or a marker, and whatever
 is in them does not go to Anthropic, secret-shaped or not.
+
+It exists because much of what should stay private looks like nothing in
+particular. A customer list, a contract, an unreleased plan, or a client's
+code that you are not allowed to share is ordinary text, and no pattern
+will find it. You know where it lives, though, so the policy asks you
+for that instead.
 
 ```json
 "features": { "guard": true },

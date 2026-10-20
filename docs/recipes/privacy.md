@@ -1,7 +1,15 @@
 # Recipe: keep secrets and private files from leaving
 
-Three levels, each a setting. Start with the first and look at what it
-finds before turning on the rest.
+Claude Code sends Anthropic whatever it reads, and it reads a lot: config
+files, command output, the file you asked about and the three next to it.
+This recipe stops the parts you would rather keep.
+
+There are three levels, each a setting. Start with the first and look at
+what it finds before turning on the rest. Seeing what actually leaves
+first matters for two reasons: it tells you whether you have a problem
+at all, and it shows you what the guard catches before you let it change
+your requests, so a false match surprises you in a report and not in the
+middle of a deploy.
 
 ## 1. Find out what is leaving
 

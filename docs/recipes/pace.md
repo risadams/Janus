@@ -12,6 +12,18 @@ has refused, and then it takes over everything, the main conversation
 included. In the first days of real use the five-hour limit was reached
 twice, and the local model answered main turns for an hour and a half.
 
+That is the wrong way round. The main conversation is where the hard
+thinking happens, so it is the last thing you want a weaker model doing.
+Subagents, which mostly read and search, are the first thing you can
+spare. Pacing gives them up early so the main conversation keeps Claude
+for longer:
+
+![One five-hour window: Claude answers everything until 80% of the limit is used, then subagents go to the local model while the main conversation stays on Claude; when the limit is reached the local model stands in for the main conversation too, and when the limit resets Claude answers again and Janus notes the hand-back](../diagrams/usage-window.svg#gh-light-mode-only)
+![One five-hour window: Claude answers everything until 80% of the limit is used, then subagents go to the local model while the main conversation stays on Claude; when the limit is reached the local model stands in for the main conversation too, and when the limit resets Claude answers again and Janus notes the hand-back](../diagrams/usage-window-dark.svg#gh-dark-mode-only)
+
+The setup below gives you exactly this picture: a pacing rule for
+subagents, and an outage stand-in behind it for everything else.
+
 ## Set it up
 
 You need a local model configured, as in

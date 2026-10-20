@@ -4,6 +4,16 @@ Have the local model stand in when Anthropic cannot answer: an outage, an
 overload, no network, or a rate limit. On a subscription, running out of
 usage arrives as a rate limit, so this covers that too.
 
+Why have it at all? Because a subscription's limits arrive in the middle
+of work. When Claude stops answering, Claude Code stops too, and you are
+left waiting for a reset with a half-finished change and the whole plan
+in your head. A slower, weaker model that can keep reading, running
+tests, and making small edits is better than nothing, and the work it does
+is there for Claude to check when it is back.
+
+[Pacing](pace.md) has a picture of the stand-in and pacing working
+together over one five-hour window.
+
 ## Set it up
 
 You need a local model configured, as in

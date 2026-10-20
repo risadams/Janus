@@ -1,7 +1,21 @@
 # The ledger and captures
 
-Janus writes two kinds of record under `logging.dir` (default `logs/`,
-next to the config file).
+Claude Code makes hundreds of requests in a long session, and from the
+outside you see none of them. The ledger is there so you can: which
+requests were made, who answered each one, what it cost, and what Janus
+did to it and why. Every other feature reports itself here, so you can
+tell whether turning it on was worth it. That is also how Janus is
+built: a feature that cannot show a saving in the ledger stays off by
+default.
+
+Captures are the other half. The ledger says what happened; a capture
+holds the request and the answer in full, so you can check the ledger's
+word against what was actually sent, or replay a request on a local model
+later.
+
+Janus writes both under `logging.dir`, which is a folder of your own by
+default, such as `~/Library/Application Support/janus` on macOS; the
+[configuration reference](CONFIG.md) has the rest.
 
 | | Ledger | Captures |
 | --- | --- | --- |

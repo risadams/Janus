@@ -4,6 +4,30 @@ Janus sits between Claude Code and Anthropic. This page lists every way
 it alters what passes through, and how to see for yourself. If something
 is not listed here, Janus does not do it.
 
+## Why the list is short
+
+A proxy that reads your traffic is only worth running if you can trust
+what it does to it. So Janus starts from doing nothing: everything it
+might change is behind a switch, and every change it makes is named in the
+ledger and can be checked against a copy of what was sent.
+
+There is a second reason, and it is about money. Each turn of a Claude Code
+conversation sends the whole conversation again, and Anthropic reads the
+part it has seen before from its prompt cache at a tenth of the input
+price. Change one block that was already sent, even by a byte, and that
+block and everything after it is written to the cache again, at twice the
+input price. On a long conversation that is a dollar or more for a single
+turn, more than any rewrite could save.
+
+![Why a block once sent never changes: turns that resend the same bytes are read from the cache, but a change to an earlier block makes it and everything after it a cache write](diagrams/prompt-cache.svg#gh-light-mode-only)
+![Why a block once sent never changes: turns that resend the same bytes are read from the cache, but a change to an earlier block makes it and everything after it a cache write](diagrams/prompt-cache-dark.svg#gh-dark-mode-only)
+
+So when Janus does change a request, it decides once, when a block is
+first sent, and sends that block in exactly the same bytes on every later
+turn. Thinking blocks are never changed at all: Anthropic signs them and
+would reject an altered one. The [baseline](research/baseline.md) has
+the measurements behind these prices.
+
 ## With nothing switched on
 
 A fresh install forwards each request to Anthropic and each response back,

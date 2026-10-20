@@ -7,6 +7,12 @@ one normal response either way.
 Use this in place of a plain `local` rule when you are not yet sure the
 local model is up to the work, which at the start is always.
 
+The reason it exists is that a local model fails in ways you would want
+to catch: it stops halfway, calls a tool that is not there, or says it
+cannot help. Without a check, Claude Code takes that answer as it is and
+carries on from it. With one, a broken answer never reaches Claude Code,
+and you can find out how often the model fails before you rely on it.
+
 ## Set it up
 
 You need a local model configured, as in
@@ -41,7 +47,14 @@ the model when you route work to it.
 Time, and it costs it twice when the local model fails: the client waits
 for the local attempt, then for Claude. Nothing is streamed while the
 local answer is being held for checking, so Claude Code shows nothing
-until it is accepted.
+until it is accepted. The answer has to be held, because once part of it
+has reached Claude Code it cannot be taken back.
+
+![What local-first costs in time: Claude alone streams at once and is done in a few seconds; a local answer is held back about 34 seconds while it is checked, and if it fails, Claude answers after that wait](../diagrams/local-first.svg#gh-light-mode-only)
+![What local-first costs in time: Claude alone streams at once and is done in a few seconds; a local answer is held back about 34 seconds while it is checked, and if it fails, Claude answers after that wait](../diagrams/local-first-dark.svg#gh-dark-mode-only)
+
+The times are from real use: Claude's the range seen in the first tests,
+the local model's the median of local-first attempts on 12 to 14 October.
 
 A model that fails often is worse than not using it. Watch the rate:
 
