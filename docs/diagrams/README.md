@@ -6,33 +6,86 @@ colour scheme. A diagram is here when a picture says something better
 than a paragraph: how the parts fit, what happens over time, or why a
 rule is the way it is.
 
+## Where Janus sits
+
 ![Where Janus sits](architecture.svg#gh-light-mode-only)
 ![Where Janus sits](architecture-dark.svg#gh-dark-mode-only)
+
+Claude Code talks only to Janus; Janus sends most requests to Anthropic,
+the ones its rules choose to LM Studio, and records each in the ledger.
+
+Shown in the [README](../../README.md) and [the user
+guide](../guide/README.md). Source:
+[architecture.html](architecture.html),
+[architecture-dark.html](architecture-dark.html).
+
+## What happens to one request
 
 ![What happens to one request](request-flow.svg#gh-light-mode-only)
 ![What happens to one request](request-flow-dark.svg#gh-dark-mode-only)
 
-| Diagram | Light | Dark |
-| --- | --- | --- |
-| Where Janus sits | [architecture.html](architecture.html), [.svg](architecture.svg) | [architecture-dark.html](architecture-dark.html), [.svg](architecture-dark.svg) |
-| What happens to one request | [request-flow.html](request-flow.html), [.svg](request-flow.svg) | [request-flow-dark.html](request-flow-dark.html), [.svg](request-flow-dark.svg) |
-| Why a block once sent never changes | [prompt-cache.html](prompt-cache.html), [.svg](prompt-cache.svg) | [prompt-cache-dark.html](prompt-cache-dark.html), [.svg](prompt-cache-dark.svg) |
-| A secret's round trip through the guard | [redaction.html](redaction.html), [.svg](redaction.svg) | [redaction-dark.html](redaction-dark.html), [.svg](redaction-dark.svg) |
-| One five-hour window, with pacing and a stand-in | [usage-window.html](usage-window.html), [.svg](usage-window.svg) | [usage-window-dark.html](usage-window-dark.html), [.svg](usage-window-dark.svg) |
-| What local-first costs in time | [local-first.html](local-first.html), [.svg](local-first.svg) | [local-first-dark.html](local-first-dark.html), [.svg](local-first-dark.svg) |
+The path one request takes, from the local-only check to the ledger. A
+request the local-only policy keeps local never takes a path to
+Anthropic: if the local model cannot answer it, Janus refuses it rather
+than following the "no / down" arrow.
 
-| Diagram | Shown in |
-| --- | --- |
-| Where Janus sits | The README, [the user guide](../guide/README.md) |
-| What happens to one request | The README |
-| Why a block once sent never changes | [What Janus changes](../WHAT-JANUS-CHANGES.md#why-the-list-is-short) |
-| A secret's round trip | [The guard](../GUARD.md#redaction) |
-| One five-hour window | [Pacing](../recipes/pace.md) |
-| What local-first costs in time | [Local first](../recipes/local-first.md#what-it-costs) |
+Shown in the [README](../../README.md#what-happens-to-a-request).
+Source: [request-flow.html](request-flow.html),
+[request-flow-dark.html](request-flow-dark.html).
 
-In the request flow, a request the local-only policy keeps local never
-takes a path to Anthropic: if the local model cannot answer it, Janus
-refuses it rather than following the "no / down" arrow.
+## Why a block once sent never changes
+
+![Why a block once sent never changes](prompt-cache.svg#gh-light-mode-only)
+![Why a block once sent never changes](prompt-cache-dark.svg#gh-dark-mode-only)
+
+Each turn resends the whole conversation, and what was sent before is
+read from the prompt cache cheaply. Change an earlier block and it, and
+everything after it, is written to the cache again at twenty times the
+price, which is why Janus never does.
+
+Shown in [What Janus
+changes](../WHAT-JANUS-CHANGES.md#why-the-list-is-short). Source:
+[prompt-cache.html](prompt-cache.html),
+[prompt-cache-dark.html](prompt-cache-dark.html).
+
+## A secret’s round trip through the guard
+
+![A secret’s round trip through the guard](redaction.svg#gh-light-mode-only)
+![A secret’s round trip through the guard](redaction-dark.svg#gh-dark-mode-only)
+
+With redaction on, Claude sees only a placeholder, uses it in a tool
+call, and Janus puts the real secret back before Claude Code acts.
+
+Shown in [The guard](../GUARD.md#redaction). Source:
+[redaction.html](redaction.html),
+[redaction-dark.html](redaction-dark.html).
+
+## One five-hour window, with pacing and a stand-in
+
+![One five-hour window, with pacing and a stand-in](usage-window.svg#gh-light-mode-only)
+![One five-hour window, with pacing and a stand-in](usage-window-dark.svg#gh-dark-mode-only)
+
+As a usage limit fills, a pacing rule moves subagents to the local model
+first, the outage stand-in takes the main conversation once the limit is
+reached, and Janus notes when Claude takes over again.
+
+Shown in [Pacing](../recipes/pace.md). Source:
+[usage-window.html](usage-window.html),
+[usage-window-dark.html](usage-window-dark.html).
+
+## What local-first costs in time
+
+![What local-first costs in time](local-first.svg#gh-light-mode-only)
+![What local-first costs in time](local-first-dark.svg#gh-dark-mode-only)
+
+A local answer is held back while it is checked, and a rejected one
+makes Claude Code wait for both models.
+
+Shown in [Local first](../recipes/local-first.md#what-it-costs). Source:
+[local-first.html](local-first.html),
+[local-first-dark.html](local-first-dark.html).
+
+## How they are made
 
 The HTML files are the source. They were made with the
 [diagram-design](https://github.com/cathrynlavery/diagram-design) skill in
@@ -57,8 +110,8 @@ light file becomes its dark one, and nothing else changes but the
 | `#CB0162` rose, and `rgba(203,1,98,x)` | `#e24a8a`, and `rgba(226,74,138,x)`; a `0.08` tint becomes `0.10` |
 | `#1a5b6e` teal, and `rgba(26,91,110,x)` | `#5ba3b8`, and `rgba(91,163,184,x)` |
 
-Each SVG is exported from its HTML
-with that skill's `export_svg.py --system-fonts`, so it loads no web fonts
+Each SVG is exported from its HTML with that skill's `export_svg.py
+--system-fonts`, so it loads no web fonts
 and makes no network request. Edit the light HTML, make the dark one
 from it again, then export both.
 
