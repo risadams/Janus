@@ -22,6 +22,7 @@ jobs:
           - { pkg: ./internal/anthropic, target: FuzzObserverIgnoresHowTheBodyIsCut }
           - { pkg: ./internal/guard, target: FuzzRestoreAnyCut }
           - { pkg: ./internal/guard, target: FuzzDataHeredocs }
+          - { pkg: ./internal/guard, target: FuzzDataArguments }
           - { pkg: ./internal/mcp, target: FuzzServe }
           - { pkg: ./internal/digest, target: FuzzExcerpt }
           - { pkg: ./internal/update, target: FuzzCompare }

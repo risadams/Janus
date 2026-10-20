@@ -36,8 +36,9 @@ The whole output is kept as the run's `stress-log` artifact
 (`gh run download <run id> -n stress-log`).
 
 Fuzz targets (`Fuzz*`) cover the code that reads untrusted input: request
-parsing, response streams, the secret-restoring stream, the MCP loop,
-release tags, and `tool_output`. CI runs each for 30 seconds; run one longer with
+parsing, response streams, the secret-restoring stream, Bash commands, the
+MCP loop, release tags, and `tool_output`. CI runs each for 30 seconds; run
+one longer with
 `go test ./internal/guard -run '^$' -fuzz FuzzRestoreAnyCut -fuzztime 5m`.
 A failure lands in `testdata/fuzz/`; commit it with the fix, as a
 regression case. Seeds are built by hand, never taken from captures.

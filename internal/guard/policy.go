@@ -232,6 +232,7 @@ func (p *Policy) Check(req *anthropic.Request) Match {
 // its arguments name files.
 var dataArgs = map[string][]string{
 	"Bash":         {"description"},
+	"Grep":         {"pattern"},
 	"Write":        {"content"},
 	"Edit":         {"old_string", "new_string"},
 	"MultiEdit":    {"edits"},
@@ -243,7 +244,8 @@ var dataArgs = map[string][]string{
 // {"file_path": "secrets/db.yaml"} and the one in {"command": "cat
 // secrets/db.yaml | head"} are both found. The data arguments of Claude
 // Code's own tools are left out, and so are heredoc bodies a Bash command
-// only writes out (dataHeredocs).
+// only writes out (dataHeredocs) and the arguments of its programs that are
+// expressions or text (dataArguments).
 func pathsIn(tool string, input json.RawMessage) []string {
 	var v any
 	if json.Unmarshal(input, &v) != nil {
@@ -254,7 +256,7 @@ func pathsIn(tool string, input json.RawMessage) []string {
 			delete(args, key)
 		}
 		if command, ok := args["command"].(string); ok && tool == "Bash" {
-			args["command"] = dataHeredocs(command)
+			args["command"] = dataArguments(dataHeredocs(command))
 		}
 	}
 	var out []string
