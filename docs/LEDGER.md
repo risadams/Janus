@@ -17,6 +17,16 @@ Janus writes both under `logging.dir`, which is a folder of your own by
 default, such as `~/Library/Application Support/janus` on macOS; the
 [configuration reference](CONFIG.md) has the rest.
 
+This page is long because it is the reference for every figure. Read the
+part you need:
+
+| If you want to | Read |
+| --- | --- |
+| Understand a console line | [The console](#the-console) |
+| Understand a `janus stats` report | [`janus stats`](#janus-stats), and [how cost is worked out](#how-cost-is-worked-out) |
+| Read the ledger with a script | [Ledger record](#ledger-record-schema-version-1) |
+| Find a request's full text | [Captures](#captures) |
+
 | | Ledger | Captures |
 | --- | --- | --- |
 | Where | `<logging.dir>/ledger/<day>.jsonl` | `<logging.dir>/captures/<day>/<id>_<path>.*` |
@@ -109,7 +119,7 @@ used to; `janus stats` says how many, and `-json` has them as
 | `agent` | string | Claude Code's subagent id, from `X-Claude-Code-Agent-Id`. Omitted for the main loop. |
 | `claude_code` | string | The Claude Code release that sent the request, such as `2.1.301`, from its `User-Agent`; `janus doctor` warns when it is outside the releases Janus was tested with. Omitted for other clients, and in records written by a Janus older than v0.9.0-rc.17. |
 | `method`, `path` | string | The request line |
-| `class` | string | `main`, `subagent`, `connectivity`, `quota` (Claude Code reading its rate limits at start-up with a one-token request; a `429` answer to it is normal), `compaction` (Claude Code asking for a summary of the conversation to replace it, as `/compact` does), `status` (Claude Code asking for a few words on what a subagent is doing, for its progress line), `safety` (Claude Code's auto-mode safety classifier grading an action before it runs; recognised by its system prompt), `token_count` (`POST /v1/messages/count_tokens`), or `unknown` |
+| `class` | string | What kind of request it was; see [classes](#class) |
 | `route` | string | Where the request was sent: `upstream`, `local`, or `shadow` for a shadow run |
 | `reason` | string | What decided it: `passthrough` (nothing matched), `model alias <name>`, `rule <name>`, or `override <value>` for a request that chose its own route. When a rule's local route could not be used, the reason says why and ends `; sent upstream`. When Claude could not answer and a rule's `ifDown` stand-in did not answer either, it says what Claude did and why the local model did not stand in, e.g. `rule main: upstream answered HTTP 429; no local stand-in: this request is about 281000 tokens, …`. For a refused request, why. |
 | `stages` | string[] | Changes made to the request on the way: `set_model`, `lift_tool_additions`, `drop_deferred_tools`, `fold_system_messages`, `tool_references_as_text`, `leave_out_messages`, `load_model` for a local request; `drop_unsigned_thinking` for an upstream one whose history a local model had a turn in |
@@ -124,7 +134,7 @@ used to; `janus stats` says how many, and `-json` has them as
 | `response` | object | Messages responses only: `model`, `stop_reason`, `blocks` (content block types in order), `tools` (names of the tools called, in order) |
 | `usage` | object | Messages responses only; see below |
 | `unread` | string | Why a Messages response has no `usage`, e.g. `content-encoding br`, or a gzip body larger than 256 MiB once decompressed |
-| `quota` | object | On a response from Claude through a subscription: how much of each usage limit is used. `windows` holds each limit by the API's name for its window (`5h`, `7d`), with `utilization` (the share used, from 0; above 1 is over), `status`, and `resets` (when it starts again); `status` is the account's overall status (`allowed`, `allowed_warning`, `rejected`), and `binding` the limit the API says counts now (`five_hour`, `seven_day`). Read from the `anthropic-ratelimit-unified-*` headers; nothing else in them is kept. When the local model stood in, it is what Claude's refusal said. Absent with an API key, and on local answers. |
+| `quota` | object | On a subscription: how much of each usage limit is used; see [`quota`](#quota) |
 | `handback` | object | On Claude's first answer to a conversation's main loop after the local model stood in for it: `local_turns`, how many main-loop turns the local model gave, and `since`, when the first of them was. `janus stats` counts them. |
 | `fault` | string | What went wrong getting the response from the backend: it could not be reached or did not answer in time, with no fallback (Janus then answered with an error of its own), or its response broke off part-way, e.g. a dropped connection. Absent for a response that arrived whole, and for one the client abandoned. |
 | `capture` | string | The capture's path under `captures/`, without extension |
@@ -135,6 +145,33 @@ used to; `janus stats` says how many, and `-json` has them as
 | `worker` | object | Present on a record of delegated work, where Claude called a tool that the local model carried out: `tool`, `files`, `read_bytes`, `model_calls`, `answer_bytes`, `avoided_tokens`. Such a record has `class` `worker` and `method` `TOOL`, is not a proxied request, and is left out of the request totals. |
 | `shadow_of` | string | Present on a shadow run: the id of the real request it repeated on the local model. Shadow records have `route` `shadow` and an id ending `-shadow`, and are left out of every total. |
 | `compare` | object | On a shadow run that came back whole: `upstream_stop`, `local_stop`, `upstream_tools`, `local_tools`, `stop_match`, `tools_match`, and `upstream_ms` (how long the real answer took) |
+
+### `class`
+
+| Value | The request |
+| --- | --- |
+| `main` | Claude Code's main conversation |
+| `subagent` | A helper Claude Code started |
+| `status` | Claude Code asking for a few words on what a subagent is doing, for its progress line |
+| `safety` | Auto mode's safety classifier grading an action before it runs; recognised by its system prompt |
+| `compaction` | Claude Code asking for a summary of the conversation to replace it, as `/compact` does |
+| `quota` | Claude Code reading its rate limits at start-up with a one-token request; a `429` answer to it is normal |
+| `token_count` | `POST /v1/messages/count_tokens` |
+| `connectivity` | A connectivity check |
+| `unknown` | None of the above |
+
+### `quota`
+
+Present on a response from Claude through a subscription, read from the
+`anthropic-ratelimit-unified-*` headers; nothing else in them is kept.
+Absent with an API key, and on local answers. When the local model stood
+in, it is what Claude's refusal said.
+
+| Field | Meaning |
+| --- | --- |
+| `windows` | Each limit by the API's name for its window (`5h`, `7d`), with `utilization` (the share used, from 0; above 1 is over), `status`, and `resets` (when it starts again) |
+| `status` | The account's overall status: `allowed`, `allowed_warning`, or `rejected` |
+| `binding` | The limit the API says counts now: `five_hour` or `seven_day` |
 
 ### `outcome`
 
@@ -363,6 +400,16 @@ one from after; a record in both is counted once.
 
 ### How cost is worked out
 
+Before the formula, where the money goes. Over a week of real use, most of
+it was not Claude writing but Claude reading the conversation back from
+the cache:
+
+![Where the money goes, by kind of token: cache reads 63% of a week's cost, one-hour cache writes 23%, output 14%](diagrams/token-cost.svg#gh-light-mode-only)
+![Where the money goes, by kind of token: cache reads 63% of a week's cost, one-hour cache writes 23%, output 14%](diagrams/token-cost-dark.svg#gh-dark-mode-only)
+
+That is why `janus stats` splits every figure by kind of token, and why
+the cache hit rate is the first number to watch.
+
 Cost is computed when you run `janus stats`, not stored, so a corrected
 price applies to old records too. Per response:
 
@@ -398,7 +445,7 @@ printed in every report, and any entry can be corrected or added under
 
 ## Captures
 
-Each request produces three files sharing a name:
+Each request produces three or four files sharing a name:
 
 | File | Contents |
 | --- | --- |

@@ -1,7 +1,9 @@
 # Configuring Janus
 
 Everything Janus does beyond keeping the books is set in one file,
-`janus.config.json`. This page explains where it is, how it is laid out,
+`janus.config.json`, and everything in it is off until you turn it on.
+That way a new Janus changes nothing about how Claude Code works, and
+each feature you add is one you chose and can check in the ledger. This page explains where it is, how it is laid out,
 and how to change it, then gives complete configs for the common setups.
 For every field, see the [configuration reference](../CONFIG.md).
 
@@ -32,7 +34,7 @@ The file Janus writes on its first run:
   "upstream": { "baseUrl": "https://api.anthropic.com" },
   "local": { "baseUrl": "http://studio.local:1234" },
   "features": { "route": false, "escalate": false, "compress": false, "guard": false },
-  "logging": { "dir": "logs", "capture": true, "retainDays": 7, "maxMegabytes": 1024 }
+  "logging": { "dir": "/Users/you/Library/Application Support/janus", "capture": true, "retainDays": 7, "maxMegabytes": 1024 }
 }
 ```
 
@@ -90,13 +92,19 @@ file, by flag or environment variable: `-listen` or `JANUS_LISTEN`,
 With `features.route` on, Janus decides where each request goes in this
 order:
 
-1. **An alias.** A request for a model named in `local.models` (such as
+![How Janus chooses where a request goes: a route header first, then a model alias, then the rules in order, the first match choosing upstream, shadow, local-then-escalate, or local; a request nothing matches goes to Claude untouched](../diagrams/route-decision.svg#gh-light-mode-only)
+![How Janus chooses where a request goes: a route header first, then a model alias, then the rules in order, the first match choosing upstream, shadow, local-then-escalate, or local; a request nothing matches goes to Claude untouched](../diagrams/route-decision-dark.svg#gh-dark-mode-only)
+
+1. **A route header.** `X-Janus-Route`, if a request carries it, beats
+   everything below ([choosing the route
+   yourself](use.md#choosing-the-route-yourself)).
+2. **An alias.** A request for a model named in `local.models` (such as
    `janus-local`) goes to that local model.
-2. **The rules**, in the order they are listed. The first rule a request
+3. **The rules**, in the order they are listed. The first rule a request
    matches decides. Rules match on the request's class (`main`,
    `subagent`, and a few of Claude Code's background requests), the model
    asked for, its size, and whether it offers tools.
-3. **Anything else** goes to Claude untouched.
+4. **Anything else** goes to Claude untouched.
 
 A rule's `route` says what happens to the requests it matches:
 
@@ -125,7 +133,7 @@ This one also turns captures off, so no prompts or code are kept on disk:
 ```json
 {
   "listen": "127.0.0.1:8787",
-  "logging": { "dir": "logs", "capture": false }
+  "logging": { "capture": false }
 }
 ```
 
@@ -233,7 +241,7 @@ stand-in for the main conversation when Claude is down, and the guard on.
     "redact": true,
     "localOnly": { "paths": [".env*", "secrets/**", "*.pem"] }
   },
-  "logging": { "dir": "logs", "capture": true, "retainDays": 7, "maxMegabytes": 1024 }
+  "logging": { "capture": true, "retainDays": 7, "maxMegabytes": 1024 }
 }
 ```
 

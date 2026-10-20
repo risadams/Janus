@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 516" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ask-files-title ask-files-desc" id="ask-files-root">
+        <title id="ask-files-title">Handing reading to the local model</title>
+        <desc id="ask-files-desc">Claude calls the ask_files tool; Claude Code passes it to janus mcp, which has the local model read the files in passes and answer; Claude gets a short answer with file and line references instead of the files.</desc>
+        <defs>
+      <style>#ask-files-root { --color-paper:   #faf6ef;
+      --color-ink:     #1a1614;
+      --color-muted:   #6b625a;
+      --color-accent:  #CB0162;
+      --font-sans:     'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-serif:    'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-mono:     'JetBrains Mono', ui-monospace, monospace; }
+      #ask-files-root { font-family: var(--font-serif); color: var(--color-ink); }
+      #ask-files-root .diagram-container { width: 100%; overflow-x: auto; }
+      #ask-files-root .diagram-container { overflow-x: visible; }</style>
+          <marker id="ask-files-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6b625a"/></marker>
+          <marker id="ask-files-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#CB0162"/></marker>
+          <marker id="ask-files-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1a5b6e"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#faf6ef"/>
+
+        <!-- Lifelines -->
+        <line x1="130" y1="72" x2="130" y2="420" stroke="#1a1614" stroke-width="1" stroke-dasharray="3,3" stroke-opacity="0.20"/>
+        <line x1="370" y1="72" x2="370" y2="420" stroke="#1a1614" stroke-width="1" stroke-dasharray="3,3" stroke-opacity="0.20"/>
+        <line x1="610" y1="72" x2="610" y2="420" stroke="#1a1614" stroke-width="1" stroke-dasharray="3,3" stroke-opacity="0.20"/>
+        <line x1="850" y1="72" x2="850" y2="420" stroke="#1a1614" stroke-width="1" stroke-dasharray="3,3" stroke-opacity="0.20"/>
+
+        <!-- Messages -->
+        <line x1="130" y1="120" x2="364" y2="120" stroke="#1a5b6e" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#ask-files-arrow-link)"/>
+        <rect x="157" y="98" width="186" height="14" rx="2" fill="#faf6ef"/>
+        <text x="250" y="108" fill="#776e65" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">call ask_files(paths, question)</text>
+        <line x1="370" y1="168" x2="604" y2="168" stroke="#6b625a" stroke-width="1.2" marker-end="url(#ask-files-arrow)"/>
+        <rect x="459" y="146" width="62" height="14" rx="2" fill="#faf6ef"/>
+        <text x="490" y="156" fill="#776e65" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">ask_files</text>
+        <line x1="610" y1="216" x2="844" y2="216" stroke="#6b625a" stroke-width="1.2" marker-end="url(#ask-files-arrow)"/>
+        <rect x="654" y="194" width="152" height="14" rx="2" fill="#faf6ef"/>
+        <text x="730" y="204" fill="#776e65" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">the files, read in passes</text>
+        <line x1="850" y1="280" x2="616" y2="280" stroke="#6b625a" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#ask-files-arrow)"/>
+        <rect x="665" y="258" width="130" height="14" rx="2" fill="#faf6ef"/>
+        <text x="730" y="268" fill="#776e65" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">notes, then an answer</text>
+        <line x1="610" y1="328" x2="376" y2="328" stroke="#6b625a" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#ask-files-arrow)"/>
+        <rect x="397" y="306" width="186" height="14" rx="2" fill="#faf6ef"/>
+        <text x="490" y="316" fill="#776e65" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">about 300 words, with file:line</text>
+        <line x1="370" y1="392" x2="136" y2="392" stroke="#CB0162" stroke-width="1.4" marker-end="url(#ask-files-arrow-accent)"/>
+        <rect x="157" y="370" width="186" height="14" rx="2" fill="#faf6ef"/>
+        <text x="250" y="380" fill="#776e65" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">the short answer, not the files</text>
+
+        <!-- Actors -->
+        <rect x="50" y="20" width="160" height="52" rx="6" fill="#faf6ef"/>
+        <rect x="50" y="20" width="160" height="52" rx="6" fill="#1a1614" stroke="#1a1614" stroke-width="1" fill-opacity="0.03" stroke-opacity="0.30"/>
+        <text x="130" y="44" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Claude</text>
+        <text x="130" y="60" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">api.anthropic.com</text>
+        <rect x="290" y="20" width="160" height="52" rx="6" fill="#faf6ef"/>
+        <rect x="290" y="20" width="160" height="52" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="370" y="44" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Claude Code</text>
+        <text x="370" y="60" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">your machine</text>
+        <rect x="530" y="20" width="160" height="52" rx="6" fill="#faf6ef"/>
+        <rect x="530" y="20" width="160" height="52" rx="6" fill="#cb0162" stroke="#CB0162" stroke-width="1.2" fill-opacity="0.08"/>
+        <text x="610" y="44" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">janus mcp</text>
+        <text x="610" y="60" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">ask_files</text>
+        <rect x="770" y="20" width="160" height="52" rx="6" fill="#faf6ef"/>
+        <rect x="770" y="20" width="160" height="52" rx="6" fill="#fffdf8" stroke="#1a1614" stroke-width="1"/>
+        <text x="850" y="44" fill="#1a1614" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">LM Studio</text>
+        <text x="850" y="60" fill="#6b625a" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">the local model</text>
+        <text x="370" y="448" fill="#6b625a" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-style="italic">the files never enter Claude’s context</text>
+        <text x="730" y="448" fill="#6b625a" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-style="italic">about a minute per 45 kB read</text>
+        <line x1="30" y1="468" x2="930" y2="468" stroke="#1a1614" stroke-width="0.8" stroke-opacity="0.10"/>
+        <text x="30" y="496" fill="#6b625a" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">LEGEND</text>
+        <line x1="100" y1="492" x2="132" y2="492" stroke="#1a5b6e" stroke-width="1.2" marker-end="url(#ask-files-arrow-link)"/>
+        <text x="140" y="496" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">From Anthropic</text>
+        <line x1="260" y1="492" x2="292" y2="492" stroke="#6b625a" stroke-width="1.2" marker-end="url(#ask-files-arrow)"/>
+        <text x="300" y="496" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">On your machine</text>
+        <line x1="420" y1="492" x2="452" y2="492" stroke="#CB0162" stroke-width="1.4" marker-end="url(#ask-files-arrow-accent)"/>
+        <text x="460" y="496" fill="#6b625a" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">What Claude reads instead of the files</text>
+      </svg>

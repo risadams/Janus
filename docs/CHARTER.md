@@ -28,20 +28,8 @@ watches. Janus acts.
 Claude is the brain. The local model is the workhorse. Janus decides which
 one a piece of work needs, local-first.
 
-```
-                    ┌──────────────────────── Janus ────────────────────────┐
-                    │                                                       │
- Claude Code ──────▶│ classify ─▶ guard ─▶ route ─┬─▶ compress ─▶ upstream ─┼──▶ Anthropic API
- (Messages API)     │                             │                         │
-        ▲           │                             └─▶ local ─▶ validate ────┼──▶ LM Studio
-        │           │                                    │ fail             │
-        │           │                                    └──▶ escalate ─────┼──▶ Anthropic API
-        │           │                                                       │
-        │           │ ledger: every decision, token, and dollar recorded    │
-        │           └───────────────────────────────────────────────────────┘
-        │
-        └── janus mcp: worker tools Claude calls to hand subtasks to the local model
-```
+![Claude is the brain, the local model the workhorse: Claude Code sends every request to Janus, which classifies, guards, and routes it to Anthropic, compressed, or to the local model, escalating to Claude when a local answer fails; Claude can delegate reading to the local model through janus mcp; every decision goes in the ledger](diagrams/operating-model.svg#gh-light-mode-only)
+![Claude is the brain, the local model the workhorse: Claude Code sends every request to Janus, which classifies, guards, and routes it to Anthropic, compressed, or to the local model, escalating to Claude when a local answer fails; Claude can delegate reading to the local model through janus mcp; every decision goes in the ledger](diagrams/operating-model-dark.svg#gh-dark-mode-only)
 
 Four mechanisms, combined:
 

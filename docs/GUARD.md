@@ -21,6 +21,12 @@ request, it refuses to send it rather than guess.
 
 ## Two levels
 
+Two levels for secrets, and a third, the local-only policy, for whole
+files:
+
+![Three levels of keeping things in: find out what leaves, replace secrets with placeholders, and keep named files local](diagrams/privacy-levels.svg#gh-light-mode-only)
+![Three levels of keeping things in: find out what leaves, replace secrets with placeholders, and keep named files local](diagrams/privacy-levels-dark.svg#gh-dark-mode-only)
+
 **Detect.** With `features.guard` on, Janus scans each request that goes
 upstream and records what it finds: how many secrets, of what kinds, and
 in which part of the request. Nothing is changed. Use it to find out what

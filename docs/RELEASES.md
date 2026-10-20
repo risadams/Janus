@@ -20,7 +20,7 @@ with release candidates of a coming version as `vMAJOR.MINOR.PATCH-rc.N`.
   anything. GitHub marks it as a pre-release, and `janus update`,
   `janus version -check`, `janus doctor`, and the startup notice offer one
   only with `-pre` or `update.prerelease`. The Homebrew, Scoop, and winget
-  packages, once they exist (#260, #261), get stable releases only.
+  packages get stable releases only.
 - **A stable release** keeps the promises below for every later release
   with the same major version.
 

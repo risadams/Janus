@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>When the local model stands in for Claude</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=JetBrains+Mono:wght@400;500;600&family=Caveat:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #1a1614;
+      --color-ink:     #f4ecdd;
+      --color-muted:   #a89e8f;
+      --color-accent:  #e24a8a;
+      --font-sans:     'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-serif:    'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-mono:     'JetBrains Mono', ui-monospace, monospace;
+    }
+    body { font-family: var(--font-serif); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-variation-settings: "SOFT" 60, "WONK" 1; font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Flowchart · Janus · Ris Ink</p>
+    <h1>When the local model stands in for Claude</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 960 656" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="stand-in-dark-title stand-in-dark-desc">
+        <title id="stand-in-dark-title">When the local model stands in for Claude</title>
+        <desc id="stand-in-dark-desc">When Claude cannot answer, an error about the request itself is passed on untouched; a 429 that will last a minute or more brings the local model in at once; anything else goes to Claude Code to retry, and on the third failure within two minutes the local model stands in.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#a89e8f"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#e24a8a"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5ba3b8"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#1a1614"/>
+
+        <!-- Arrows first -->
+        <path d="M 200,60 V 88" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 290,130 H 418" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="340" y="109" width="28" height="12" rx="2" fill="#1a1614"/>
+        <text x="354" y="118" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">YES</text>
+        <path d="M 200,170 V 208" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="210" y="183" width="24" height="12" rx="2" fill="#1a1614"/>
+        <text x="222" y="192" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">NO</text>
+        <path d="M 290,250 H 678" fill="none" stroke="#e24a8a" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="444" y="229" width="80" height="12" rx="2" fill="#1a1614"/>
+        <text x="484" y="238" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">YES, A LIMIT</text>
+        <path d="M 200,290 V 328" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="210" y="303" width="24" height="12" rx="2" fill="#1a1614"/>
+        <text x="222" y="312" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">NO</text>
+        <path d="M 200,384 V 428" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 290,470 H 792 Q 800,470 800,462 V 280" fill="none" stroke="#e24a8a" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="501" y="449" width="90" height="12" rx="2" fill="#1a1614"/>
+        <text x="546" y="458" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">YES, AN OUTAGE</text>
+        <path d="M 200,510 V 548" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="210" y="523" width="24" height="12" rx="2" fill="#1a1614"/>
+        <text x="222" y="532" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">NO</text>
+
+        <!-- Nodes -->
+        <rect x="100" y="20" width="200" height="40" rx="20" fill="#1a1614"/>
+        <rect x="100" y="20" width="200" height="40" rx="20" fill="rgba(168,158,143,0.10)" stroke="#948b7d" stroke-width="1"/>
+        <text x="200" y="44" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Claude could not answer</text>
+        <polygon points="200,90 290,130 200,170 110,130" fill="#1a1614"/>
+        <polygon points="200,90 290,130 200,170 110,130" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="200" y="127" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">About the</text>
+        <text x="200" y="141" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">request itself?</text>
+        <rect x="420" y="102" width="260" height="56" rx="6" fill="#1a1614"/>
+        <rect x="420" y="102" width="260" height="56" rx="6" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="550" y="128" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Error passed on untouched</text>
+        <text x="550" y="144" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">bad request · expired login</text>
+        <polygon points="200,210 290,250 200,290 110,250" fill="#1a1614"/>
+        <polygon points="200,210 290,250 200,290 110,250" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="200" y="247" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">A 429 for a</text>
+        <text x="200" y="261" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">minute or more?</text>
+        <rect x="680" y="222" width="250" height="56" rx="6" fill="#1a1614"/>
+        <rect x="680" y="222" width="250" height="56" rx="6" fill="rgba(226,74,138,0.10)" stroke="#e24a8a" stroke-width="1.2"/>
+        <text x="805" y="248" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">The local model stands in</text>
+        <text x="805" y="264" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">loads it, cuts the history to fit</text>
+        <rect x="100" y="328" width="200" height="56" rx="6" fill="#1a1614"/>
+        <rect x="100" y="328" width="200" height="56" rx="6" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="200" y="354" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Error to Claude Code</text>
+        <text x="200" y="370" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">which retries</text>
+        <polygon points="200,430 290,470 200,510 110,470" fill="#1a1614"/>
+        <polygon points="200,430 290,470 200,510 110,470" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="200" y="467" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Third failure</text>
+        <text x="200" y="481" fill="#f4ecdd" font-size="11" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">in two minutes?</text>
+        <rect x="100" y="548" width="200" height="40" rx="20" fill="#1a1614"/>
+        <rect x="100" y="548" width="200" height="40" rx="20" fill="rgba(244,236,221,0.05)" stroke="#a89e8f" stroke-width="1"/>
+        <text x="200" y="572" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Claude answers a retry</text>
+        <text x="784" y="316" fill="#a89e8f" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="end" font-style="italic">only before an answer starts:</text>
+        <text x="784" y="334" fill="#a89e8f" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="end" font-style="italic">half an answer can’t be taken back</text>
+        <line x1="30" y1="608" x2="930" y2="608" stroke="rgba(244,236,221,0.10)" stroke-width="0.8"/>
+        <text x="30" y="636" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">LEGEND</text>
+        <rect x="100" y="625" width="24" height="14" rx="3" fill="rgba(226,74,138,0.10)" stroke="#e24a8a" stroke-width="1"/>
+        <text x="132" y="636" fill="#a89e8f" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">The stand-in</text>
+        <line x1="240" y1="632" x2="272" y2="632" stroke="#e24a8a" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="280" y="636" fill="#a89e8f" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Why it steps in</text>
+        <line x1="400" y1="632" x2="432" y2="632" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="440" y="636" fill="#a89e8f" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Everything else goes to Claude Code as Claude sent it</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

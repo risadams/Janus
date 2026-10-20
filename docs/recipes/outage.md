@@ -35,6 +35,9 @@ other rules; the first rule that matches decides.
 
 ## What happens
 
+![When the local model stands in for Claude: an error about the request itself is passed on; a 429 lasting a minute or more brings the local model in at once; anything else goes to Claude Code to retry, and the third failure within two minutes brings the local model in](../diagrams/stand-in.svg#gh-light-mode-only)
+![When the local model stands in for Claude: an error about the request itself is passed on; a 429 lasting a minute or more brings the local model in at once; anything else goes to Claude Code to retry, and the third failure within two minutes brings the local model in](../diagrams/stand-in-dark.svg#gh-dark-mode-only)
+
 Each request goes to Claude as usual. If Claude says it is out of usage (a
 `429` that won't clear for a minute or more), the same request is sent to
 the local model at once. A shorter failure (an overload, a server error,
