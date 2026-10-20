@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Threat model | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/THREAT-MODEL"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Threat model | Janus"><meta data-rh="true" name="description" content="What Janus protects, against whom, and what it does not. Written for 1.0"><meta data-rh="true" property="og:description" content="What Janus protects, against whom, and what it does not. Written for 1.0"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/THREAT-MODEL"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/THREAT-MODEL" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/THREAT-MODEL" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Threat model","item":"https://risadams.github.io/Janus/docs/THREAT-MODEL"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.31295cc3.css">
-<script src="/Janus/assets/js/runtime~main.47c70a3f.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.a3840974.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.80c3c652.js" defer="defer"></script>
 </head>
 <body>
@@ -16,6 +16,18 @@
 <p>What Janus protects, against whom, and what it does not. Written for 1.0
 from a review of the code as it stands; each finding is marked as fixed,
 accepted, or a limit to know about.</p>
+<p>Why a threat model for a small local proxy? Because of where it sits.
+Every prompt, every file Claude Code reads, and your credential pass
+through Janus on their way out. That is what makes it useful, and it is
+also what makes a flaw in it expensive: it can expose everything Claude
+Code touches. So it is worth writing down what it
+guards against, and just as important, what it does not, so that you
+don&#x27;t rely on it for something it was never built to do.</p>
+<p>When its goals pull against each other, Janus ranks them: privacy, then
+correctness, then availability, then savings
+(<a class="" href="/Janus/docs/CHARTER#5-design-principles">charter</a>). It refuses a request rather
+than send protected content to keep a session going, and that ranking is
+behind most of the choices below.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-janus-is-trusted-with">What Janus is trusted with<a href="#what-janus-is-trusted-with" class="hash-link" aria-label="Direct link to What Janus is trusted with" title="Direct link to What Janus is trusted with" translate="no">​</a></h2>
 <p>Janus sits in the path of everything Claude Code sends and receives, so it
 handles:</p>
@@ -73,6 +85,14 @@ handles:</p>
 
 
 <table><thead><tr><th>Adversary</th><th>In scope</th><th>What Janus does</th></tr></thead><tbody><tr><td>Anthropic seeing what you did not mean to send</td><td>Yes</td><td>The guard: detection, redaction, local-only policy, audit.</td></tr><tr><td>Another machine on your network</td><td>Yes</td><td>Listens on loopback only unless <code>allowRemote</code> is set.</td></tr><tr><td>A web page open in your browser</td><td>Yes</td><td>Refuses requests a page could have caused (below).</td></tr><tr><td>Someone on your network between Janus and LM Studio</td><td>Partly</td><td>See <a href="#the-local-models-connection" class="">The local model&#x27;s connection</a>.</td></tr><tr><td>Another user account on your machine</td><td>Partly</td><td>Files are private to you on macOS and Linux; the port is not.</td></tr><tr><td>A program running as you</td><td>No</td><td>It can read everything Janus can. Nothing here helps.</td></tr><tr><td>A local model that answers badly or maliciously</td><td>No</td><td>See <a href="#the-local-models-answers" class="">The local model&#x27;s answers</a>.</td></tr></tbody></table>
+<p><img decoding="async" loading="lazy" alt="Where Janus&amp;#39;s trust boundaries are: Claude Code, Janus, its log folder, and ideally LM Studio on your machine; Anthropic over HTTPS on the internet; LM Studio on another machine over plain HTTP on your network" src="/Janus/assets/images/trust-boundaries-4cb0fed56009a0052a6d3c2cdee0b9c1.svg#gh-light-mode-only" width="960" height="416" class="img_ev3q">
+<img decoding="async" loading="lazy" alt="Where Janus&amp;#39;s trust boundaries are: Claude Code, Janus, its log folder, and ideally LM Studio on your machine; Anthropic over HTTPS on the internet; LM Studio on another machine over plain HTTP on your network" src="/Janus/assets/images/trust-boundaries-dark-3d57921b92ce582b6e3bf09c5ac574e1.svg#gh-dark-mode-only" width="960" height="416" class="img_ev3q"></p>
+<p>The boundary that matters most is your machine&#x27;s. Inside it, everything
+runs as you, so Janus cannot protect you from a program you run, and does
+not try. What it guards is what crosses the line: your content and
+credential going out to Anthropic, requests coming in from anything that
+is not you, and traffic to an LM Studio that lives elsewhere on your
+network.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-listening-port">The listening port<a href="#the-listening-port" class="hash-link" aria-label="Direct link to The listening port" title="Direct link to The listening port" translate="no">​</a></h2>
 <p>Janus has no authentication of its own: it forwards whatever credential
 the client sends. Anything that can reach the port can use it as a relay.</p>
@@ -256,56 +276,44 @@ guard does applies to its answers.</li>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-janus-adds-to-requests">What Janus adds to requests<a href="#what-janus-adds-to-requests" class="hash-link" aria-label="Direct link to What Janus adds to requests" title="Direct link to What Janus adds to requests" translate="no">​</a></h2>
 <p>Janus changes a request only in ways it records: the model name for a
 local route, repairs for a mixed history, placeholders, withheld content,
-and digests of large tool results. Each is named in the ledger, and <code>janus audit</code> shows them. It
-narrows <code>Accept-Encoding</code> to gzip on Messages requests so that it can read
-the response. It adds no identifying header to what it sends upstream.</p>
+and digests of large tool results. Each is named in the ledger, and
+<code>janus audit</code> shows them. It narrows <code>Accept-Encoding</code> to gzip on
+Messages requests so that it can read the response. It adds no identifying header to what it sends upstream.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="supply-chain">Supply chain<a href="#supply-chain" class="hash-link" aria-label="Direct link to Supply chain" title="Direct link to Supply chain" translate="no">​</a></h2>
 <ul>
-<li class="">
-<p>Janus asks GitHub for its list of releases when, and only when,
+<li class="">Janus asks GitHub for its list of releases when, and only when,
 <code>janus version -check</code> or <code>janus doctor</code> runs, or, with <code>update.check</code>
 on, once a day when the proxy starts: one request to <code>api.github.com</code>
 with <code>janus/&lt;version&gt;</code> as its User-Agent, and nothing about you, your
 config, or your traffic. With <code>update.check</code> off, the default, the
-proxy never makes it.</p>
-</li>
-<li class="">
-<p><code>janus update</code>, run only by hand, downloads a release and replaces the
+proxy never makes it.</li>
+<li class=""><code>janus update</code>, run only by hand, downloads a release and replaces the
 binary. It checks the signature on <code>checksums.txt</code> against the keys
 compiled into the running binary, then the archive against those sums,
 before it writes anything, so a replaced release page cannot get a
 binary installed; what it cannot catch is a stolen signing key
-(<a class="" href="/Janus/docs/adr/signed-checksums">ADR-003</a>).</p>
-</li>
-<li class="">
-<p>Janus uses the Go standard library and nothing else, by
+(<a class="" href="/Janus/docs/adr/signed-checksums">ADR-003</a>).</li>
+<li class="">Janus uses the Go standard library and nothing else, by
 <a class="" href="/Janus/docs/adr/dependencies">decision</a>. There are no third-party modules to
-compromise.</p>
-</li>
-<li class="">
-<p>Release binaries are built by GitHub Actions from the tagged commit, and
+compromise.</li>
+<li class="">Release binaries are built by GitHub Actions from the tagged commit, and
 each archive carries a signed build-provenance attestation: a statement,
 recorded with GitHub, that this repository&#x27;s release workflow built it
 from that commit. Check one with
 <code>gh attestation verify &lt;archive&gt; --repo risadams/Janus</code>. That catches a
-replaced release, which <code>checksums.txt</code> alone cannot.</p>
-</li>
-<li class="">
-<p><code>checksums.txt</code> is also signed, with an ed25519 key held as an Actions
+replaced release, which <code>checksums.txt</code> alone cannot.</li>
+<li class=""><code>checksums.txt</code> is also signed, with an ed25519 key held as an Actions
 secret whose public half is compiled into Janus, so a download can be
 checked without the GitHub CLI and without trusting the release page
 (<a class="" href="/Janus/docs/adr/signed-checksums">ADR-003</a>). The signature proves less than
 the attestation: that the key&#x27;s holder signed the sums, not how the
-archives were built. SECURITY.md says how to check it by hand.</p>
-</li>
-<li class="">
-<p><strong>The Windows and Linux binaries are not code-signed.</strong> The macOS ones
+archives were built. SECURITY.md says how to check it by hand.</li>
+<li class=""><strong>The Windows and Linux binaries are not code-signed.</strong> The macOS ones
 are signed with the owner&#x27;s Developer ID and notarized by Apple (#262),
 after v0.9.0-rc.16; the certificate and the notary key are secrets of
 the <code>release</code> environment, which GitHub gives only to a run for a <code>v*</code>
-tag (#324), and only Apple&#x27;s own tools use them (ADR-004). Build from source if you would rather not
-trust a release at all.</p>
-</li>
+tag (#324), and only Apple&#x27;s own tools use them (<a class="" href="/Janus/docs/adr/release-tooling">ADR-004</a>). Build from
+source if you would rather not trust a release at all.</li>
 </ul>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="review-findings">Review findings<a href="#review-findings" class="hash-link" aria-label="Direct link to Review findings" title="Direct link to Review findings" translate="no">​</a></h2>
 
