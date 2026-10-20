@@ -85,6 +85,30 @@ Shown in [Local first](../recipes/local-first.md#what-it-costs). Source:
 [local-first.html](local-first.html),
 [local-first-dark.html](local-first-dark.html).
 
+## Where Janus keeps things
+
+![Where Janus keeps things](where-things-live.svg#gh-light-mode-only)
+![Where Janus keeps things](where-things-live-dark.svg#gh-dark-mode-only)
+
+What points at what: Claude Code at Janus, the service at the binary and
+the config, the config at the log folder, and what is in that folder.
+
+Shown in [Installing](../guide/install.md#2-give-janus-a-folder).
+Source: [where-things-live.html](where-things-live.html),
+[where-things-live-dark.html](where-things-live-dark.html).
+
+## Where a problem can be
+
+![Where a problem can be](where-it-fails.svg#gh-light-mode-only)
+![Where a problem can be](where-it-fails-dark.svg#gh-dark-mode-only)
+
+The four links a request depends on, numbered, with the check that looks
+at each. Finding which one failed comes before fixing anything.
+
+Shown in [Troubleshooting](../TROUBLESHOOTING.md). Source:
+[where-it-fails.html](where-it-fails.html),
+[where-it-fails-dark.html](where-it-fails-dark.html).
+
 ## How they are made
 
 The HTML files are the source. They were made with the

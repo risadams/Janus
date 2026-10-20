@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Where Janus keeps things</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=JetBrains+Mono:wght@400;500;600&family=Caveat:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #1a1614;
+      --color-ink:     #f4ecdd;
+      --color-muted:   #a89e8f;
+      --color-accent:  #e24a8a;
+      --font-sans:     'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-serif:    'Fraunces', 'Crimson Pro', Georgia, serif;
+      --font-mono:     'JetBrains Mono', ui-monospace, monospace;
+    }
+    body { font-family: var(--font-serif); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-variation-settings: "SOFT" 60, "WONK" 1; font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Architecture · Janus · Ris Ink</p>
+    <h1>Where Janus keeps things</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 960 432" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="where-things-live-dark-title where-things-live-dark-desc">
+        <title id="where-things-live-dark-title">Where Janus keeps things</title>
+        <desc id="where-things-live-dark-desc">Claude Code reaches Janus through ANTHROPIC_BASE_URL; an optional service starts Janus; Janus reads janus.config.json from its folder, which names the log folder, where Janus writes the ledger, captures, originals, the redaction key, its lock, and its update check.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#a89e8f"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#e24a8a"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5ba3b8"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#1a1614"/>
+
+        <!-- Arrows first -->
+        <path d="M 210,188 H 328" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="241" y="167" width="56" height="12" rx="2" fill="#1a1614"/>
+        <text x="269" y="176" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">BASE URL</text>
+        <path d="M 420,96 V 158" fill="none" stroke="#a89e8f" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+        <rect x="433" y="121" width="46" height="12" rx="2" fill="#1a1614"/>
+        <text x="456" y="130" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">STARTS</text>
+        <path d="M 510,176 H 562 Q 570,176 570,168 V 76 Q 570,68 578,68 H 628" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="588" y="47" width="40" height="12" rx="2" fill="#1a1614"/>
+        <text x="608" y="56" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">READS</text>
+        <path d="M 780,96 V 138" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="787" y="111" width="74" height="12" rx="2" fill="#1a1614"/>
+        <text x="824" y="120" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">LOGGING.DIR</text>
+        <path d="M 510,200 H 628" fill="none" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="546" y="207" width="46" height="12" rx="2" fill="#1a1614"/>
+        <text x="569" y="216" fill="#948b7d" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">WRITES</text>
+
+        <!-- Nodes -->
+        <rect x="30" y="160" width="180" height="56" rx="6" fill="#1a1614"/>
+        <rect x="30" y="160" width="180" height="56" rx="6" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="120" y="186" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Claude Code</text>
+        <text x="120" y="202" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">ANTHROPIC_BASE_URL</text>
+        <rect x="330" y="40" width="180" height="56" rx="6" fill="#1a1614"/>
+        <rect x="330" y="40" width="180" height="56" rx="6" fill="#241c19" stroke="#f4ecdd" stroke-width="1" stroke-dasharray="5,4"/>
+        <text x="420" y="66" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Service</text>
+        <text x="420" y="82" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">launchd · systemd</text>
+        <rect x="330" y="160" width="180" height="56" rx="6" fill="#1a1614"/>
+        <rect x="330" y="160" width="180" height="56" rx="6" fill="rgba(226,74,138,0.10)" stroke="#e24a8a" stroke-width="1.2"/>
+        <text x="420" y="186" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Janus</text>
+        <text x="420" y="202" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">on your PATH · :8787</text>
+        <rect x="630" y="40" width="300" height="56" rx="6" fill="#1a1614"/>
+        <rect x="630" y="40" width="300" height="56" rx="6" fill="#241c19" stroke="#f4ecdd" stroke-width="1"/>
+        <text x="780" y="66" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-weight="600">Your Janus folder</text>
+        <text x="780" y="82" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="middle">janus.config.json</text>
+        <rect x="630" y="140" width="300" height="212" rx="6" fill="#1a1614"/>
+        <rect x="630" y="140" width="300" height="212" rx="6" fill="rgba(244,236,221,0.02)" stroke="rgba(244,236,221,0.22)" stroke-width="1"/>
+        <text x="648" y="164" fill="#f4ecdd" font-size="12" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start" font-weight="600">Log folder</text>
+        <text x="912" y="164" fill="#a89e8f" font-size="9" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="end">one per user</text>
+        <text x="648" y="192" fill="#f4ecdd" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">ledger/</text>
+        <text x="772" y="192" fill="#a89e8f" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">a line per request, kept</text>
+        <text x="648" y="215" fill="#f4ecdd" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">captures/</text>
+        <text x="772" y="215" fill="#a89e8f" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">in full, kept 7 days</text>
+        <text x="648" y="238" fill="#f4ecdd" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">originals/</text>
+        <text x="772" y="238" fill="#a89e8f" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">output that was digested</text>
+        <text x="648" y="261" fill="#f4ecdd" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">redact.key</text>
+        <text x="772" y="261" fill="#a89e8f" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">the guard’s placeholders</text>
+        <text x="648" y="284" fill="#f4ecdd" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">janus.lock</text>
+        <text x="772" y="284" fill="#a89e8f" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">one Janus per folder</text>
+        <text x="648" y="307" fill="#f4ecdd" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">janus.log</text>
+        <text x="772" y="307" fill="#a89e8f" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">the service’s console, macOS</text>
+        <text x="648" y="330" fill="#f4ecdd" font-size="10" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start">update-check.json</text>
+        <text x="772" y="330" fill="#a89e8f" font-size="10" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">the last release check</text>
+
+        <!-- Callouts -->
+        <text x="120" y="252" fill="#a89e8f" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-style="italic">set by janus claude, an alias,</text>
+        <text x="120" y="270" fill="#a89e8f" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="middle" font-style="italic">or Claude Code’s settings file</text>
+        <text x="316" y="64" fill="#a89e8f" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="end" font-style="italic">it holds the full paths of both:</text>
+        <text x="316" y="82" fill="#a89e8f" font-size="13" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="end" font-style="italic">move either, install it again</text>
+
+        <!-- Legend -->
+        <line x1="30" y1="384" x2="930" y2="384" stroke="rgba(244,236,221,0.10)" stroke-width="0.8"/>
+        <text x="30" y="412" fill="#a89e8f" font-size="8" font-family="'JetBrains Mono', ui-monospace, monospace" text-anchor="start" letter-spacing="0.14em">LEGEND</text>
+        <rect x="100" y="401" width="24" height="14" rx="3" fill="rgba(226,74,138,0.10)" stroke="#e24a8a" stroke-width="1.2"/>
+        <text x="132" y="412" fill="#a89e8f" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">The running proxy</text>
+        <rect x="260" y="401" width="24" height="14" rx="3" fill="#241c19" stroke="#f4ecdd" stroke-width="1" stroke-dasharray="5,4"/>
+        <text x="292" y="412" fill="#a89e8f" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Only if you set it up</text>
+        <line x1="430" y1="408" x2="462" y2="408" stroke="#a89e8f" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="470" y="412" fill="#a89e8f" font-size="9" font-family="'Fraunces', 'Crimson Pro', Georgia, serif" text-anchor="start">Points at, or uses</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
