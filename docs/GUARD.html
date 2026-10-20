@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">The guard | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/GUARD"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="The guard | Janus"><meta data-rh="true" name="description" content="The guard deals with secrets in requests on their way to Anthropic. It has"><meta data-rh="true" property="og:description" content="The guard deals with secrets in requests on their way to Anthropic. It has"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/GUARD"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/GUARD" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/GUARD" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"The guard","item":"https://risadams.github.io/Janus/docs/GUARD"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.31295cc3.css">
-<script src="/Janus/assets/js/runtime~main.53b153a9.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.5c417034.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.171384b6.js" defer="defer"></script>
 </head>
 <body>
@@ -381,9 +381,48 @@ or tool result containing it is protected.</p>
 
 
 
-<table><thead><tr><th>Content</th><th>Why</th></tr></thead><tbody><tr><td>The whole result of a tool call that named a protected path</td><td><code>Read secrets/db.yaml</code>, <code>cat .env | head</code>, an MCP tool given the path. For Claude Code&#x27;s own tools the path is looked for in the path arguments and the command; for any other tool, in every argument. What Write writes, what Edit replaces, a command&#x27;s description, and a heredoc a command only copies to a file or uses as an issue or commit text are not searched: they mention a path, they don&#x27;t read it.</td></tr><tr><td>Any message text or tool result carrying a marker</td><td>The whole block is protected, not only the marker.</td></tr><tr><td>A line of other tool output that quotes a protected file</td><td>A search across the tree prints <code>secrets/db.yaml:2:...</code> without the call ever naming that file. Those lines go, and the lines of context around them; the rest of the output stays.</td></tr></tbody></table>
+<table><thead><tr><th>Content</th><th>Why</th></tr></thead><tbody><tr><td>The whole result of a tool call that named a protected path</td><td><code>Read secrets/db.yaml</code>, <code>cat .env | head</code>, an MCP tool given the path. For Claude Code&#x27;s own tools the path is looked for in the path arguments and the command; for any other tool, in every argument. Some arguments are not searched, because they mention a path without reading it (see <a href="#what-is-not-a-read" class="">What is not a read</a>).</td></tr><tr><td>Any message text or tool result carrying a marker</td><td>The whole block is protected, not only the marker.</td></tr><tr><td>A line of other tool output that quotes a protected file</td><td>A search across the tree prints <code>secrets/db.yaml:2:...</code> without the call ever naming that file. Those lines go, and the lines of context around them; the rest of the output stays.</td></tr></tbody></table>
 <p>A line that only names a protected file, as a directory listing does, is
 left alone: Claude can know the file exists.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-is-not-a-read">What is not a read<a href="#what-is-not-a-read" class="hash-link" aria-label="Direct link to What is not a read" title="Direct link to What is not a read" translate="no">​</a></h3>
+<p>A session about secrets names its patterns all the time: in a search,
+in a jq path such as <code>.environments[]</code>, in the text of an issue. None of
+these reads a file, so none of them withholds a result:</p>
+<ul>
+<li class="">What Write writes, what Edit replaces, a command&#x27;s description, and the
+Grep tool&#x27;s pattern.</li>
+<li class="">A heredoc a command only copies to a file, or uses as the text of an
+issue or commit.</li>
+<li class="">In a shell command:
+<ul>
+<li class="">the filter of <code>jq</code>, and the <code>--jq</code> of <code>gh</code></li>
+<li class="">the pattern of <code>grep</code>, <code>git grep</code>, and <code>rg</code></li>
+<li class="">the <code>--title</code> and <code>--body</code> of <code>gh issue</code> or <code>gh pr</code> <code>create</code>, <code>edit</code>, or <code>comment</code></li>
+</ul>
+</li>
+</ul>
+<p>Janus reads the command as the shell would, quotes and all, and lets an
+argument off only when it is sure what the command does with it:</p>
+<ul>
+<li class=""><strong>The program&#x27;s options are all ones Janus knows.</strong> An unknown option
+might take the next word as its value. <code>grep --include &#x27;*.pem&#x27;</code> still
+withholds, because <code>--include</code> names files to read.</li>
+<li class=""><strong>What the command prints goes only to Claude.</strong> That includes passing
+it through a pipe to <code>head</code>, <code>sort</code>, <code>grep</code>, and the like. A command
+whose output goes on to <code>xargs</code>, a loop, a file, or a <code>$(...)</code> could
+read that output as a path, so every word of it is searched.</li>
+<li class=""><strong>Nothing in it runs code.</strong> A command with a shell, an interpreter,
+<code>eval</code>, or <code>xargs</code> is searched whole. So is anything Janus does not
+follow: <code>$(...)</code>, <code>&lt;(...)</code>, a subshell, a comment, a heredoc it keeps.</li>
+<li class=""><strong>The expression is the one the program sees.</strong> An unquoted glob or a
+variable could become something else, and a jq program with <code>import</code>
+or <code>include</code> reads files. These are searched.</li>
+</ul>
+<p>Every other argument is a path as far as the policy is concerned, so a
+pattern in it still withholds the result. This is safe, and in a
+repository that talks about its secret files it is still the commonest
+false positive: in a week of use, about half of what is still withheld came from
+heredocs given to <code>python3</code> and from <code>$(gh issue create ...)</code>.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-happens-to-it">What happens to it<a href="#what-happens-to-it" class="hash-link" aria-label="Direct link to What happens to it" title="Direct link to What happens to it" translate="no">​</a></h3>
 <p><code>action</code> chooses, and the default is <code>withhold</code>.</p>
 <p><strong><code>withhold</code></strong>: the request goes where it was going, and in anything bound
@@ -449,7 +488,9 @@ use the recognised shape.</li>
 <li class=""><strong>A heredoc that may be code is searched as part of the command.</strong> If
 the command runs a shell or an interpreter, pipes the heredoc on, or
 runs a file a heredoc wrote, Janus can&#x27;t tell a mention from a read, so
-a protected path quoted in the heredoc still withholds the result.</li>
+a protected path quoted in the heredoc still withholds the result. The
+same goes for any command it cannot follow (see
+<a href="#what-is-not-a-read" class="">What is not a read</a>).</li>
 <li class=""><strong>Paths with spaces in them</strong> are not recognised in a shell command or
 in search output. They are in a tool argument that is only the path.</li>
 <li class=""><strong>The system prompt and tool definitions</strong> are not checked for markers.
@@ -459,7 +500,7 @@ saved under <code>logs/captures/</code> in full, on your disk, readable only by
 you. Turn captures off if that is not wanted.</li>
 <li class=""><strong>What Claude writes.</strong> If Claude is asked to write a protected file, it
 composed the content, so Anthropic has seen it.</li>
-</ul></div><footer class="theme-doc-footer docusaurus-mt-lg"><div class="row margin-top--sm theme-doc-footer-edit-meta-row"><div class="col noPrint_WFHX"><a href="https://github.com/risadams/Janus/edit/main/docs/GUARD.md" target="_blank" rel="noopener noreferrer" class="theme-edit-this-page"><svg fill="currentColor" height="20" width="20" viewBox="0 0 40 40" class="iconEdit_Z9Sw" aria-hidden="true"><g><path d="m34.5 11.7l-3 3.1-6.3-6.3 3.1-3q0.5-0.5 1.2-0.5t1.1 0.5l3.9 3.9q0.5 0.4 0.5 1.1t-0.5 1.2z m-29.5 17.1l18.4-18.5 6.3 6.3-18.4 18.4h-6.3v-6.2z"></path></g></svg>Edit this page</a></div><div class="col lastUpdated_JAkA"></div></div></footer></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/Janus/docs/LEDGER"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">The ledger and captures</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/Janus/docs/WHAT-JANUS-CHANGES"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">What Janus changes</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#what-it-looks-at" class="table-of-contents__link toc-highlight">What it looks at</a></li><li><a href="#what-it-finds" class="table-of-contents__link toc-highlight">What it finds</a></li><li><a href="#how-well-it-works" class="table-of-contents__link toc-highlight">How well it works</a><ul><li><a href="#the-entropy-search" class="table-of-contents__link toc-highlight">The entropy search</a></li></ul></li><li><a href="#redaction" class="table-of-contents__link toc-highlight">Redaction</a></li><li><a href="#tuning" class="table-of-contents__link toc-highlight">Tuning</a></li><li><a href="#where-the-results-go" class="table-of-contents__link toc-highlight">Where the results go</a></li><li><a href="#checking-what-left-the-machine" class="table-of-contents__link toc-highlight">Checking what left the machine</a></li><li><a href="#the-leak-tests" class="table-of-contents__link toc-highlight">The leak tests</a></li><li><a href="#local-only-content" class="table-of-contents__link toc-highlight">Local-only content</a><ul><li><a href="#what-happens-to-it" class="table-of-contents__link toc-highlight">What happens to it</a></li><li><a href="#it-fails-closed" class="table-of-contents__link toc-highlight">It fails closed</a></li><li><a href="#where-it-shows" class="table-of-contents__link toc-highlight">Where it shows</a></li><li><a href="#what-it-does-not-cover" class="table-of-contents__link toc-highlight">What it does not cover</a></li></ul></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">
+</ul></div><footer class="theme-doc-footer docusaurus-mt-lg"><div class="row margin-top--sm theme-doc-footer-edit-meta-row"><div class="col noPrint_WFHX"><a href="https://github.com/risadams/Janus/edit/main/docs/GUARD.md" target="_blank" rel="noopener noreferrer" class="theme-edit-this-page"><svg fill="currentColor" height="20" width="20" viewBox="0 0 40 40" class="iconEdit_Z9Sw" aria-hidden="true"><g><path d="m34.5 11.7l-3 3.1-6.3-6.3 3.1-3q0.5-0.5 1.2-0.5t1.1 0.5l3.9 3.9q0.5 0.4 0.5 1.1t-0.5 1.2z m-29.5 17.1l18.4-18.5 6.3 6.3-18.4 18.4h-6.3v-6.2z"></path></g></svg>Edit this page</a></div><div class="col lastUpdated_JAkA"></div></div></footer></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/Janus/docs/LEDGER"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">The ledger and captures</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/Janus/docs/WHAT-JANUS-CHANGES"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">What Janus changes</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#what-it-looks-at" class="table-of-contents__link toc-highlight">What it looks at</a></li><li><a href="#what-it-finds" class="table-of-contents__link toc-highlight">What it finds</a></li><li><a href="#how-well-it-works" class="table-of-contents__link toc-highlight">How well it works</a><ul><li><a href="#the-entropy-search" class="table-of-contents__link toc-highlight">The entropy search</a></li></ul></li><li><a href="#redaction" class="table-of-contents__link toc-highlight">Redaction</a></li><li><a href="#tuning" class="table-of-contents__link toc-highlight">Tuning</a></li><li><a href="#where-the-results-go" class="table-of-contents__link toc-highlight">Where the results go</a></li><li><a href="#checking-what-left-the-machine" class="table-of-contents__link toc-highlight">Checking what left the machine</a></li><li><a href="#the-leak-tests" class="table-of-contents__link toc-highlight">The leak tests</a></li><li><a href="#local-only-content" class="table-of-contents__link toc-highlight">Local-only content</a><ul><li><a href="#what-is-not-a-read" class="table-of-contents__link toc-highlight">What is not a read</a></li><li><a href="#what-happens-to-it" class="table-of-contents__link toc-highlight">What happens to it</a></li><li><a href="#it-fails-closed" class="table-of-contents__link toc-highlight">It fails closed</a></li><li><a href="#where-it-shows" class="table-of-contents__link toc-highlight">Where it shows</a></li><li><a href="#what-it-does-not-cover" class="table-of-contents__link toc-highlight">What it does not cover</a></li></ul></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">
           <div class="footer-bar">
             <div class="footer-bar__brand">
               <svg viewBox="10 16 180 168" width="20" height="20" aria-hidden="true">
