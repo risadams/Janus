@@ -5,8 +5,8 @@ through Janus. It covers macOS, Linux, and Windows, setting up LM Studio
 for the local-model features, making the Claude Code setting stick,
 running Janus in the background, and updating or removing it.
 
-You need Claude Code working already. LM Studio is optional: without it Janus still keeps the
-books and runs the guard. [Before you start](before-you-start.md) lists
+You need Claude Code working already. LM Studio is optional: without it
+Janus still keeps the books and runs the guard. [Before you start](before-you-start.md) lists
 what each feature needs, and the settings that differ from the defaults.
 
 ## 1. Get the binary
@@ -25,8 +25,8 @@ janus version
 The formula installs the release's own archive, checked against its
 `checksums.txt`, so it is the same signed and attested binary as a
 download. It installs the tab-completion scripts for bash, zsh, and fish
-too (skip the "Tab completion" section below). `brew upgrade janus` brings a new
-release. `janus update` leaves a Homebrew copy alone and says to run
+too (skip the "Tab completion" section below). `brew upgrade janus`
+brings a new release. `janus update` leaves a Homebrew copy alone and says to run
 that instead, since Homebrew owns the files it installed. Release
 candidates are not in the tap.
 
@@ -58,8 +58,8 @@ per platform:
 | Linux on x86-64 | `_linux_amd64.tar.gz` |
 | Linux on ARM64 | `_linux_arm64.tar.gz` |
 
-These commands download the newest stable release for a Mac with Apple silicon
-and check it. For another machine, change `darwin_arm64` in the first and
+These commands download the newest stable release for a Mac with Apple
+silicon and check it. For another machine, change `darwin_arm64` in the first and
 last lines.
 
 ```bash
@@ -71,13 +71,18 @@ tar -xzf "${url##*/}"
 cd janus_*_darwin_arm64
 ```
 
-The checksum line should say `OK`. Release candidates are on the
+The checksum line should say `OK`. It is worth the extra minute. Every
+prompt you send passes through Janus, and so does your login, so you want
+to know the binary is the one that was published: the checksum says the
+archive arrived whole and matches the release. Release candidates are on the
 [releases page](https://github.com/risadams/Janus/releases) too, for
 trying what is coming next.
 
 If you have the [GitHub CLI](https://cli.github.com), you can also check
 that the archive was built by this repository's release workflow, from the
-tagged commit:
+tagged commit. That answers a different question: not "is this what was
+published?" but "was what was published built from the public source, by
+GitHub, and not on someone's laptop?":
 
 ```bash
 gh attestation verify "../${url##*/}" --repo risadams/Janus
@@ -160,15 +165,26 @@ since the binaries are not signed. Choose "More info", then "Run anyway".
 ## 2. Give Janus a folder
 
 By default Janus reads `janus.config.json` from the folder you start it
-in, and writes its ledger and captures to a folder per user (macOS `~/Library/Application Support/janus`, Linux `$XDG_STATE_HOME/janus` (or `~/.local/state/janus`), Windows `%LocalAppData%\janus`), so they are in one place whichever folder that is. Give the
-config a folder of its own:
+in, and writes its ledger and captures to a folder per user: macOS
+`~/Library/Application Support/janus`, Linux `$XDG_STATE_HOME/janus` (or
+`~/.local/state/janus`), Windows `%LocalAppData%\janus`. Give the config a
+folder of its own:
 
 ```bash
 mkdir -p ~/janus && cd ~/janus
 ```
 
-Every `janus` command takes `-config` to name the file instead, so you can
-keep it anywhere and run commands from any folder.
+The logs go to one folder per user so that `janus stats` and `janus
+audit` find the same ledger whichever folder you run them in. Every
+`janus` command also takes `-config` to name the file, so you can keep it
+anywhere.
+
+![Where Janus keeps things: Claude Code reaches Janus through ANTHROPIC_BASE_URL, an optional service starts it, Janus reads its config, and the config names the log folder where the ledger, captures, and the rest are written](../diagrams/where-things-live.svg#gh-light-mode-only)
+![Where Janus keeps things: Claude Code reaches Janus through ANTHROPIC_BASE_URL, an optional service starts it, Janus reads its config, and the config names the log folder where the ledger, captures, and the rest are written](../diagrams/where-things-live-dark.svg#gh-dark-mode-only)
+
+Each arrow is something that can point at the wrong place, and many of
+the problems in [troubleshooting](../TROUBLESHOOTING.md) are one of them
+doing so.
 
 ## 3. Check, then start
 
@@ -180,8 +196,8 @@ janus doctor
 and the log folder, and says what to fix. It changes nothing. Its last
 two lines say when the ledger last recorded a request and whether Claude
 Code is pointed at Janus; until you have used Janus, `claude` warns that
-it isn't. Before you
-set up LM Studio it will warn about it; that is fine for now.
+it isn't. Before you set up LM Studio it will warn about it; that is
+fine for now.
 
 ```bash
 janus
@@ -224,7 +240,18 @@ Janus.
 ### Making it stick
 
 Three ways to send your sessions through Janus without thinking about
-it:
+it. They differ in one thing that matters: what happens when Janus is not
+running.
+
+| Way | Goes through Janus | If Janus is not running |
+| --- | --- | --- |
+| `janus claude` | Sessions started with it | Says so, and starts Claude Code going straight to Anthropic; refuses if the guard is on |
+| A shell alias | Sessions started with the alias | That session cannot connect; plain `claude` still works |
+| Claude Code's settings file | Every session | No session can connect, until Janus starts or the setting goes |
+
+Start with `janus claude`: it is the hardest to get wrong. Move to the
+settings file once Janus runs [in the background](#6-run-janus-in-the-background-optional)
+and you want every session counted.
 
 **`janus claude`** in place of `claude`, setting both variables for that
 session only. With the config Janus wrote, it works from any folder; once
@@ -320,8 +347,11 @@ Nothing goes to the local model until you turn on a feature that uses it.
 
 ## 6. Run Janus in the background (optional)
 
-Running Janus in a terminal is fine for trying it. To have it start when
-you log in, and again if it stops, run it as a service. From your Janus
+Running Janus in a terminal is fine for trying it. Once Claude Code
+depends on it, which it does as soon as you use the settings file, a
+Janus that is not running is a Claude Code that cannot work, so have it
+start when you log in, and again if it stops, by running it as a
+service. From your Janus
 folder:
 
 ```bash
@@ -388,8 +418,10 @@ stable releases are offered unless you add `-pre`, or set
 asks GitHub for the list of releases and sends nothing else, and only
 when you run one of these commands.
 
-To hear about a new release without asking, set `"update": {"check":
-true}` in the config. Janus then looks when it starts, at most once a
+It asks only then because a proxy that sees your prompts should not make
+connections you did not expect: out of the box, Janus talks to Anthropic,
+LM Studio, and nothing else. To hear about a new release without asking,
+set `"update": {"check": true}` in the config. Janus then looks when it starts, at most once a
 day, and prints a line on the console if a newer release is out. It
 never updates itself.
 
@@ -407,8 +439,9 @@ for `janus version -check`.
 A copy from `go install` or Homebrew is refused, since those upgrade it
 themselves: run the `go install` command again, or `brew upgrade janus`.
 You can also download the new release as in step 1 and replace the
-binary by hand. Your config, ledger, and captures are left as they are. `janus version` says which version you
-have, and the console prints it at the top when Janus starts.
+binary by hand. Your config, ledger, and captures are left as they are.
+`janus version` says which version you have, and the console prints it at
+the top when Janus starts.
 
 ## Removing Janus
 

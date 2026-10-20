@@ -1,8 +1,19 @@
 # Troubleshooting
 
+Janus sits in the middle, between Claude Code on one side and Anthropic
+and LM Studio on the other. So when something goes wrong, the first
+question is not what to change but which link broke. A fix on the wrong
+side wastes your time: restarting LM Studio does nothing for a Claude
+Code session that never reached Janus, and editing the config does
+nothing for an Anthropic outage.
+
+![Where a problem can be: Claude Code to Janus, Janus itself, Janus to Anthropic, and Janus to LM Studio, each with the check that looks at it](diagrams/where-it-fails.svg#gh-light-mode-only)
+![Where a problem can be: Claude Code to Janus, Janus itself, Janus to Anthropic, and Janus to LM Studio, each with the check that looks at it](diagrams/where-it-fails-dark.svg#gh-dark-mode-only)
+
 ## First steps
 
-When something is wrong, these five things find most problems:
+When something is wrong, these five things find most problems, and
+which link it is:
 
 1. **`janus doctor`.** It checks the config, the port, Anthropic, LM
    Studio, and the log folder, when the ledger last recorded a request,
@@ -16,7 +27,9 @@ When something is wrong, these five things find most problems:
    what happened to that request and why.
 3. **Who wrote the error.** Errors from Janus itself start with `janus:`
    in Claude Code, and say what to do. Anything else came from Anthropic
-   or LM Studio and was passed through as it was.
+   or LM Studio and was passed through as it was. Janus passes errors on
+   unchanged so that Claude Code can react to them as it would without
+   Janus, retrying an overload or asking you to log in again.
 4. **`janus audit <id>`** for one request: where it went, why, and what
    was changed. The id is in the ledger and the capture's file name; see
    [using Janus](guide/use.md#what-left-your-machine-janus-audit).
@@ -125,9 +138,10 @@ system lets go of it when Janus exits, even after a crash, so there is
 nothing to delete by hand.
 
 **Claude Code behaves as if Janus were not there.** `ANTHROPIC_BASE_URL`
-has to be set in the environment Claude Code starts from. Janus prints a
-line for every request; if it prints nothing, Claude Code is not pointed
-at it.
+has to be set in the environment Claude Code starts from. Claude Code
+reads it when it starts, so a session that was already running keeps
+going straight to Anthropic: start a new one. Janus prints a line for
+every request; if it prints nothing, Claude Code is not pointed at it.
 
 **Claude Code's requests are much larger through Janus.** Set
 `ENABLE_TOOL_SEARCH=true` alongside `ANTHROPIC_BASE_URL`. Without it
@@ -246,8 +260,7 @@ says which it was.
 unavailable", though the local model is answering.** That is auto mode:
 Claude Code checks each tool call with Claude, and those checks stay with
 Claude. Press Shift+Tab to leave auto mode and approve tool calls
-yourself; see CONFIG, "Auto mode while Claude is out".
-
+yourself; see [auto mode while Claude is out](CONFIG.md#auto-mode-while-claude-is-out).
 
 ## Local answers
 
@@ -259,21 +272,22 @@ the same, and `janus audit <id>` gives it for one request.
 [The ledger](LEDGER.md#why-the-local-model-did-not-answer) lists every
 cause.
 
-
 **`this request is about N tokens, more than the N-token context of local
 model ...`.** The request does not fit. With a rule it would have gone to
 Claude instead; this error means it was sent to an alias or forced local
 with `X-Janus-Route`, where there is nowhere else for it to go. Load the
 model with a larger context in LM Studio, or route that work with a rule.
 
-**Local answers are empty, or wander.** That is the model. In testing,
+**Local answers are empty, or wander.** That is the model, not Janus:
+Janus passes the request on and checks what comes back, but it cannot
+make a model better at driving tools. In testing,
 `qwen/qwen3.8-27b` drove Claude Code's tools reliably and a 4-billion
 parameter model did not: its answers came back empty or as rambling text.
 Use `local-then-escalate`, which catches broken answers and asks Claude
 instead, and watch the escalation rate in `janus stats`. If most requests
 escalate, the model is not up to that work and you are paying for both.
 
-**Subagents are very slow.** A local turn took 7 to 25 seconds in testing
+**Subagents are very slow.** A local turn took 7 to 24 seconds in testing
 against 1 to 3 for Claude, and a subagent takes many turns. `maxSeconds`
 on a `local-then-escalate` rule (default 120) bounds how long one attempt
 may run before Claude is asked instead.
@@ -340,8 +354,9 @@ read, and protected content are left alone, and Claude Code already cuts
 very large output down to a preview. When a result that
 qualified is not digested, the console says why. The usual reason is
 `the request offers no mcp__<server>__tool_output tool`: add `janus mcp` to
-Claude Code, as in [the workers recipe](recipes/workers.md), so that the
-original can be fetched.
+Claude Code, as in [the workers recipe](recipes/workers.md). Janus will not
+digest a result Claude has no way to fetch back in full, since a digest
+that left out the line Claude needed would leave it stuck.
 
 **Turns take longer.** Each digest holds its turn while the local model
 writes it, 9 to 56 seconds on the evaluation's Mac. Lower
@@ -356,7 +371,8 @@ original is in `<logging.dir>/originals` for `logging.retainDays`.
 
 **`janus stats` says there are no requests.** It reads
 `<logging.dir>/ledger` from the config it was given, which by default is
-`janus.config.json` in the current folder. The first line of the report
+`janus.config.json` in the current folder. Run from another folder with
+a config of its own, it reads that config's ledger, which may be empty. The first line of the report
 is the folder it read. Run it where the config is, or pass the same
 `-config` Janus runs with; with no config file it says so and reads the
 default folder.
