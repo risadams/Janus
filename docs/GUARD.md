@@ -122,8 +122,8 @@ file. Deleting it would break that work, and you would turn redaction off
 to get it done. With a placeholder, Claude can move the secret around
 without knowing what it is.
 
-![A secret's round trip: Claude Code sends a tool result holding a key, Janus sends a placeholder to Anthropic in its place, Claude answers with a tool call that uses the placeholder, and Janus puts the real key back before Claude Code acts](diagrams/redaction.svg#gh-light-mode-only)
-![A secret's round trip: Claude Code sends a tool result holding a key, Janus sends a placeholder to Anthropic in its place, Claude answers with a tool call that uses the placeholder, and Janus puts the real key back before Claude Code acts](diagrams/redaction-dark.svg#gh-dark-mode-only)
+![A secret’s round trip: Claude Code sends a tool result holding a key, Janus sends a placeholder to Anthropic in its place, Claude answers with a tool call that uses the placeholder, and Janus puts the real key back before Claude Code acts](diagrams/redaction.svg#gh-light-mode-only)
+![A secret’s round trip: Claude Code sends a tool result holding a key, Janus sends a placeholder to Anthropic in its place, Claude answers with a tool call that uses the placeholder, and Janus puts the real key back before Claude Code acts](diagrams/redaction-dark.svg#gh-dark-mode-only)
 
 ```
 Read .env                       ->  Claude is sent  AWS_ACCESS_KEY_ID=JANUS_REDACTED_3f9a1c07b2e4
