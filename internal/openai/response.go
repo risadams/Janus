@@ -3,11 +3,14 @@ package openai
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -202,6 +205,24 @@ func toolInput(arguments string) json.RawMessage {
 	return wrapped
 }
 
+// anthropicToolID is what the Messages API accepts as a tool_use id.
+var anthropicToolID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// ToolID is the tool_use id Claude Code is given for an OpenAI call_id.
+// An id the Messages API would accept goes as it is; any other becomes
+// "toolu_janus_" and 24 hex characters of its SHA-256. Claude Code keeps
+// the id it is given and sends it back on every later turn, to OpenAI as
+// the call's call_id and to Claude as its tool_use id, so the change is
+// made once, the same way, and nothing has to remember the original
+// (#375).
+func ToolID(callID string) string {
+	if anthropicToolID.MatchString(callID) {
+		return callID
+	}
+	sum := sha256.Sum256([]byte(callID))
+	return "toolu_janus_" + hex.EncodeToString(sum[:])[:24]
+}
+
 // TranslateResponse turns a non-streamed Responses answer into a Messages
 // body.
 func TranslateResponse(body []byte, opts ResponseOptions) ([]byte, Result, error) {
@@ -251,7 +272,7 @@ func TranslateResponse(body []byte, opts ResponseOptions) ([]byte, Result, error
 			}
 			content = append(content, block{Type: "text", Text: &text})
 		case "function_call":
-			content = append(content, block{Type: "tool_use", ID: it.CallID, Name: opts.Tools.decode(it.Name), Input: toolInput(it.Arguments)})
+			content = append(content, block{Type: "tool_use", ID: ToolID(it.CallID), Name: opts.Tools.decode(it.Name), Input: toolInput(it.Arguments)})
 			lastIsCall = true
 		}
 	}
@@ -444,7 +465,7 @@ func (s *streamState) dispatch(data []byte) (Result, bool) {
 		case "message":
 			s.openBlock(e.OutputIndex, "message", obj{"type": "text", "text": ""})
 		case "function_call":
-			s.openBlock(e.OutputIndex, "function_call", obj{"type": "tool_use", "id": e.Item.CallID, "name": s.opts.Tools.decode(e.Item.Name), "input": obj{}})
+			s.openBlock(e.OutputIndex, "function_call", obj{"type": "tool_use", "id": ToolID(e.Item.CallID), "name": s.opts.Tools.decode(e.Item.Name), "input": obj{}})
 		}
 	case "response.output_text.delta":
 		s.delta(e.OutputIndex, obj{"type": "text_delta", "text": e.Delta})
