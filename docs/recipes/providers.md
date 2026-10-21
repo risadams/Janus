@@ -34,12 +34,12 @@ each Claude model Claude Code asks for (`openai.models` in
 [CONFIG.md](../CONFIG.md) changes them), and Claude Code is told the model
 it asked for answered.
 
-Two things still need Claude while this is all you have:
-
-- **Claude Code needs to be logged in.** Running it with no Anthropic
-  account behind it is not supported yet.
-- **Auto mode's safety checks stay with Claude.** They are routed only by
-  a rule that names `class: "safety"`.
+Claude Code still needs a Claude login, and auto mode's safety checks
+stay with Claude unless a rule names `class: "safety"`. With no Anthropic
+account at all, add `"upstream": {"off": true}`, and Janus sends nothing
+to Anthropic: it answers Claude Code's start-up checks itself, `janus
+claude` gives Claude Code a placeholder login, and the safety checks go
+along the list too ([no Anthropic account](../CONFIG.md#no-anthropic-account)).
 
 OpenAI support is built from OpenAI's published API reference and has not
 yet been run against the real API.

@@ -59,7 +59,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		listenCheck, elsewhere := checkListen(cfg.Listen, cfg.Logging.Dir)
 		findings = append(findings,
 			listenCheck,
-			checkUpstream(client, cfg.Upstream.BaseURL),
+			checkUpstreamOrOff(client, cfg),
 			checkLogs(cfg.Logging.Dir),
 		)
 		findings = append(findings, checkLocal(client, cfg)...)
@@ -103,7 +103,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	fmt.Fprintf(stdout, "Start janus, then point Claude Code at it:\n\n")
-	printClaudeCommand(stdout, "http://"+cfg.Listen, *configPath)
+	printClaudeCommand(stdout, "http://"+cfg.Listen, *configPath, cfg.Upstream.Off)
 	return 0
 }
 
@@ -210,6 +210,14 @@ func checkListen(addr, logDir string) (f finding, elsewhere bool) {
 // checkUpstream asks only whether the upstream answers at all. Any HTTP
 // response will do: it sends no credentials, so it cannot tell whether a
 // real request would be authorised.
+// checkUpstreamOrOff checks the upstream, unless there is none.
+func checkUpstreamOrOff(client *http.Client, cfg config.Config) finding {
+	if cfg.Upstream.Off {
+		return finding{"ok", "upstream", "off: nothing is sent to Anthropic, and Claude Code is given a placeholder login"}
+	}
+	return checkUpstream(client, cfg.Upstream.BaseURL)
+}
+
 func checkUpstream(client *http.Client, base string) finding {
 	start := time.Now()
 	u, _ := url.Parse(base) // the config has been validated

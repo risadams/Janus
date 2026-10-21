@@ -117,11 +117,14 @@ func FactsOf(header http.Header, req *anthropic.Request) Facts {
 }
 
 // mismatch says why a rule does not match, or returns "" if it does.
-func (rule Rule) mismatch(f Facts) string {
+//
+// A safety check is left with Claude unless a rule names its class, so
+// anyClass is set only when there is no Claude to leave it with.
+func (rule Rule) mismatch(f Facts, anyClass bool) string {
 	switch {
 	case rule.Class != "" && rule.Class != f.Class:
 		return fmt.Sprintf("class is %s, not %s", f.Class, rule.Class)
-	case rule.Class == "" && f.Class == Safety:
+	case rule.Class == "" && f.Class == Safety && !anyClass:
 		return "a safety check is only routed by a rule that names class safety"
 	case rule.Model != "" && rule.Model != f.Model:
 		return fmt.Sprintf("model is %s, not %s", f.Model, rule.Model)
@@ -161,6 +164,10 @@ type Router struct {
 	// OpenAI is the OpenAI API, for rules that name it. Nil if it is not
 	// configured.
 	OpenAI *openai.Backend
+	// NoUpstream is set when there is no Anthropic account behind janus
+	// (upstream.off): Upstream is backend.Nowhere, nothing is planned for
+	// it, and a request no rule sends elsewhere is refused (#376).
+	NoUpstream bool
 	// Barred, when set, says why a provider ("upstream", "openai", or a
 	// local model's name) may not have a request, or "" if it may. An
 	// entry of a fallback list it bars is passed over (#406).
@@ -385,6 +392,9 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		where, name, _ := strings.Cut(choice, "=")
 		switch where {
 		case RouteUpstream:
+			if r.NoUpstream {
+				return refuse(http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("%s: upstream: upstream is off in janus's config, so there is no Claude to send it to", backend.RouteHeader))
+			}
 			trace = append(trace, reason+": upstream")
 			return upstream(reason), nil, trace
 		case RouteLocal:
@@ -473,9 +483,17 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		return plan, nil, trace
 	}
 
+	// Claude Code's start-up quota check reads Claude's rate-limit
+	// headers. With no Claude there are none to read, and asking a model
+	// for its one token would only cost something, so janus answers it.
+	if r.NoUpstream && facts.Class == Quota {
+		trace = append(trace, "quota check: answered by janus, since upstream is off")
+		return proxy.Plan{Backend: backend.Nowhere{}, Route: "janus", Reason: "quota check: answered by janus, since upstream is off"}, nil, trace
+	}
+
 	for i, rule := range r.Rules {
 		label := rule.label(i)
-		if why := rule.mismatch(facts); why != "" {
+		if why := rule.mismatch(facts, r.NoUpstream); why != "" {
 			trace = append(trace, fmt.Sprintf("%s: no match (%s)", label, why))
 			continue
 		}
@@ -572,6 +590,11 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		}
 	}
 
+	if r.NoUpstream {
+		message := `no routing rule sends this request anywhere, and upstream is off; add a rule with no conditions last, such as {"fallback": ["openai"]}`
+		trace = append(trace, "no rule matched: refused, since upstream is off")
+		return proxy.Plan{}, &proxy.Refusal{Status: http.StatusBadRequest, Type: "invalid_request_error", Message: "janus: " + message, Route: "none", Reason: "no rule matched: " + message}, trace
+	}
 	trace = append(trace, "no rule matched: upstream")
 	return upstream("passthrough"), nil, trace
 }

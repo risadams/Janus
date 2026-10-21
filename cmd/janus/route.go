@@ -85,7 +85,11 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 	if cfg.OpenAI.On() {
 		oa, _ = openai.NewBackend(cfg.OpenAI, openai.Key{}, nil) // Validate has checked the base URL
 	}
-	router := newRouter(cfg, backend.NewUpstream(upstreamURL, nil), backend.NewLocal(localURL, nil), oa)
+	var upstream backend.Backend = backend.NewUpstream(upstreamURL, nil)
+	if cfg.Upstream.Off {
+		upstream = backend.Nowhere{}
+	}
+	router := newRouter(cfg, upstream, backend.NewLocal(localURL, nil), oa)
 	plan, refusal, trace := router.Explain(context.Background(), header, req)
 	if plan.Release != nil {
 		plan.Release() // only explaining: nothing is sent
@@ -106,6 +110,8 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "%s%s: %s answers, and its whole answer is checked before the client\n", decision, p.paint(magenta, "local first"), plan.BackendModel)
 		fmt.Fprintf(stdout, "          sees any of it. If it passes it is reported as %s; if not, Claude answers.\n", plan.ResponseModel)
 		fmt.Fprintf(stdout, "          changes on the way: %s\n", strings.Join(plan.Stages, ", "))
+	case plan.Backend.Name() == "janus":
+		fmt.Fprintf(stdout, "%sjanus answers it itself, since upstream is off\n", decision)
 	case plan.Backend.Name() == "openai":
 		fmt.Fprintf(stdout, "%s%s: %s answers, reported to the client as %s\n", decision, p.paint(cyan, "openai"), plan.BackendModel, plan.ResponseModel)
 		if plan.Fallback != nil {

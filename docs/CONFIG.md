@@ -34,6 +34,7 @@ the defaults below and carries on.
 | `listen` | The address Janus accepts connections on. Loopback unless `allowRemote` is true. |
 | `allowRemote` | Allow a `listen` address other than loopback. Leave it off; see [addresses](#addresses). |
 | `upstream.baseUrl` | The Anthropic API, or a gateway in front of it. |
+| `upstream.off` | `true` when there is no Anthropic account behind Janus: nothing is sent to Anthropic. See [no Anthropic account](#no-anthropic-account). |
 | `local.baseUrl` | The LM Studio server. Change the default to yours. |
 | `local.models` | Optional. Model names answered locally; see [local models](#local-models). |
 | `openai` | Optional. The OpenAI API, its key's source, and its models; see [OpenAI](#openai). Left out, OpenAI is not used. |
@@ -415,6 +416,40 @@ gets through. A refused OpenAI key and a used-up quota need you to act,
 so OpenAI is then left out of every list until Janus restarts, rather
 than asked again. Whatever moves on, the next provider is sent the
 request as Claude Code sent it.
+
+### No Anthropic account
+
+With `"upstream": {"off": true}`, Janus never contacts Anthropic, and
+Claude Code runs on OpenAI, a local model, or both:
+
+```json
+"upstream": { "off": true },
+"openai": { "key": "env:OPENAI_API_KEY" },
+"routing": [ { "name": "everything", "fallback": ["openai", "janus-local"] } ],
+"features": { "route": true }
+```
+
+- **Every rule is a `fallback` list without `upstream`**, since every
+  other route falls back to Claude. Janus refuses a config with any other
+  kind of rule.
+- **A request no rule matches is refused** with a `janus:` error, so end
+  the rules with one that has no conditions.
+- **Auto mode's safety checks** are matched by a rule with no `class`,
+  since there is no Claude to leave them with. A rule naming
+  `class: "safety"` still decides them first.
+- **Janus answers the rest of what Claude Code sends itself**, with
+  nothing leaving the machine. Its connectivity checks (`GET /` and
+  `/api/hello`) get an empty answer. Its start-up quota check gets an
+  answer of no tokens, since there are no Anthropic limits to report.
+  `count_tokens` gets Janus's own estimate, at three bytes a token, which
+  over-counts. Anything else is refused with a `404`. The ledger records
+  these with `backend` `janus`, and the token count's `reason` says it was
+  estimated.
+- **Claude Code needs a login to start.** `janus claude` gives it a
+  placeholder, `ANTHROPIC_AUTH_TOKEN=janus-no-anthropic-account`, which
+  Janus never sends anywhere. Run some other way, set the same variable.
+  If Janus is not running, `janus claude` does not start Claude Code,
+  since there is no Anthropic account to send it to.
 
 Before config version 2 a rule named one local stand-in with
 `"ifDown": "janus-local"`. Janus reads that as

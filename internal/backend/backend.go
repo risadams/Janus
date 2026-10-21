@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -73,6 +74,22 @@ func (u *Upstream) Health(ctx context.Context) error {
 	_ = resp.Body.Close() // any answer will do; its body is not read
 	return nil
 }
+
+// Nowhere stands in for the upstream when there is none (upstream.off):
+// nothing is ever sent to it. A request planned for it is answered by
+// janus itself, or refused (proxy.Options.Itself).
+type Nowhere struct{}
+
+// Name is "janus": the answer, if any, is janus's own.
+func (Nowhere) Name() string { return "janus" }
+
+// URL is an address that cannot be reached, should anything try.
+func (Nowhere) URL() *url.URL { return &url.URL{Scheme: "http", Host: "upstream-off.invalid"} }
+
+func (Nowhere) Prepare(*http.Request, bool) {}
+
+// Health says there is nothing to reach.
+func (Nowhere) Health(context.Context) error { return errors.New("upstream is off") }
 
 // narrowEncoding limits what a Messages request asks the upstream to
 // compress its response with to what janus can read: gzip, or nothing.

@@ -136,7 +136,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// Validate has already established that these parse.
 	upstreamURL, _ := url.Parse(cfg.Upstream.BaseURL)
 	localURL, _ := url.Parse(cfg.Local.BaseURL)
-	upstream := backend.NewUpstream(upstreamURL, nil)
+	var upstream backend.Backend = backend.NewUpstream(upstreamURL, nil)
+	if cfg.Upstream.Off {
+		upstream = backend.Nowhere{}
+	}
 
 	local := backend.NewLocal(localURL, nil)
 
@@ -251,6 +254,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		router.Transforms = newPipeline(cfg, local, policy, logger)
 	}
 
+	var itself func(*http.Request, []byte, proxy.Plan) proxy.Reply
+	if cfg.Upstream.Off {
+		itself = router.Itself // Validate requires routing with upstream off
+	}
 	handler := proxy.New(proxy.Options{
 		Upstream:     upstream,
 		Plan:         plan,
@@ -259,6 +266,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		PolicyAction: cfg.Guard.LocalOnly.Action,
 		LocalOnly:    keepLocal,
 		KeepBodies:   captures != nil,
+		Itself:       itself,
 		Done: func(ex proxy.Exchange) {
 			rec := record(ex, led, captures, detector, console)
 			if router != nil {
@@ -354,7 +362,7 @@ func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local
 			rules[i].Fallback = append(rules[i].Fallback, p)
 		}
 	}
-	return &route.Router{Upstream: upstream, Local: local, OpenAI: oa, Aliases: models, Rules: rules}
+	return &route.Router{Upstream: upstream, Local: local, OpenAI: oa, Aliases: models, Rules: rules, NoUpstream: cfg.Upstream.Off}
 }
 
 // trialTimeout is how long a local-then-escalate rule lets the local model
@@ -764,8 +772,10 @@ func describeProvider(cfg config.Config, name string) string {
 // ENABLE_TOOL_SEARCH is set because Claude Code turns tool search off when
 // its base URL is not Anthropic's own, and then sends every tool schema in
 // every request; setting it keeps the traffic shaped the way it is without
-// a proxy.
-func printClaudeCommand(w io.Writer, base, configPath string) {
+// a proxy. With upstream off, ANTHROPIC_AUTH_TOKEN is a placeholder, so
+// that Claude Code starts without an Anthropic login; janus never
+// forwards it anywhere (#376).
+func printClaudeCommand(w io.Writer, base, configPath string, upstreamOff bool) {
 	launch := "janus claude"
 	if configPath != config.DefaultPath {
 		if abs, err := filepath.Abs(configPath); err == nil {
@@ -774,11 +784,22 @@ func printClaudeCommand(w io.Writer, base, configPath string) {
 		launch += " -config " + configPath
 	}
 	fmt.Fprintf(w, "  %s\n\n", launch)
+	token, psToken := "", ""
+	if upstreamOff {
+		token = "ANTHROPIC_AUTH_TOKEN=" + placeholderToken + " "
+		psToken = "$env:ANTHROPIC_AUTH_TOKEN=\"" + placeholderToken + "\"; "
+	}
 	fmt.Fprintf(w, "  # or set the variables yourself: bash / zsh / fish\n")
-	fmt.Fprintf(w, "  ANTHROPIC_BASE_URL=%s ENABLE_TOOL_SEARCH=true claude\n\n", base)
+	fmt.Fprintf(w, "  %sANTHROPIC_BASE_URL=%s ENABLE_TOOL_SEARCH=true claude\n\n", token, base)
 	fmt.Fprintf(w, "  # PowerShell\n")
-	fmt.Fprintf(w, "  $env:ANTHROPIC_BASE_URL=\"%s\"; $env:ENABLE_TOOL_SEARCH=\"true\"; claude\n\n", base)
+	fmt.Fprintf(w, "  %s$env:ANTHROPIC_BASE_URL=\"%s\"; $env:ENABLE_TOOL_SEARCH=\"true\"; claude\n\n", psToken, base)
 }
+
+// placeholderToken is the credential janus claude gives Claude Code when
+// there is no Anthropic account behind janus. Claude Code will not start
+// without one; janus sends it nowhere: nothing goes to Anthropic, and
+// OpenAI and LM Studio are sent none of Claude Code's headers.
+const placeholderToken = "janus-no-anthropic-account" // #nosec G101 -- a placeholder that grants nothing, and is sent nowhere
 
 // printBanner says where janus is listening, what it will write, and how
 // to start Claude Code through it.
@@ -786,7 +807,11 @@ func printBanner(w io.Writer, cfg config.Config, addr, configPath string) {
 	base := "http://" + addr
 	fmt.Fprintf(w, "%s\n\n", versionLine())
 	fmt.Fprintf(w, "  Listening   %s\n", base)
-	fmt.Fprintf(w, "  Upstream    %s\n", cfg.Upstream.BaseURL)
+	if cfg.Upstream.Off {
+		fmt.Fprintf(w, "  Upstream    off; nothing is sent to Anthropic\n")
+	} else {
+		fmt.Fprintf(w, "  Upstream    %s\n", cfg.Upstream.BaseURL)
+	}
 	fmt.Fprintf(w, "  Local       %s\n", cfg.Local.BaseURL)
 	if !cfg.Features.Route {
 		fmt.Fprintf(w, "  Routing     off; every request goes upstream\n")
@@ -835,6 +860,6 @@ func printBanner(w io.Writer, cfg config.Config, addr, configPath string) {
 		fmt.Fprintf(w, "  Captures    off\n\n")
 	}
 	fmt.Fprintf(w, "Start Claude Code through janus:\n\n")
-	printClaudeCommand(w, base, configPath)
+	printClaudeCommand(w, base, configPath, cfg.Upstream.Off)
 	fmt.Fprintf(w, "Press Ctrl+C to stop.\n\n")
 }

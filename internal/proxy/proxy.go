@@ -221,6 +221,20 @@ type Options struct {
 	// bodies, for capture logging. Off, only Messages request bodies are
 	// kept, which the ledger needs.
 	KeepBodies bool
+	// Itself answers a request whose plan's backend is backend.Nowhere:
+	// with no upstream, janus answers Claude Code's connectivity checks
+	// and the like itself, and refuses the rest. body is the request's,
+	// read whole. Nil refuses every such request.
+	Itself func(r *http.Request, body []byte, plan Plan) Reply
+}
+
+// Reply is an answer janus gives itself, with no backend asked.
+type Reply struct {
+	Status      int
+	ContentType string
+	Body        []byte
+	// Route and Reason are recorded in the ledger, as a plan's are.
+	Route, Reason string
 }
 
 // Planner decides where one Messages request goes. It may change req; the
@@ -980,6 +994,26 @@ func New(opts Options) http.Handler {
 
 		if refusal != nil {
 			writeError(sw, refusal.Status, refusal.Type, refusal.Message)
+			return
+		}
+		if _, nowhere := state.plan.Backend.(backend.Nowhere); nowhere {
+			// Nothing is sent anywhere, so nothing needs guarding.
+			body := original
+			if body == nil && r.Body != nil {
+				body, _ = readUpTo(r.Body, maxKept) // what could be read is what is answered
+			}
+			reply := Reply{Status: http.StatusNotFound, ContentType: "application/json", Route: "none",
+				Reason: "upstream is off; nothing answers " + r.Method + " " + r.URL.Path,
+				Body:   errorBody("not_found_error", "janus: upstream is off, and janus does not answer "+r.Method+" "+r.URL.Path+" itself")}
+			if opts.Itself != nil {
+				reply = opts.Itself(r, body, state.plan)
+			}
+			state.plan.Route, state.plan.Reason = reply.Route, reply.Reason
+			if reply.ContentType != "" {
+				sw.Header().Set("Content-Type", reply.ContentType)
+			}
+			sw.WriteHeader(reply.Status)
+			_, _ = sw.Write(reply.Body) // a client that has gone cannot be told
 			return
 		}
 

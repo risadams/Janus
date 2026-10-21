@@ -67,8 +67,16 @@ func runClaude(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if up(cfg.Listen) {
 		env = setEnv(env, "ANTHROPIC_BASE_URL", base)
 		env = setEnv(env, "ENABLE_TOOL_SEARCH", "true")
+		if cfg.Upstream.Off {
+			env = setEnv(env, "ANTHROPIC_AUTH_TOKEN", placeholderToken)
+		}
 	} else {
 		switch {
+		case cfg.Upstream.Off:
+			fmt.Fprintf(stderr, "janus claude: janus is not answering on %s, and upstream is off in %s:\n"+
+				"there is no Anthropic account to go straight to, so Claude Code was not started.\n"+
+				"Start janus, then run this again.\n", cfg.Listen, *configPath)
+			return 1
 		case cfg.Features.Guard:
 			fmt.Fprintf(stderr, "janus claude: janus is not answering on %s, and the guard is on in %s.\n"+
 				"Going straight to Anthropic would send what the guard keeps back, so Claude Code\n"+
