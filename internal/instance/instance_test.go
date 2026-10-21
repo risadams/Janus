@@ -83,6 +83,40 @@ func TestAHolderThatHasNotSaidWhoItIsIsStillReported(t *testing.T) {
 	}
 }
 
+func TestHeldSaysWhoHoldsTheLockWithoutTakingIt(t *testing.T) {
+	dir := t.TempDir()
+	first, err := Acquire(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Describe("pid 4242, listening on http://127.0.0.1:8787")
+	held, holder, err := Held(dir)
+	if err != nil || !held || holder != "pid 4242, listening on http://127.0.0.1:8787" {
+		t.Errorf("Held while locked = %v, %q, %v", held, holder, err)
+	}
+	first.Release()
+
+	if held, _, err := Held(dir); err != nil || held {
+		t.Errorf("Held once released = %v, %v", held, err)
+	}
+	// Asking let go again, so a Janus can still start.
+	again, err := Acquire(dir)
+	if err != nil {
+		t.Fatalf("Acquire after Held = %v", err)
+	}
+	again.Release()
+}
+
+func TestHeldOnAFolderNoJanusUsedCreatesNothing(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "logs")
+	if held, holder, err := Held(dir); err != nil || held || holder != "" {
+		t.Errorf("Held = %v, %q, %v", held, holder, err)
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Error("Held created the log folder; it should only look")
+	}
+}
+
 func TestAddrInUse(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

@@ -125,9 +125,19 @@ since a service doesn't start in your Janus folder.
 
 ## Getting started
 
-**`janus doctor` says the port is in use.** That is expected if Janus is
-already running. Otherwise another program has 8787: change `listen` in
-`janus.config.json`, and the address in `ANTHROPIC_BASE_URL` to match.
+**`janus doctor` says the port is in use.** Doctor checks whether the
+program on the port is the Janus its config describes, by whether anything
+holds the lock in that config's log folder. If it is, the `listen` line
+says `ok` and names that Janus's pid. If it is not, it warns `not by a
+janus using this config`: either a Janus started with another config has
+the port, and writes another ledger, or another program does. The `config`
+line gives the full path of the config doctor read; without `-config` it
+is the one in the folder doctor was run from. If that is not the one Janus
+was started with, run `janus doctor -config` with the right one; the
+`ledger` and `claude` lines then say nothing about traffic, since the
+ledger doctor read is not the running Janus's. If no Janus is running,
+another program has 8787: change `listen` in `janus.config.json`, and the
+address in `ANTHROPIC_BASE_URL` to match.
 
 **`another janus ... is already using the log folder`.** Only one Janus
 runs per log folder, so two never write the same ledger. The message
@@ -387,7 +397,9 @@ Claude Code's settings file (`~/.claude/settings.json`, or under
 Janus's `listen` address, and when neither is set while the ledger is
 quiet. It cannot see a shell alias, so with an alias and recent requests
 it says `ok`. Check too that doctor read the config Janus runs with: the
-ledger is under that config's `logging.dir`.
+ledger is under that config's `logging.dir`. When the `listen` line says
+the port is held by a Janus with another config, doctor says so instead of
+warning about the ledger; see [the port is in use](#getting-started).
 
 **The ledger is split across two folders.** Before the default log
 folder became one per user, it was `logs` beside the config, so starting

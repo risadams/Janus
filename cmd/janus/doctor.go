@@ -22,6 +22,7 @@ import (
 
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/config"
+	"github.com/risadams/janus/internal/instance"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/route"
 	"github.com/risadams/janus/internal/update"
@@ -54,14 +55,15 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	findings, cfg, usable := checkConfig(*configPath, flags)
 	if usable {
 		client := &http.Client{Timeout: 5 * time.Second}
+		listenCheck, elsewhere := checkListen(cfg.Listen, cfg.Logging.Dir)
 		findings = append(findings,
-			checkListen(cfg.Listen),
+			listenCheck,
 			checkUpstream(client, cfg.Upstream.BaseURL),
 			checkLogs(cfg.Logging.Dir),
 		)
 		findings = append(findings, checkLocal(client, cfg)...)
-		ledgerCheck, recent := checkLedger(filepath.Join(cfg.Logging.Dir, "ledger"), time.Now())
-		findings = append(findings, ledgerCheck, checkClaude(cfg.Listen, os.Getenv, claudeSettingsPath(os.Getenv), recent))
+		ledgerCheck, seen := checkLedger(filepath.Join(cfg.Logging.Dir, "ledger"), time.Now(), elsewhere)
+		findings = append(findings, ledgerCheck, checkClaude(cfg.Listen, os.Getenv, claudeSettingsPath(os.Getenv), seen))
 		if f, seen := checkClaudeVersion(filepath.Join(cfg.Logging.Dir, "ledger"), time.Now()); seen {
 			findings = append(findings, f)
 		}
@@ -130,22 +132,35 @@ func printDoctorJSON(w io.Writer, findings []finding, failed bool) error {
 // checkConfig loads the config the way janus itself would, without writing
 // one. usable is false when the config is too broken to check anything
 // else against.
+//
+// The config is named by its full path. Without -config it is the one in
+// the folder doctor is run from, which need not be the one janus runs
+// with, and a relative logging.dir is read beside it.
 func checkConfig(path string, flags config.Overrides) (findings []finding, cfg config.Config, usable bool) {
 	cfg, err := config.Read(path)
 	if err != nil {
 		return []finding{{"fail", "config", err.Error()}}, cfg, false
 	}
+	shown := fullPath(path)
 	cfg = config.Apply(cfg, flags, os.Getenv)
 	if err := cfg.Validate(); err != nil {
-		return []finding{{"fail", "config", path + " has problems:\n" + err.Error()}}, cfg, false
+		return []finding{{"fail", "config", shown + " has problems:\n" + err.Error()}}, cfg, false
 	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return []finding{{"ok", "config", path + " does not exist yet; using the defaults (janus writes it on first run)"}}, cfg, true
+		return []finding{{"ok", "config", shown + " does not exist yet; using the defaults (janus writes it on first run)"}}, cfg, true
 	}
 	if len(cfg.Upgraded) > 0 {
-		return []finding{{"warn", "config", upgradedNote(path, cfg.Upgraded)}}, cfg, true
+		return []finding{{"warn", "config", upgradedNote(shown, cfg.Upgraded)}}, cfg, true
 	}
-	return []finding{{"ok", "config", path}}, cfg, true
+	return []finding{{"ok", "config", shown}}, cfg, true
+}
+
+// fullPath is path made absolute, or path itself if that cannot be done.
+func fullPath(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return path
 }
 
 // addrInUse reports whether a listen failed because the port is taken.
@@ -156,16 +171,36 @@ func addrInUse(err error) bool {
 	return errors.Is(err, syscall.EADDRINUSE) || (errors.As(err, &errno) && errno == wsaeaddrinuse)
 }
 
-func checkListen(addr string) finding {
+// checkListen says whether janus could listen on addr. When something
+// already has the port, the lock on the config's log folder tells whether
+// that is a janus using this config. If nothing holds the lock, any janus
+// on the port was started with another config and writes another ledger,
+// and elsewhere is true: the checks that read the logs are then about a
+// folder nobody is writing (#365).
+func checkListen(addr, logDir string) (f finding, elsewhere bool) {
 	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		if addrInUse(err) {
-			return finding{"warn", "listen", addr + " is in use. That is expected if janus is already running;\notherwise another program has the port, and listen needs changing."}
-		}
-		return finding{"fail", "listen", fmt.Sprintf("cannot listen on %s: %v", addr, err)}
+	if err == nil {
+		_ = ln.Close() // only opened to see that it could be
+		return finding{"ok", "listen", addr + " is free"}, false
 	}
-	_ = ln.Close() // only opened to see that it could be
-	return finding{"ok", "listen", addr + " is free"}
+	if !addrInUse(err) {
+		return finding{"fail", "listen", fmt.Sprintf("cannot listen on %s: %v", addr, err)}, false
+	}
+	held, holder, err := instance.Held(logDir)
+	switch {
+	case err != nil:
+		return finding{"warn", "listen", addr + " is in use. That is expected if janus is already running;\n" +
+			"otherwise another program has the port, and listen needs changing.\n" +
+			"Whether it is a janus using this config is unknown: " + err.Error()}, false
+	case held && holder != "":
+		return finding{"ok", "listen", addr + " is in use by the janus using this config (" + holder + ")"}, false
+	case held:
+		return finding{"ok", "listen", addr + " is in use by the janus using this config"}, false
+	}
+	return finding{"warn", "listen", addr + " is in use, but not by a janus using this config: none holds the lock on its\n" +
+		"log folder, " + logDir + ". If janus is running, it was started with another config\n" +
+		"and writes another ledger; run janus doctor -config with the config it was started with.\n" +
+		"Otherwise another program has the port, and listen needs changing."}, true
 }
 
 // checkUpstream asks only whether the upstream answers at all. Any HTTP
@@ -336,24 +371,45 @@ func checkLogs(dir string) finding {
 // asks whether Claude Code is still using janus.
 const quietAfter = 24 * time.Hour
 
+// traffic is what the ledger says about whether Claude Code goes through
+// janus.
+type traffic int
+
+const (
+	// trafficQuiet is a ledger with nothing recorded within quietAfter.
+	trafficQuiet traffic = iota
+	// trafficRecent is a ledger with a request recorded within quietAfter.
+	trafficRecent
+	// trafficUnknown is a ledger the running janus does not write, which
+	// says nothing either way.
+	trafficUnknown
+)
+
 // checkLedger says when janus last recorded a request. A setup that works
 // but that Claude Code no longer goes through looks healthy in every other
-// check, so a quiet ledger is the sign of it (#231). recent reports
-// whether a request was recorded within quietAfter.
-func checkLedger(dir string, now time.Time) (f finding, recent bool) {
+// check, so a quiet ledger is the sign of it (#231). elsewhere says that
+// the janus running now writes another ledger, so that a quiet one here
+// is no sign of anything (#365).
+func checkLedger(dir string, now time.Time, elsewhere bool) (f finding, seen traffic) {
 	newest, err := ledger.Newest(dir)
 	switch {
 	case err != nil:
-		return finding{"warn", "ledger", fmt.Sprintf("cannot read %s: %v", dir, err)}, false
+		return finding{"warn", "ledger", fmt.Sprintf("cannot read %s: %v", dir, err)}, trafficQuiet
+	case elsewhere && newest.IsZero():
+		return finding{"ok", "ledger", "nothing recorded in " + dir + ",\nwhich the janus running now does not write; see listen above"}, trafficUnknown
 	case newest.IsZero():
-		return finding{"ok", "ledger", "nothing recorded yet in " + dir}, false
+		return finding{"ok", "ledger", "nothing recorded yet in " + dir}, trafficQuiet
 	}
 	when := fmt.Sprintf("%s (%s)", newest.Local().Format("2006-01-02 15:04"), ago(now.Sub(newest)))
-	if now.Sub(newest) > quietAfter {
+	switch {
+	case elsewhere:
+		return finding{"ok", "ledger", "the last request in " + dir + " was recorded " + when + ",\n" +
+			"but the janus running now does not write there; see listen above"}, trafficUnknown
+	case now.Sub(newest) > quietAfter:
 		return finding{"warn", "ledger", "the last request was recorded " + when + ".\n" +
-			"If Claude Code has been used since, it is not going through janus; see claude below."}, false
+			"If Claude Code has been used since, it is not going through janus; see claude below."}, trafficQuiet
 	}
-	return finding{"ok", "ledger", "the last request was recorded " + when}, true
+	return finding{"ok", "ledger", "the last request was recorded " + when}, trafficRecent
 }
 
 // versionLookback is how far back doctor looks in the ledger for the
@@ -428,7 +484,7 @@ func claudeSettingsPath(getenv func(string) string) string {
 // where Claude Code is started, cannot be seen from here. So an unset
 // variable is a warning only when the ledger is quiet too; one that points
 // somewhere else always is.
-func checkClaude(listen string, getenv func(string) string, settingsPath string, recent bool) finding {
+func checkClaude(listen string, getenv func(string) string, settingsPath string, seen traffic) finding {
 	type source struct{ where, value string }
 	var set []source
 	if v := getenv("ANTHROPIC_BASE_URL"); v != "" {
@@ -459,8 +515,12 @@ func checkClaude(listen string, getenv func(string) string, settingsPath string,
 		return finding{"ok", "claude", strings.Join(at, " and ") + " points at janus"}
 	}
 	unset := "ANTHROPIC_BASE_URL is not set in this shell or in " + settingsPath
-	if recent {
+	switch seen {
+	case trafficRecent:
 		return finding{"ok", "claude", unset + ";\nsessions reach janus some other way, such as an alias"}
+	case trafficUnknown:
+		return finding{"ok", "claude", unset + ";\nsessions may reach janus some other way, such as an alias, but the ledger\n" +
+			"that would show it is the running janus's; see listen above"}
 	}
 	return finding{"warn", "claude", unset + ",\n" +
 		"so Claude Code goes straight to Anthropic unless started with it (as below).\n" +

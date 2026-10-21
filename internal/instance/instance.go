@@ -14,6 +14,7 @@ package instance
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,31 @@ func Acquire(dir string) (*Lock, error) {
 		return nil, fmt.Errorf("could not lock %s: %w", path, err)
 	}
 	return &Lock{f: f}, nil
+}
+
+// Held reports whether a running Janus holds the lock on dir, and what it
+// wrote about itself, without creating dir or the lock file. It is for
+// janus doctor, to tell whether the Janus on its port is the one its config
+// describes. Finding out means taking the lock for an instant when it is
+// free, so a Janus started at that same instant is turned away as if
+// another were running; doctor is run by hand, so that is left to chance.
+func Held(dir string) (held bool, holder string, err error) {
+	path := filepath.Join(dir, FileName)
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		return false, "", nil // no Janus has ever used the folder
+	} else if err != nil {
+		return false, "", err
+	}
+	f, err := lock(path)
+	if errors.Is(err, errHeld) {
+		data, _ := os.ReadFile(path) // #nosec G304 -- the lock file, to say who holds it
+		return true, strings.TrimSpace(string(data)), nil
+	}
+	if err != nil {
+		return false, "", fmt.Errorf("could not check the lock %s: %w", path, err)
+	}
+	_ = f.Close() // only taken to see that it could be
+	return false, "", nil
 }
 
 // Describe records who holds the lock, for a second Janus to report. It
