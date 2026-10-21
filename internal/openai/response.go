@@ -34,6 +34,10 @@ type Usage struct {
 
 // Result is what one answer came to.
 type Result struct {
+	// Model is the model OpenAI says answered, for the ledger's
+	// response.model: the answer Claude Code sees names the model it asked
+	// for, which the ledger has as request.model.
+	Model string
 	// StopReason is the Anthropic stop_reason sent to Claude Code, or empty
 	// if the answer did not finish.
 	StopReason string
@@ -53,6 +57,7 @@ var ErrBrokenStream = errors.New("openai: the stream ended before the response d
 type (
 	wireResponse struct {
 		ID                string     `json:"id"`
+		Model             string     `json:"model"`
 		Status            string     `json:"status"`
 		Output            []wireItem `json:"output"`
 		Usage             *wireUsage `json:"usage"`
@@ -204,7 +209,7 @@ func TranslateResponse(body []byte, opts ResponseOptions) ([]byte, Result, error
 	if err := json.Unmarshal(body, &r); err != nil {
 		return nil, Result{}, fmt.Errorf("openai: the response is not JSON: %w", err)
 	}
-	res := Result{Usage: r.Usage.usage()}
+	res := Result{Model: r.Model, Usage: r.Usage.usage()}
 	if r.Status == "failed" && r.Error != nil && !policyCodes[r.Error.Code] {
 		f := classify(http.StatusInternalServerError, r.Error)
 		res.Err = &f
@@ -291,6 +296,7 @@ type streamState struct {
 	err  error
 
 	started bool
+	model   string      // as OpenAI reported it
 	next    int         // the next Anthropic content block's index
 	open    map[int]int // OpenAI output_index to open Anthropic block index
 	kinds   map[int]string
@@ -423,7 +429,7 @@ func (s *streamState) dispatch(data []byte) (Result, bool) {
 	case "response.created":
 		id := ""
 		if e.Response != nil {
-			id = e.Response.ID
+			id, s.model = e.Response.ID, e.Response.Model
 		}
 		s.start(id)
 	case "response.output_item.added":
@@ -475,10 +481,13 @@ func (s *streamState) dispatch(data []byte) (Result, bool) {
 func (s *streamState) finish(r *wireResponse) Result {
 	s.start("")
 	s.closeAll()
-	var res Result
+	res := Result{Model: s.model}
 	status, incomplete := "completed", ""
 	if r != nil {
 		res.Usage = r.Usage.usage()
+		if r.Model != "" {
+			res.Model = r.Model
+		}
 		status = r.Status
 		if r.IncompleteDetails != nil {
 			incomplete = r.IncompleteDetails.Reason
@@ -512,5 +521,5 @@ func (s *streamState) fail(we *wireError) Result {
 	}
 	f := classify(http.StatusInternalServerError, we)
 	s.send("error", f.body())
-	return Result{Err: &f}
+	return Result{Model: s.model, Err: &f}
 }

@@ -210,8 +210,9 @@ type OpenAI struct {
 	// written here (ADR-005).
 	Key string `json:"key,omitempty"`
 	// Models maps what Claude Code asks for to an OpenAI model: a Claude
-	// model's family ("opus", "sonnet", "haiku") or its full name. Entries
-	// here replace those in DefaultOpenAIModels.
+	// model's full name, its family ("fable", "opus", "sonnet", "haiku"),
+	// or "default" for any other. Entries here replace those in
+	// DefaultOpenAIModels.
 	Models map[string]string `json:"models,omitempty"`
 }
 
@@ -221,10 +222,13 @@ const DefaultOpenAIURL = "https://api.openai.com"
 // DefaultOpenAIModels are the models that answer for each Claude family
 // unless openai.models says otherwise: the owner chose the smaller model
 // where two were close (docs/research/openai.md, Models; #374).
+// "default" answers for a model of no family janus knows.
 var DefaultOpenAIModels = map[string]string{
-	"opus":   "gpt-6.1-sol",
-	"sonnet": "gpt-6.1-sol",
-	"haiku":  "gpt-6-luna",
+	"fable":   "gpt-6.1-sol",
+	"opus":    "gpt-6.1-sol",
+	"sonnet":  "gpt-6.1-sol",
+	"haiku":   "gpt-6-luna",
+	"default": "gpt-6.1-sol",
 }
 
 // On reports whether the config has an openai section at all.
