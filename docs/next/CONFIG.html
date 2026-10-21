@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Configuration | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/next/CONFIG"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Configuration | Janus"><meta data-rh="true" name="description" content="This is the reference: every setting, what it does, and why it works the"><meta data-rh="true" property="og:description" content="This is the reference: every setting, what it does, and why it works the"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/next/CONFIG"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/CONFIG" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/CONFIG" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Configuration","item":"https://risadams.github.io/Janus/docs/next/CONFIG"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.31295cc3.css">
-<script src="/Janus/assets/js/runtime~main.ba2fdfc2.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.11ddce15.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.ecac1f14.js" defer="defer"></script>
 </head>
 <body>
@@ -509,9 +509,48 @@ only, refusing what it cannot take. Two entries can&#x27;t name the same
 provider.</p>
 <p>An entry that cannot take the request at all is passed over, and the
 ledger&#x27;s <code>reason</code> says why: a request OpenAI&#x27;s API has no way to express,
-a local model too busy or too small for it, LM Studio unreachable. If no
-entry can take it, the request is refused with an error naming each
-reason, and nothing is sent.</p>
+OpenAI out (below), a local model too busy or too small for it, LM Studio
+unreachable. If no entry can take it, the request is refused with an
+error naming each reason, and nothing is sent.</p>
+<p>When the provider in use fails, whether the request moves down the list
+depends on the provider and the failure:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Provider</th><th>Moves on at once</th><th>Moves on once it is an outage</th><th>Never moves on</th></tr></thead><tbody><tr><td>Claude</td><td>A rate limit whose headers say a minute or more</td><td>Any other 429, 5xx, or 529, or no answer, on the third within two minutes</td><td>Any other error, such as a bad request or an expired login</td></tr><tr><td>OpenAI</td><td>A conversation too long for the model; a request OpenAI refused (most likely janus translated it wrongly); a refused key; a used-up quota or spend limit</td><td>A per-minute rate limit (at once if <code>Retry-After</code> says a minute or more), a server error, overload, or no answer, on the third within two minutes</td><td>—</td></tr><tr><td>A local model</td><td>Any error, or no answer</td><td></td><td></td></tr></tbody></table>
+<p>&quot;Once it is an outage&quot; is the rule described under
+<a href="#keep-working-when-claude-is-down" class="">Keep working when Claude is down</a>:
+until then the failure goes to Claude Code, which retries, and usually
+gets through. A refused OpenAI key and a used-up quota need you to act,
+so OpenAI is then left out of every list until Janus restarts, rather
+than asked again. Whatever moves on, the next provider is sent the
+request as Claude Code sent it.</p>
 <p>Before config version 2 a rule named one local stand-in with
 <code>&quot;ifDown&quot;: &quot;janus-local&quot;</code>. Janus reads that as
 <code>&quot;fallback&quot;: [&quot;upstream&quot;, &quot;janus-local&quot;]</code>, which means the same thing,
