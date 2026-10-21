@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Configuration | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/next/CONFIG"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Configuration | Janus"><meta data-rh="true" name="description" content="This is the reference: every setting, what it does, and why it works the"><meta data-rh="true" property="og:description" content="This is the reference: every setting, what it does, and why it works the"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/next/CONFIG"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/CONFIG" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/CONFIG" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Configuration","item":"https://risadams.github.io/Janus/docs/next/CONFIG"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.31295cc3.css">
-<script src="/Janus/assets/js/runtime~main.f65a202c.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.f5e0aca7.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.ecac1f14.js" defer="defer"></script>
 </head>
 <body>
@@ -176,10 +176,18 @@ v0.10.0.</p>
 
 
 
-<table><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody><tr><td><code>openai.key</code></td><td>Where the API key is kept: <code>env:NAME</code>, the environment variable <code>NAME</code>, or <code>keychain:NAME</code>, the entry <code>NAME</code> in your operating system&#x27;s credential store. Required.</td></tr><tr><td><code>openai.baseUrl</code></td><td>The OpenAI API, or a gateway in front of it, without <code>/v1</code>. Default <code>https://api.openai.com</code>.</td></tr><tr><td><code>openai.models</code></td><td>Optional. Which OpenAI model answers when Claude Code asks for a Claude model: a family (<code>opus</code>, <code>sonnet</code>, <code>haiku</code>) or a model&#x27;s full name, mapped to an OpenAI model id. Your entries replace the defaults one by one.</td></tr></tbody></table>
-<p>The default models are <code>gpt-6.1-sol</code> for <code>opus</code> and <code>sonnet</code>, and the
-smaller <code>gpt-6-luna</code> for <code>haiku</code>
+<table><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody><tr><td><code>openai.key</code></td><td>Where the API key is kept: <code>env:NAME</code>, the environment variable <code>NAME</code>, or <code>keychain:NAME</code>, the entry <code>NAME</code> in your operating system&#x27;s credential store. Required.</td></tr><tr><td><code>openai.baseUrl</code></td><td>The OpenAI API, or a gateway in front of it, without <code>/v1</code>. Default <code>https://api.openai.com</code>.</td></tr><tr><td><code>openai.models</code></td><td>Optional. Which OpenAI model answers when Claude Code asks for a Claude model: a model&#x27;s full name, a family (<code>fable</code>, <code>opus</code>, <code>sonnet</code>, <code>haiku</code>), or <code>default</code> for any other, mapped to an OpenAI model id. A full name is looked up first, then the family, then <code>default</code>. Your entries replace the defaults one by one.</td></tr></tbody></table>
+<p>The default models are <code>gpt-6.1-sol</code> for <code>fable</code>, <code>opus</code>, <code>sonnet</code>, and
+<code>default</code>, and the smaller <code>gpt-6-luna</code> for <code>haiku</code>
 (<a class="" href="/Janus/docs/next/research/openai#models">the mapping</a>).</p>
+<p>The reasoning effort follows Claude Code&#x27;s: its <code>effort</code> setting goes
+across as it is, and a thinking budget picks one (under 4,000 tokens
+<code>low</code>, under 16,000 <code>medium</code>, under 32,000 <code>high</code>, otherwise <code>xhigh</code>).
+Thinking switched off becomes the model&#x27;s lowest effort. An effort a model
+does not take is moved to the nearest one it does: <code>max</code> on
+<code>gpt-5.3-codex</code> becomes <code>xhigh</code>. The ledger records the Claude model asked
+for as <code>request.model</code> and the OpenAI model that answered as
+<code>response.model</code>.</p>
 <p><strong>The key is never in this file.</strong> A config file gets copied between
 machines, pasted into issues, and backed up, and <code>janus config upgrade</code>
 leaves a <code>.bak</code> copy beside it, so Janus refuses a key written here, and
