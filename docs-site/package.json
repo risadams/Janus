@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "docusaurus start",
-    "build": "docusaurus build",
+    "start": "node scripts/versions.js && docusaurus start",
+    "build": "node scripts/versions.js && docusaurus build",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve"
   },

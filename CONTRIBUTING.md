@@ -20,7 +20,11 @@ here saves a round trip on a pull request.
   pull request. They are Markdown in `docs/`, published as the
   [docs site](https://risadams.github.io/Janus/); to preview it,
   `cd docs-site && npm ci && npm start`, which serves it at
-  http://localhost:3000/. Its build fails on a broken link.
+  http://localhost:3000/. Its build fails on a broken link. The site's
+  default docs are the newest stable release's, from its `docs/vX.Y`
+  branch, and main's are shown as "Next". A fix that the stable docs need
+  too is made on main first, then cherry-picked onto that branch
+  (`git cherry-pick -x <commit>`) and pushed.
 - **Never commit captures, logs, or a config.** They hold prompts, code, and
   credentials.
 

@@ -4,6 +4,12 @@ name: docs
 # touches the docs gets a build, so a broken link is found before merging;
 # a push to main publishes the site to the gh-pages branch.
 #
+# The site's default docs are the newest stable release's, from the newest
+# docs/vX.Y branch, and main's are "Next" (#404); docs-site/scripts/versions.js
+# takes them from the branch at build time. So a push to a docs/v* branch,
+# a fix cherry-picked onto it or tag-release.sh moving it to a new stable
+# tag, publishes too.
+#
 # A release tag publishes it too, because the site shows the newest tag and
 # a release changes no docs (#212). The trigger is the tag push, not the
 # release: release.yml makes the release with GITHUB_TOKEN, and events made
@@ -11,7 +17,7 @@ name: docs
 # filter below to tag pushes, so every release tag runs this.
 on:
   push:
-    branches: [main]
+    branches: [main, "docs/v*"]
     tags: ["v*"]
     paths:
       - "docs/**"
@@ -31,21 +37,23 @@ permissions:
 # never push gh-pages at once; the later one builds from main with every
 # tag, so cancelling the earlier loses nothing.
 concurrency:
-  group: docs-${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && 'publish' || github.ref }}
+  group: docs-${{ github.event_name != 'pull_request' && 'publish' || github.ref }}
   cancel-in-progress: true
 
 jobs:
   site:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # to push gh-pages, from main or a release tag only
+      contents: write # to push gh-pages; pull requests only build
     steps:
-      # Full history, so the navbar can show the newest release tag. A tag
-      # run builds main, not the tag, so the site has the current docs.
+      # Full history, so the navbar can show the newest release tag and the
+      # docs/v* branches are there to build the stable docs from. Every run
+      # that publishes builds main, whatever pushed: the site's config and
+      # Next come from main, the stable docs from their branch.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ startsWith(github.ref, 'refs/tags/') && 'main' || '' }}
+          ref: ${{ github.event_name != 'pull_request' && 'main' || '' }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: "24"
@@ -56,7 +64,7 @@ jobs:
       - run: npm run build
         working-directory: docs-site
       - name: Publish to GitHub Pages
-        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        if: github.event_name != 'pull_request'
         uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445 # v4
         with:
           folder: docs-site/build
