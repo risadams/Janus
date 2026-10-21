@@ -167,7 +167,7 @@ func TestAuditOneRequest(t *testing.T) {
 	wantLines(t, out, "NOT replaced: the request was sent with them in it", "r3-exposed_v1-messages.request.txt", "(as your client sent it; janus did not change it)")
 
 	out, _, _ = runAuditCmd(t, "-dir", dir, "r4-local")
-	wantLines(t, out, "Went to the local model only; it was not sent to Anthropic", "Changed set_model")
+	wantLines(t, out, "Went to the local model only; it was not sent off this machine", "Changed set_model")
 
 	out, _, _ = runAuditCmd(t, "-dir", dir, "r5-stopped")
 	wantLines(t, out, "Went to nowhere: janus refused or stopped it", "Guard stopped: the request could not be read")
@@ -241,4 +241,83 @@ func TestAuditOfARequestWithNoSecretsSaysSo(t *testing.T) {
 	if strings.Contains(out, "0 found") || strings.Contains(out, "()") {
 		t.Errorf("the audit printed an empty finding:\n%s", out)
 	}
+}
+
+// openaiAuditFixture is a log directory with requests that went to
+// OpenAI: one alone, with a secret it was sent with, and one Claude could
+// not answer first.
+func openaiAuditFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	l := ledger.Open(filepath.Join(dir, "ledger"))
+	day := filepath.Join(dir, "captures", "2026-10-11")
+	os.MkdirAll(day, 0o700)
+	when := time.Date(2026, 10, 11, 18, 0, 0, 0, time.UTC)
+	one := 1
+	responses := func(text string) string {
+		b, _ := json.Marshal(map[string]any{"model": "gpt-6.1-sol", "input": []map[string]any{
+			{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": text}}}}})
+		return string(b)
+	}
+	add := func(id string, rec ledger.Record, sent string) {
+		rec.V, rec.ID, rec.Time = 1, id, when
+		rec.Method, rec.Path, rec.Outcome, rec.Class = "POST", "/v1/messages", ledger.OutcomeOK, "main"
+		when = when.Add(time.Minute)
+		rec.Capture = filepath.Join("2026-10-11", id+"_v1-messages")
+		os.WriteFile(filepath.Join(day, id+"_v1-messages.request.txt"), []byte(`{"model":"claude-opus-5-5","messages":[]}`), 0o600)
+		os.WriteFile(filepath.Join(day, id+"_v1-messages.sent.txt"), []byte(sent), 0o600)
+		if err := l.Append(rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	secret := "aws_access_key_id = " + fakeAWSKey
+	add("o1-openai", ledger.Record{Backend: "openai", Route: "openai", Reason: "rule all",
+		Guard: &ledger.Guard{Findings: 1, Kinds: map[string]int{"aws_access_key": 1}, Where: []string{"messages[0] user (text)"}}}, responses(secret))
+	redacted := &ledger.Guard{Findings: 1, Kinds: map[string]int{"aws_access_key": 1}, Redacted: &one}
+	add("o2-moved", ledger.Record{Backend: "openai", Route: "openai", Reason: "rule all: upstream answered HTTP 429; sent openai", Guard: redacted,
+		Tried: []ledger.Tried{{Provider: "upstream", Outcome: ledger.OutcomeFailed, Why: "upstream answered HTTP 429"}}},
+		responses("aws_access_key_id = JANUS_REDACTED_0123456789ab"))
+	add("o3-passed", ledger.Record{Backend: "upstream", Route: "upstream", Reason: "rule all: the request cannot be translated for OpenAI: x; sent upstream",
+		Tried: []ledger.Tried{{Provider: "openai", Outcome: ledger.OutcomePassedOver, Why: "the request cannot be translated for OpenAI: x"}}}, `{"model":"claude-opus-5-5","messages":[]}`)
+	return dir
+}
+
+func TestAuditCountsWhatReachedOpenAI(t *testing.T) {
+	dir := openaiAuditFixture(t)
+	out, _, _ := runAuditCmd(t, "-dir", dir)
+	wantLines(t, out,
+		"1 to Anthropic, exactly as your client sent them",
+		"1 to Anthropic, changed by janus on the way (1 with secrets replaced)",
+		"1 to OpenAI, exactly as your client sent them",
+		"1 to OpenAI, changed by janus on the way (1 with secrets replaced)",
+		"0 refused or stopped by janus, and sent nowhere",
+		"A request sent to both, the first unable to answer, is counted under each.",
+		"2 requests bound for Anthropic or OpenAI carried something that looks like a secret",
+		"1 were SENT WITH THE SECRETS IN THEM",
+	)
+
+	out, _, _ = runAuditCmd(t, "-dir", dir, "-json")
+	var r auditReport
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.OpenAI.Untouched != 1 || r.OpenAI.Changed != 1 || r.Anthropic.Untouched != 1 || r.Anthropic.Changed != 1 || r.Stopped != 0 {
+		t.Errorf("-json = %+v", r)
+	}
+
+	out, _, _ = runAuditCmd(t, "-dir", dir, "o2-moved")
+	wantLines(t, out, "Went to Anthropic, which could not answer; then OpenAI")
+	out, _, _ = runAuditCmd(t, "-dir", dir, "o3-passed")
+	wantLines(t, out, "Went to Anthropic", "Passed OpenAI, not sent: the request cannot be translated for OpenAI: x")
+}
+
+// -verify reads what OpenAI was sent, a Responses request, and finds a
+// secret in it as it would in a Messages request.
+func TestAuditVerifyReadsWhatWasSentToOpenAI(t *testing.T) {
+	dir := openaiAuditFixture(t)
+	out, _, code := runAuditCmd(t, "-dir", dir, "-verify")
+	if code != 1 {
+		t.Errorf("exit %d, want 1 for a leak", code)
+	}
+	wantLines(t, out, "Verification: re-read 3 requests as they were sent to Anthropic or OpenAI", "2 contain nothing that looks like a secret", "1 STILL CONTAIN SOMETHING THAT LOOKS LIKE A SECRET", "o1-openai")
 }

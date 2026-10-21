@@ -22,12 +22,14 @@ type auditReport struct {
 	From     *time.Time `json:"from,omitempty"`
 	To       *time.Time `json:"to,omitempty"`
 	Requests int        `json:"requests"`
-	// Where the requests carrying content went.
+	// Where the requests carrying content went. One sent to both, the
+	// first unable to answer, counts under each.
 	Anthropic auditSent `json:"anthropic"`
+	OpenAI    auditSent `json:"openai"`
 	LocalOnly int       `json:"local_only"`
 	Stopped   int       `json:"stopped"`
-	// KeptLocal counts requests the local-only policy kept from Anthropic
-	// altogether.
+	// KeptLocal counts requests the local-only policy kept off this
+	// machine altogether.
 	KeptLocal int          `json:"kept_local"`
 	Secrets   auditSecrets `json:"secrets"`
 	Blocked   []auditStop  `json:"blocked"`
@@ -35,7 +37,7 @@ type auditReport struct {
 	Verify *auditVerify `json:"verify,omitempty"`
 }
 
-// auditSent is the requests that reached Anthropic: as the client sent
+// auditSent is the requests that reached one provider: as the client sent
 // them, or changed by janus on the way, and how.
 type auditSent struct {
 	Untouched int `json:"untouched"`
@@ -45,7 +47,7 @@ type auditSent struct {
 	Repaired  int `json:"repaired"`
 }
 
-// auditSecrets is what the guard found in requests bound for Anthropic.
+// auditSecrets is what the guard found in requests bound off this machine.
 type auditSecrets struct {
 	Requests int            `json:"requests"`
 	Replaced int            `json:"replaced"`
@@ -76,12 +78,10 @@ type auditVerify struct {
 
 func auditJSON(dir string, a audit, v *verification) auditReport {
 	r := auditReport{
-		Dir:      dir,
-		Requests: a.requests,
-		Anthropic: auditSent{
-			Untouched: a.untouched, Changed: a.changed,
-			Redacted: a.redacted, Withheld: a.withheld, Repaired: a.repaired,
-		},
+		Dir:       dir,
+		Requests:  a.requests,
+		Anthropic: a.anthropic.json(),
+		OpenAI:    a.openai.json(),
 		LocalOnly: a.localOnly,
 		Stopped:   a.stopped,
 		KeptLocal: a.keptLocal,
@@ -107,6 +107,10 @@ func auditJSON(dir string, a audit, v *verification) auditReport {
 		}
 	}
 	return r
+}
+
+func (t sentTo) json() auditSent {
+	return auditSent{Untouched: t.untouched, Changed: t.changed, Redacted: t.redacted, Withheld: t.withheld, Repaired: t.repaired}
 }
 
 func sortedKinds(kinds map[string]int) []string {
