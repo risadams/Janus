@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/config"
@@ -25,6 +26,9 @@ type Backend struct {
 	key    Key
 	config config.OpenAI
 	client *http.Client
+	// out is set once OpenAI refuses the key or the account runs out; see
+	// Out.
+	out atomic.Pointer[string]
 }
 
 // NewBackend returns the OpenAI backend for o, sending with key. client is
@@ -77,29 +81,57 @@ func (b *Backend) Health(ctx context.Context) error {
 	return nil
 }
 
+// Translation is one request on its way to OpenAI.
+type Translation struct {
+	// Choice is the model and effort chosen for it.
+	Choice Choice
+
+	b       *Backend
+	opts    RequestOptions
+	failure *Failure
+}
+
 // Translation chooses the model and effort for req and checks that req can
 // be translated at all, so that a planner knows before it commits to
-// OpenAI. translate is for the plan (proxy.Plan.Translate): it translates
-// the body as the guard leaves it, which may differ from req by the
-// secrets it replaced, and returns how to read the answer back.
-func (b *Backend) Translation(header http.Header, req *anthropic.Request) (choice Choice, translate func(body []byte) ([]byte, func(*http.Response) error, error), err error) {
-	choice = Choose(b.config, req)
+// OpenAI.
+func (b *Backend) Translation(header http.Header, req *anthropic.Request) (*Translation, error) {
+	choice := Choose(b.config, req)
 	opts := RequestOptions{Model: choice.Model, Effort: choice.Effort, SessionID: header.Get("X-Claude-Code-Session-Id")}
 	if _, err := TranslateRequest(req, opts); err != nil {
-		return Choice{}, nil, err
+		return nil, err
 	}
-	translate = func(body []byte) ([]byte, func(*http.Response) error, error) {
-		req, err := anthropic.ParseRequest(body)
-		if err != nil {
-			return nil, nil, err
-		}
-		tr, err := TranslateRequest(req, opts)
-		if err != nil {
-			return nil, nil, err
-		}
-		return tr.Body, b.back(ResponseOptions{Tools: tr.Tools, Summary: tr.Summary, scrub: b.key.scrub}), nil
+	return &Translation{Choice: choice, b: b, opts: opts}, nil
+}
+
+// Translate is for the plan (proxy.Plan.Translate): it translates the body
+// as the guard leaves it, which may differ from the request Translation
+// was given by the secrets it replaced, and returns how to read the answer
+// back.
+func (t *Translation) Translate(body []byte) ([]byte, func(*http.Response) error, error) {
+	req, err := anthropic.ParseRequest(body)
+	if err != nil {
+		return nil, nil, err
 	}
-	return choice, translate, nil
+	tr, err := TranslateRequest(req, t.opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return tr.Body, t.b.back(t, ResponseOptions{Tools: tr.Tools, Summary: tr.Summary, scrub: t.b.key.scrub}), nil
+}
+
+// Failure is OpenAI's error answer to the request, once it has been read:
+// what a fallback list decides on (#428). Nil before then, and when OpenAI
+// answered. It is read on the goroutine that reads the response.
+func (t *Translation) Failure() *Failure { return t.failure }
+
+// Out says why OpenAI is out until janus is restarted, or "" if it is not:
+// it refused the key, or the account has run out (Kind). Both need the
+// owner, so asking again would only be refused again.
+func (b *Backend) Out() string {
+	if why := b.out.Load(); why != nil {
+		return *why
+	}
+	return ""
 }
 
 // maxAnswer bounds a whole (not streamed) answer or an error read to be
@@ -111,7 +143,7 @@ const maxAnswer = 32 << 20
 // a stream event by event as it arrives, a whole answer all at once.
 // OpenAI's own headers are kept, for the ledger, except those describing a
 // body that has been replaced.
-func (b *Backend) back(opts ResponseOptions) func(*http.Response) error {
+func (b *Backend) back(t *Translation, opts ResponseOptions) func(*http.Response) error {
 	return func(resp *http.Response) error {
 		resp.Header.Del("Content-Encoding")
 		resp.Header.Del("Content-Length")
@@ -120,6 +152,11 @@ func (b *Backend) back(opts ResponseOptions) func(*http.Response) error {
 			raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxAnswer)) // a short read is explained by its status
 			_ = resp.Body.Close()
 			f := TranslateError(resp.StatusCode, resp.Header, b.key.scrub(raw), b.config.Key)
+			t.failure = &f
+			if f.Kind == KeyRefused || f.Kind == QuotaExhausted {
+				why := f.Message
+				b.out.CompareAndSwap(nil, &why)
+			}
 			replace(resp, f.Status, f.Body())
 			return nil
 		}
@@ -146,6 +183,7 @@ func (b *Backend) back(opts ResponseOptions) func(*http.Response) error {
 		case err != nil:
 			replace(resp, http.StatusBadGateway, errorBody("api_error", "janus: OpenAI's answer could not be read ("+err.Error()+"), which is most likely a bug in janus; please report it with the ledger record."))
 		case res.Err != nil:
+			t.failure = res.Err
 			replace(resp, res.Err.Status, res.Err.Body())
 		default:
 			replace(resp, http.StatusOK, out)

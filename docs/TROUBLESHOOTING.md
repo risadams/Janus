@@ -327,6 +327,12 @@ too large to check (over 32 MB), or still held a secret or local-only
 content after replacement. `janus audit` lists these under "Stopped by
 the guard".
 
+**The ledger's `reason` says `OpenAI is out until janus restarts`.**
+OpenAI refused the key, or the account ran out of credit or reached a
+spend limit, and the reason after it says which. Janus stops asking until
+it restarts, since asking again would be refused again. Fix the key or
+the account, then restart Janus.
+
 **A `500` saying `janus: the request could not be translated for
 openai`.** The request holds something the Responses API has no way to
 take, and it was not sent. The message names it. Please report it with
