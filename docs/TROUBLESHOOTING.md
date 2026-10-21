@@ -16,7 +16,8 @@ When something is wrong, these five things find most problems, and
 which link it is:
 
 1. **`janus doctor`.** It checks the config, the port, Anthropic, LM
-   Studio, and the log folder, when the ledger last recorded a request,
+   Studio, the OpenAI key if the config has an `openai` section, and the
+   log folder, when the ledger last recorded a request,
    and whether Claude Code is pointed at Janus, and says what to fix.
    `janus doctor -json` gives the same results for a script or a status
    line: `version`, `ok` (false if any check failed, when it also exits

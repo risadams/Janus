@@ -109,11 +109,16 @@ smaller `gpt-6-luna` for `haiku`
 **The key is never in this file.** A config file gets copied between
 machines, pasted into issues, and backed up, and `janus config upgrade`
 leaves a `.bak` copy beside it, so Janus refuses a key written here, and
-its error does not repeat it. It reads
-the key once, at startup, from the source `openai.key` names, keeps it in
+its error does not repeat it. It reads the key once, at startup, from the source `openai.key` names, keeps it in
 memory only, and sends it to OpenAI and nowhere else
 ([ADR-005](adr/005-openai-credential.md)). Use `keychain:` when Janus runs
-as a service, which does not see your shell's environment.
+as a service, which does not see your shell's environment. This release
+reads `env:` only; `keychain:` passes the config check, and `janus doctor`
+says the credential store cannot be read yet.
+
+`janus doctor` says where the key comes from and whether it was found,
+never what it is. It sends nothing to OpenAI, so a wrong key shows up
+only when OpenAI refuses it.
 
 ## Logs
 

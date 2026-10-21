@@ -523,3 +523,39 @@ func TestDoctorWarnsOfAnUntestedClaudeCode(t *testing.T) {
 		t.Errorf("a request from 8 days ago gave %+v", f)
 	}
 }
+
+// Doctor says where the OpenAI key comes from and whether it is there, and
+// never prints it.
+func TestDoctorSaysWhetherTheOpenAIKeyIsFoundButNotWhatItIs(t *testing.T) {
+	up := serverSaying(200, "Anthropic API")
+	defer up.Close()
+	lms := serverSaying(200, lmStudioModels)
+	defer lms.Close()
+	openaiSection := map[string]any{"openai": map[string]any{"key": "env:JANUS_TEST_OPENAI_KEY"}}
+
+	const key = "janus-test-key-0f3c9d"
+	t.Setenv("JANUS_TEST_OPENAI_KEY", key)
+	out, _, _ := doctor(t, up.URL, lms.URL, openaiSection)
+	wantLines(t, out, "ok openai https://api.openai.com, key found in JANUS_TEST_OPENAI_KEY")
+	if strings.Contains(out, key) {
+		t.Errorf("doctor printed the key:\n%s", out)
+	}
+
+	os.Unsetenv("JANUS_TEST_OPENAI_KEY")
+	out, code, _ := doctor(t, up.URL, lms.URL, openaiSection)
+	wantLines(t, out, "warn openai", "JANUS_TEST_OPENAI_KEY is not set")
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0: nothing uses the key yet", code)
+	}
+}
+
+func TestDoctorSaysNothingOfOpenAIWithoutTheSection(t *testing.T) {
+	up := serverSaying(200, "Anthropic API")
+	defer up.Close()
+	lms := serverSaying(200, lmStudioModels)
+	defer lms.Close()
+	out, _, _ := doctor(t, up.URL, lms.URL, nil)
+	if strings.Contains(out, "openai") {
+		t.Errorf("doctor mentions OpenAI for a config without it:\n%s", out)
+	}
+}
