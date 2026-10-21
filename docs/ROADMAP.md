@@ -1,6 +1,6 @@
 # Janus — Roadmap
 
-Status: draft for review · Last updated: 2026-10-16
+Status: draft for review · Last updated: 2026-10-21
 
 The roadmap is a sequence, not a schedule. Each milestone ends in something
 usable and has an exit test. Issues for each milestone are on the
@@ -8,8 +8,8 @@ usable and has an exit test. Issues for each milestone are on the
 
 ## Shape
 
-![How the milestones depend on each other: M0 to M5 lead in order to M7, the 1.0 release; M6 Guard needs only M2 and leads to 1.0; M8 Pace needs M3 and, like M9 Distribution, runs beside 1.0](diagrams/roadmap.svg#gh-light-mode-only)
-![How the milestones depend on each other: M0 to M5 lead in order to M7, the 1.0 release; M6 Guard needs only M2 and leads to 1.0; M8 Pace needs M3 and, like M9 Distribution, runs beside 1.0](diagrams/roadmap-dark.svg#gh-dark-mode-only)
+![How the milestones depend on each other: M0 to M5 lead in order to M7, the 1.0 release; M6 Guard needs only M2 and leads to 1.0; M8 Pace needs M3 and, like M9 Distribution, runs beside 1.0; M10 Providers needs M3 and M8 and leads to M11 Codex CLI and M12 Triage, which make v0.10.0](diagrams/roadmap.svg#gh-light-mode-only)
+![How the milestones depend on each other: M0 to M5 lead in order to M7, the 1.0 release; M6 Guard needs only M2 and leads to 1.0; M8 Pace needs M3 and, like M9 Distribution, runs beside 1.0; M10 Providers needs M3 and M8 and leads to M11 Codex CLI and M12 Triage, which make v0.10.0](diagrams/roadmap-dark.svg#gh-dark-mode-only)
 
 M6 depends only on M2, so it can be pulled forward if privacy becomes the
 pressing goal. M8 depends on M3's fallback and runs beside M7: it does not
@@ -19,6 +19,13 @@ pipeline, so its command-line work starts at once; what it publishes to
 package managers starts with the first stable tag. Everything else is
 ordered by two rules: measure before changing anything, and take the
 cheapest, safest savings first.
+
+M10 to M12 are v0.10.0: Claude Code with Claude, a Codex model, or the
+local model behind it, and the Codex CLI through Janus. M10 builds on M3's
+fallback and M8's reading of usage limits. M11 and M12 each need M10's
+list of providers. The release is cut as `v0.10.0-rc.N` builds as the
+pieces land, and is tagged stable after the owner's sessions with real
+OpenAI traffic (#399), which wait for an OpenAI account.
 
 ## Milestones
 
@@ -208,6 +215,70 @@ Gatekeeper warning, and with Scoop or winget on Windows; an older install brough
 to it with `janus update`, which refuses a tampered download; and a CI job
 that rebuilds the release and gets the same bytes.
 
+### M10 — Providers
+
+Claude Code keeps its app and gains a choice of brains. Each rule names
+its providers in order (Claude, a Codex model through OpenAI's API, or
+the local model) and a conversation moves down the list, with everything
+it has said, when the one in use cannot answer.
+
+- Map Claude Code's Messages traffic onto OpenAI's Responses API, from
+  the published docs, before building (#368); an offline fake OpenAI
+  server for the suite (#369).
+- Providers in the config, with the OpenAI key from the environment or
+  the OS keychain (#370, #371, #405, ADR-005).
+- Translation in both directions, the same bytes every turn so OpenAI's
+  cache holds; model and effort mapping; OpenAI's reasoning kept between
+  its own turns (#372, #373, #374, #410).
+- The visible history carried across providers, fitted to the next
+  one's context; Claude Code run with no Anthropic account behind it
+  (#375, #407, #376).
+- The ordered list, the return when a limit resets, and a manual switch
+  (#377, #378, #379).
+- The guard on every remote provider, and a policy per provider (#380,
+  #406).
+- Every existing feature given a stated behaviour on the OpenAI path, and
+  pass-through still byte for byte (#408, #409).
+- Ledger, limits, launchers, doctor, and docs (#381, #382, #383, #384,
+  #385); the docs site showing the stable release's docs, with main as
+  Next (#404).
+
+**Exit:** on fakes, a Claude Code session moves to OpenAI at a limit and
+back after the reset with no lost context, Codex only and local only both
+work, and pass-through is unchanged with OpenAI configured.
+
+### M11 — Codex CLI
+
+The Codex CLI goes through Janus as Claude Code does, on its way to
+OpenAI. It is a second client, not a second way into Claude.
+
+- What the Codex CLI sends, and whether its ChatGPT login can go through
+  a proxy (#386).
+- Reading Responses traffic untouched, and passing it through byte for
+  byte with its own credential (#387, #388).
+- Classes, the guard, the ledger and console, and LM Studio standing in
+  (#389, #390, #391, #392).
+- `janus codex`, and its docs (#393, #394).
+
+**Exit:** on fakes, the Codex CLI's traffic is byte for byte with every
+feature off, guarded with the guard on, and answered locally when OpenAI
+cannot answer; with an account, a day of Codex CLI work through Janus
+with no behavioural difference.
+
+### M12 — Triage
+
+#32 was closed because rules were enough to choose between Claude and
+the local model. Choosing among three providers is a new question.
+
+- A spike on replayed captures, with LM Studio only (#395).
+- Triage of a conversation's first turn, once, under a latency budget;
+  its decisions recorded and replayable; docs (#396, #397, #398).
+- The owner's validation sessions and the release (#399, #400).
+
+**Exit:** triage beats the provider list alone on replayed traffic, by
+the numbers, or ships off with the numbers that say why; v0.10.0 tagged
+stable once #399 passes.
+
 ## What is deliberately late or absent
 
 - **Compression comes after delegation.** It carries the highest risk of
@@ -216,4 +287,7 @@ that rebuilds the release and gets the same bytes.
 - **Model triage is optional.** Rules are expected to cover most traffic;
   the classifier model is added only where the baseline shows rules are not
   enough.
-- **No second local runtime or inbound OpenAI format** before 1.0.
+- **No second local runtime, and no OpenAI-format client but the Codex
+  CLI**, before 1.0. The Codex CLI's requests never go to Claude.
+- **No ChatGPT plan behind Claude Code.** The OpenAI backend uses an API
+  key (ADR-005); only the Codex CLI's own login passes through.

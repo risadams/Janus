@@ -1,6 +1,6 @@
 # Janus — Requirements
 
-Status: draft for review · Last updated: 2026-10-11
+Status: draft for review · Last updated: 2026-10-21
 
 Requirement IDs are stable and referenced from issues. Priority uses MoSCoW
 for the 1.0 release: **M**ust, **S**hould, **C**ould. The milestone column
@@ -105,6 +105,32 @@ points at the [roadmap](ROADMAP.md).
 | FR-10.3 | `janus doctor`: checks upstream reachability, LM Studio, loaded models, and prints the exact environment needed to point Claude Code at Janus. | S | M1 |
 | FR-10.4 | Every feature has an off switch, and off is the default until the feature has shown a net benefit. | M | all |
 
+### FR-11 Providers
+
+| ID | Requirement | Pri | MS |
+| --- | --- | --- | --- |
+| FR-11.1 | OpenAI backend: Claude Code's Messages requests are translated to OpenAI's Responses API, and the answers back, streaming and not, so Claude Code sees the Anthropic API whichever provider answered. | M | M10 |
+| FR-11.2 | Translation is deterministic: the same history translates to the same bytes on every turn, so OpenAI's prompt cache holds. Requests are sent with `store: false` and no `previous_response_id`. | M | M10 |
+| FR-11.3 | Each rule names an ordered list of providers (Claude, OpenAI, local). A request moves down the list when the provider in use is down, has reached a usage limit, or was switched away from by hand. A list of one is Claude only, Codex only, or local only. | M | M10 |
+| FR-11.4 | A conversation that moves keeps its visible history: messages, tool calls, and tool results. Each provider's hidden reasoning is left out on the way to another, the same way on every turn. A history too long for the next provider's context is shortened as the local stand-in's is. | M | M10 |
+| FR-11.5 | A conversation moved by a usage limit returns when that limit resets, as the provider reported in its responses. One moved by an outage returns through a circuit breaker. | M | M10 |
+| FR-11.6 | `janus use` switches a running session's provider from its next turn. | S | M10 |
+| FR-11.7 | The privacy policy can allow content to some providers and not others. A provider a request may not reach is skipped; if none is left, the request is refused. Fails closed. | M | M10 |
+| FR-11.8 | The OpenAI key is read from an environment variable or the OS credential store, never from a literal in the config, and never written anywhere ([ADR-005](adr/005-openai-credential.md)). | M | M10 |
+| FR-11.9 | The ledger records which provider answered and why, OpenAI's usage and limits, and what each move between providers cost. | M | M10 |
+| FR-11.10 | `janus claude` and `janus local` start Claude Code with a chosen provider list for that session, on one running Janus. | S | M10 |
+| FR-11.11 | Optional local-model triage chooses a new conversation's provider from its rule's list, once, on its first turn, under a latency budget; a timeout or unclear answer means the list's first provider. Never per turn. | M | M12 |
+
+### FR-12 The Codex CLI as a client
+
+| ID | Requirement | Pri | MS |
+| --- | --- | --- | --- |
+| FR-12.1 | The Codex CLI's requests reach OpenAI byte for byte, with its own credential, whether a ChatGPT login or an API key. Account identifiers in its headers are never logged, captured, or recorded. | M | M11 |
+| FR-12.2 | The guard covers the Codex CLI's requests and fails closed, as it does for Claude Code's. | M | M11 |
+| FR-12.3 | The ledger, `janus stats`, and the console record and show the Codex CLI's requests, by class and by client. | M | M11 |
+| FR-12.4 | LM Studio stands in for OpenAI when it is down or a limit is reached, and the session returns when the limit resets. | S | M11 |
+| FR-12.5 | `janus codex` runs the Codex CLI through Janus when Janus is up, and decides what to do when it is not, as `janus claude` does. | M | M11 |
+
 ## Non-functional requirements
 
 | ID | Requirement |
@@ -112,15 +138,21 @@ points at the [roadmap](ROADMAP.md).
 | NFR-1 | **No worse than direct.** Pass-through overhead p50 under 10 ms and no added time-to-first-byte beyond that. |
 | NFR-2 | **Precedence.** Where requirements conflict: privacy, then correctness, then availability, then savings. |
 | NFR-3 | **Dependencies.** Standard library first. Each third-party dependency is justified in an ADR. |
-| NFR-4 | **Testability.** Both backends are faked with `httptest`; the suite runs offline. Golden fixtures cover streaming, tool use, and thinking. |
-| NFR-5 | **Compatibility.** Tested against current Claude Code and LM Studio releases; fixture suite refreshed when either changes its wire behaviour. |
+| NFR-4 | **Testability.** Every backend, OpenAI included, is faked with `httptest`; the suite runs offline. Golden fixtures cover streaming, tool use, and thinking. |
+| NFR-5 | **Compatibility.** Tested against current Claude Code, Codex CLI, and LM Studio releases; fixture suite refreshed when any of them changes its wire behaviour. |
 | NFR-6 | **Explainability.** No request is altered or rerouted without a decision record that says why. |
 | NFR-7 | **Safe defaults.** A fresh install is a pass-through proxy with logging; nothing reroutes or rewrites until configured. |
 
 ## Constraints and assumptions
 
-- Claude Code is the only client designed for. It is configured through
-  `ANTHROPIC_BASE_URL` and its model-selection environment variables.
+- Claude Code and the Codex CLI are the only clients designed for. Claude
+  Code is configured through `ANTHROPIC_BASE_URL` and its model-selection
+  environment variables; the Codex CLI through its own base URL setting.
+  The Codex CLI's requests go to OpenAI or the local model, never to
+  Claude, and a conversation does not move between the two clients.
+- The OpenAI backend is built from OpenAI's published API reference and
+  the open-source Codex CLI. Until the owner has an OpenAI account, no
+  real OpenAI traffic has been seen.
 - LM Studio is running at the configured base URL (FR-3.5) with at least one
   model loaded and its server enabled. Reaching it by hostname rather than
   loopback requires LM Studio to serve on the local network.
