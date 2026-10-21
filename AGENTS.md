@@ -13,7 +13,9 @@ CI runs `gofmt -l .` (must print nothing), `go vet ./...`, and
 `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`, and
 `scripts/gosec.sh ./...`; all of them must pass before a merge. Run them
 all before pushing, with `go test -race ./...` locally. The suite is
-offline: fake upstreams and a fake LM Studio are `httptest` servers.
+offline: fake upstreams and a fake LM Studio are `httptest` servers, and
+`internal/openai/openaitest` is a fake OpenAI built from its published
+reference.
 
 gosec's findings also show under the Security tab beside CodeQL's. Fix
 what it reports, or say on the line why it is safe: `_ =` for an error
