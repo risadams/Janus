@@ -37,7 +37,9 @@ The whole output is kept as the run's `stress-log` artifact
 
 Fuzz targets (`Fuzz*`) cover the code that reads untrusted input: request
 parsing, response streams, the secret-restoring stream, Bash commands, the
-MCP loop, release tags, and `tool_output`. CI runs each for 30 seconds; run
+MCP loop, release tags, and `tool_output`; each translator between the
+Anthropic and OpenAI APIs, and the reader of the Codex CLI's traffic, gets
+one when it is written. CI runs each for 30 seconds; run
 one longer with
 `go test ./internal/guard -run '^$' -fuzz FuzzRestoreAnyCut -fuzztime 5m`.
 A failure lands in `testdata/fuzz/`; commit it with the fix, as a
@@ -84,6 +86,11 @@ regression case. Seeds are built by hand, never taken from captures.
   context the job needs, and watch wired memory (`vm_stat`): a model
   reported as loaded may be running on another machine, and a 27B model
   can take most of this one. Unload what you loaded.
+- **OpenAI:** there is no account yet, so nothing is sent to OpenAI. The
+  OpenAI backend and the Codex CLI's path are built against `httptest`
+  fakes made by hand from OpenAI's published API reference and the
+  open-source Codex CLI. Once there is an account, a real session needs
+  the owner's say-so and a cost estimate first, as upstream sessions do.
 - **Findings go in `docs/research/`**, as a note that ends in a decision
   and says what it does not show.
 
@@ -92,7 +99,8 @@ regression case. Seeds are built by hand, never taken from captures.
 - Comments say what code is for and why it is so, in plain full sentences.
   Every package and exported identifier has a doc comment. A choice that
   rests on a measurement cites the research note it came from.
-- Errors Janus returns to a client are in the Anthropic API's error shape,
+- Errors Janus returns to a client are in the error shape of the API that
+  client speaks (Anthropic's for Claude Code, OpenAI's for the Codex CLI),
   with messages that begin `janus:` and say what to do.
 - Tests are named for the behaviour they pin down
   (`TestUpstreamUnreachableIsExplained`). A fix comes with a test that

@@ -258,7 +258,8 @@ Shown in [the charter](../CHARTER.md#3-operating-model). Source:
 ![How the milestones depend on each other](roadmap-dark.svg#gh-dark-mode-only)
 
 M0 to M5 in order to 1.0; Guard after Route; Pace and Distribution
-beside 1.0.
+beside 1.0; Providers after Escalate and Pace, leading to Codex CLI and
+Triage, the three that make v0.10.0.
 
 Shown in [the roadmap](../ROADMAP.md#shape). Source:
 [roadmap.html](roadmap.html), [roadmap-dark.html](roadmap-dark.html).
