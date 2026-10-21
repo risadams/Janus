@@ -85,6 +85,11 @@ func TestAStreamedAnswerReadsAsAnAnthropicStream(t *testing.T) {
 		if s.Model != "claude-sonnet-5-5" || s.StopReason != "tool_use" || res.StopReason != "tool_use" {
 			t.Errorf("model %q, stop %q", s.Model, s.StopReason)
 		}
+		// Claude Code sees the model it asked for; the ledger is told the
+		// one that answered.
+		if res.Model != "gpt-6-luna" {
+			t.Errorf("Result.Model = %q, want the model OpenAI reported", res.Model)
+		}
 		answer, ok := anthropic.Assemble([]byte(out), "text/event-stream")
 		if !ok || answer.Blocks[1].Text != "I'll take a screenshot." || answer.Blocks[2].ID != "call_Ab12" || answer.Blocks[2].Input != `{"action":"screenshot"}` {
 			t.Errorf("assembled %+v", answer)
@@ -145,6 +150,9 @@ func TestANonStreamedAnswerTranslates(t *testing.T) {
 		Usage anthropicUsage `json:"usage"`
 	}
 	_ = json.Unmarshal(out, &msg)
+	if res.Model != "gpt-6-luna" {
+		t.Errorf("Result.Model = %q, want the model OpenAI reported", res.Model)
+	}
 	if msg.Model != "claude-haiku-5-5" || msg.Usage.InputTokens != 60 || msg.Usage.CacheReadInputTokens != 40 || res.Usage.Input != 100 {
 		t.Errorf("model %q, usage %+v, OpenAI's %+v", msg.Model, msg.Usage, res.Usage)
 	}

@@ -100,11 +100,20 @@ v0.10.0.
 | --- | --- |
 | `openai.key` | Where the API key is kept: `env:NAME`, the environment variable `NAME`, or `keychain:NAME`, the entry `NAME` in your operating system's credential store. Required. |
 | `openai.baseUrl` | The OpenAI API, or a gateway in front of it, without `/v1`. Default `https://api.openai.com`. |
-| `openai.models` | Optional. Which OpenAI model answers when Claude Code asks for a Claude model: a family (`opus`, `sonnet`, `haiku`) or a model's full name, mapped to an OpenAI model id. Your entries replace the defaults one by one. |
+| `openai.models` | Optional. Which OpenAI model answers when Claude Code asks for a Claude model: a model's full name, a family (`fable`, `opus`, `sonnet`, `haiku`), or `default` for any other, mapped to an OpenAI model id. A full name is looked up first, then the family, then `default`. Your entries replace the defaults one by one. |
 
-The default models are `gpt-6.1-sol` for `opus` and `sonnet`, and the
-smaller `gpt-6-luna` for `haiku`
+The default models are `gpt-6.1-sol` for `fable`, `opus`, `sonnet`, and
+`default`, and the smaller `gpt-6-luna` for `haiku`
 ([the mapping](research/openai.md#models)).
+
+The reasoning effort follows Claude Code's: its `effort` setting goes
+across as it is, and a thinking budget picks one (under 4,000 tokens
+`low`, under 16,000 `medium`, under 32,000 `high`, otherwise `xhigh`).
+Thinking switched off becomes the model's lowest effort. An effort a model
+does not take is moved to the nearest one it does: `max` on
+`gpt-5.3-codex` becomes `xhigh`. The ledger records the Claude model asked
+for as `request.model` and the OpenAI model that answered as
+`response.model`.
 
 **The key is never in this file.** A config file gets copied between
 machines, pasted into issues, and backed up, and `janus config upgrade`
