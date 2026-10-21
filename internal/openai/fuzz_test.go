@@ -71,3 +71,57 @@ func FuzzTranslateRequest(f *testing.F) {
 		}
 	})
 }
+
+// streamSeeds are Responses streams built by hand from OpenAI's reference.
+var streamSeeds = []string{
+	"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"}}\n\n" +
+		"data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"reasoning\"}}\n\n" +
+		"data: {\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"delta\":\"hm\",\"obfuscation\":\"x\"}\n\n" +
+		"data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"encrypted_content\":\"gA\"}}\n\n" +
+		"data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"Bash\"}}\n\n" +
+		"data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":1,\"delta\":\"{\\\"a\\\":1}\"}\n\n" +
+		"data: {\"type\":\"response.output_item.done\",\"output_index\":1}\n\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":2}}}\n\n",
+	"data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\"}}\n\ndata: {\"type\":\"response.refusal.delta\",\"output_index\":0,\"delta\":\"no\"}\n\n" +
+		"data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n",
+	"data: {\"type\":\"error\",\"code\":\"rate_limit_exceeded\",\"message\":\"slow\"}\n\n",
+	"data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"bio_policy\",\"message\":\"no\"}}}\n\n",
+	"data: {\"type\":\"response.output_text.delta\",\"output_index\":3,\"delta\":\"orphan\"}\n\ndata: [DONE]\n\n",
+}
+
+// Whatever OpenAI's stream holds, the translation writes only events
+// janus's own reader takes as a clean Anthropic stream, never panics, and
+// ends the stream properly only when the response ended: a stream cut
+// short stays cut short.
+func FuzzTranslateStream(f *testing.F) {
+	for _, s := range streamSeeds {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var out bytes.Buffer
+		res, err := TranslateStream(&out, bytes.NewReader(data), ResponseOptions{Model: "m", Tools: ToolNames{"Bash": "Bash"}, Summary: true})
+		o := anthropic.NewObserver("text/event-stream")
+		_, _ = o.Write(out.Bytes())
+		s := o.Summary()
+		if s.Malformed != 0 {
+			t.Fatalf("wrote %d events janus cannot read:\n%s", s.Malformed, out.Bytes())
+		}
+		ended := bytes.Contains(out.Bytes(), []byte("event: message_stop\n"))
+		switch {
+		case errors.Is(err, ErrBrokenStream):
+			if ended {
+				t.Fatalf("a broken stream was ended properly")
+			}
+		case err != nil:
+			t.Fatalf("unexpected error: %v", err)
+		case res.Err != nil:
+			if ended || s.Error == nil {
+				t.Fatalf("a failed response did not end with an error event")
+			}
+		default:
+			if !ended || !s.Complete {
+				t.Fatalf("a finished response did not end with message_stop")
+			}
+		}
+	})
+}
