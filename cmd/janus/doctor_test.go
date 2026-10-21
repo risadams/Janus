@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/risadams/janus/internal/instance"
 	"github.com/risadams/janus/internal/ledger"
 	"github.com/risadams/janus/internal/route"
 )
@@ -50,6 +51,13 @@ func freeAddr(t *testing.T) string {
 func doctor(t *testing.T, upstream, local string, extra map[string]any) (out string, code int, dir string) {
 	t.Helper()
 	dir = t.TempDir()
+	out, code = doctorIn(t, dir, upstream, local, extra)
+	return out, code, dir
+}
+
+// doctorIn is doctor with the config, and the log folder it names, in dir.
+func doctorIn(t *testing.T, dir, upstream, local string, extra map[string]any) (out string, code int) {
+	t.Helper()
 	cfg := map[string]any{
 		"listen":   freeAddr(t),
 		"upstream": map[string]any{"baseUrl": upstream},
@@ -71,7 +79,7 @@ func doctor(t *testing.T, upstream, local string, extra map[string]any) (out str
 
 	var stdout, stderr bytes.Buffer
 	code = run([]string{"doctor", "-config", path}, &stdout, &stderr)
-	return stdout.String() + stderr.String(), code, dir
+	return stdout.String() + stderr.String(), code
 }
 
 func TestDiagnoseUpstreamNamesTheFault(t *testing.T) {
@@ -203,7 +211,7 @@ func TestDoctorLocalProblemsAreWarnings(t *testing.T) {
 	}
 }
 
-func TestDoctorPortInUseIsAWarning(t *testing.T) {
+func TestDoctorPortInUseByAnotherConfigIsAWarning(t *testing.T) {
 	up := serverSaying(200, "ok")
 	defer up.Close()
 	lms := serverSaying(200, lmStudioModels)
@@ -211,11 +219,83 @@ func TestDoctorPortInUseIsAWarning(t *testing.T) {
 	busy, _ := net.Listen("tcp", "127.0.0.1:0")
 	defer busy.Close()
 
-	out, code, _ := doctor(t, up.URL, lms.URL, map[string]any{"listen": busy.Addr().String()})
+	out, code, dir := doctor(t, up.URL, lms.URL, map[string]any{"listen": busy.Addr().String()})
 	if code != 0 {
 		t.Errorf("exit code = %d, want 0: the port is in use whenever janus is running", code)
 	}
-	wantLines(t, out, "warn listen", "is in use. That is expected if janus is already running")
+	wantLines(t, out, "warn listen", "is in use, but not by a janus using this config",
+		filepath.Join(dir, "logs"), "run janus doctor -config with the config it was started with")
+}
+
+func TestDoctorPortInUseByThisConfigsJanusIsFine(t *testing.T) {
+	up := serverSaying(200, "ok")
+	defer up.Close()
+	lms := serverSaying(200, lmStudioModels)
+	defer lms.Close()
+	busy, _ := net.Listen("tcp", "127.0.0.1:0")
+	defer busy.Close()
+	// The janus that would have the port holds the lock on the log folder
+	// the config names; doctor's helper puts that under its own directory.
+	dir := t.TempDir()
+	lock, err := instance.Acquire(filepath.Join(dir, "logs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	lock.Describe("pid 4242, listening on http://" + busy.Addr().String())
+
+	out, code := doctorIn(t, dir, up.URL, lms.URL, map[string]any{"listen": busy.Addr().String()})
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+	wantLines(t, out, "ok listen", "is in use by the janus using this config (pid 4242")
+	if strings.Contains(out, "warn listen") {
+		t.Errorf("doctor warned about the port its own janus has:\n%s", out)
+	}
+}
+
+// Doctor run where a stale config sits, while the janus on the port runs
+// with another, read a ledger nobody writes and said Claude Code was not
+// going through janus (#365).
+func TestDoctorDoesNotBlameClaudeCodeForAnotherConfigsLedger(t *testing.T) {
+	up := serverSaying(200, "ok")
+	defer up.Close()
+	lms := serverSaying(200, lmStudioModels)
+	defer lms.Close()
+	busy, _ := net.Listen("tcp", "127.0.0.1:0")
+	defer busy.Close()
+	dir := t.TempDir()
+	ledger.Open(filepath.Join(dir, "logs", "ledger")).Append(ledger.Record{V: 1, ID: "a", Time: time.Now().Add(-5 * 24 * time.Hour), Class: "main"})
+	t.Setenv("ANTHROPIC_BASE_URL", "")
+
+	out, _ := doctorIn(t, dir, up.URL, lms.URL, map[string]any{"listen": busy.Addr().String()})
+	wantLines(t, out, "warn listen", "ok ledger", "5 days ago", "but the janus running now does not write there", "ok claude")
+	for _, wrong := range []string{"not going through janus", "goes straight to Anthropic"} {
+		if strings.Contains(strings.Join(strings.Fields(out), " "), wrong) {
+			t.Errorf("doctor says %q of a ledger the running janus does not write:\n%s", wrong, out)
+		}
+	}
+}
+
+func TestDoctorNamesTheConfigByItsFullPath(t *testing.T) {
+	up := serverSaying(200, "ok")
+	defer up.Close()
+	lms := serverSaying(200, lmStudioModels)
+	defer lms.Close()
+	dir := t.TempDir()
+	t.Chdir(dir)
+	data, _ := json.Marshal(map[string]any{
+		"listen":   freeAddr(t),
+		"upstream": map[string]any{"baseUrl": up.URL},
+		"local":    map[string]any{"baseUrl": lms.URL},
+	})
+	os.WriteFile("janus.config.json", data, 0o600)
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+
+	var stdout, stderr bytes.Buffer
+	run([]string{"doctor"}, &stdout, &stderr)
+	want, _ := filepath.Abs("janus.config.json")
+	wantLines(t, stdout.String(), "ok config "+want)
 }
 
 func TestDoctorInvalidConfigStopsThere(t *testing.T) {
@@ -338,17 +418,24 @@ func TestDoctorChecksRoutedModels(t *testing.T) {
 func TestDoctorSaysWhenTheLedgerWentQuiet(t *testing.T) {
 	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 	dir := t.TempDir()
-	if f, recent := checkLedger(dir, now); f.level != "ok" || recent || !strings.Contains(f.detail, "nothing recorded yet") {
-		t.Errorf("empty ledger: %+v, recent %v", f, recent)
+	if f, seen := checkLedger(dir, now, false); f.level != "ok" || seen != trafficQuiet || !strings.Contains(f.detail, "nothing recorded yet") {
+		t.Errorf("empty ledger: %+v, seen %v", f, seen)
+	}
+	if f, seen := checkLedger(dir, now, true); f.level != "ok" || seen != trafficUnknown || !strings.Contains(f.detail, "does not write") {
+		t.Errorf("empty ledger of another config: %+v, seen %v", f, seen)
 	}
 
 	ledger.Open(dir).Append(ledger.Record{V: 1, ID: "a", Time: now.Add(-3 * time.Hour), Class: "main"})
-	if f, recent := checkLedger(dir, now); f.level != "ok" || !recent || !strings.Contains(f.detail, "3 hours ago") {
-		t.Errorf("recent ledger: %+v, recent %v", f, recent)
+	if f, seen := checkLedger(dir, now, false); f.level != "ok" || seen != trafficRecent || !strings.Contains(f.detail, "3 hours ago") {
+		t.Errorf("recent ledger: %+v, seen %v", f, seen)
 	}
-	if f, recent := checkLedger(dir, now.Add(3*24*time.Hour)); f.level != "warn" || recent ||
+	if f, seen := checkLedger(dir, now.Add(3*24*time.Hour), false); f.level != "warn" || seen != trafficQuiet ||
 		!strings.Contains(f.detail, "3 days ago") || !strings.Contains(f.detail, "not going through janus") {
-		t.Errorf("quiet ledger: %+v, recent %v", f, recent)
+		t.Errorf("quiet ledger: %+v, seen %v", f, seen)
+	}
+	if f, seen := checkLedger(dir, now.Add(3*24*time.Hour), true); f.level != "ok" || seen != trafficUnknown ||
+		!strings.Contains(f.detail, "3 days ago") || strings.Contains(f.detail, "not going through janus") {
+		t.Errorf("quiet ledger of another config: %+v, seen %v", f, seen)
 	}
 }
 
@@ -371,19 +458,20 @@ func TestDoctorSaysWhetherClaudeCodeIsPointedAtJanus(t *testing.T) {
 	}
 	cases := []struct {
 		name, env, settings string
-		recent              bool
+		seen                traffic
 		level, says         string
 	}{
-		{"shell points at janus", "http://localhost:8787", "", false, "ok", "in this shell points at janus"},
-		{"settings point at janus", "", `{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8787"}}`, false, "ok", "settings.json points at janus"},
-		{"settings point elsewhere", "http://127.0.0.1:8787", `{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:9999"}}`, true, "warn", "is http://127.0.0.1:9999, which is not janus"},
-		{"unset, but traffic arrives", "", `{"model":"opus"}`, true, "ok", "some other way, such as an alias"},
-		{"unset and quiet", "", "", false, "warn", "goes straight to Anthropic"},
-		{"settings unreadable", "", "{", false, "warn", "is not valid JSON"},
+		{"shell points at janus", "http://localhost:8787", "", trafficQuiet, "ok", "in this shell points at janus"},
+		{"settings point at janus", "", `{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8787"}}`, trafficQuiet, "ok", "settings.json points at janus"},
+		{"settings point elsewhere", "http://127.0.0.1:8787", `{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:9999"}}`, trafficRecent, "warn", "is http://127.0.0.1:9999, which is not janus"},
+		{"unset, but traffic arrives", "", `{"model":"opus"}`, trafficRecent, "ok", "some other way, such as an alias"},
+		{"unset and quiet", "", "", trafficQuiet, "warn", "goes straight to Anthropic"},
+		{"unset, and the ledger is another janus's", "", "", trafficUnknown, "ok", "the ledger\nthat would show it is the running janus's"},
+		{"settings unreadable", "", "{", trafficQuiet, "warn", "is not valid JSON"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			f := checkClaude(listen, env(c.env), settings(t, c.settings), c.recent)
+			f := checkClaude(listen, env(c.env), settings(t, c.settings), c.seen)
 			if f.level != c.level || !strings.Contains(f.detail, c.says) {
 				t.Errorf("got %s %q; want %s saying %q", f.level, f.detail, c.level, c.says)
 			}
