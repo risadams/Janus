@@ -464,6 +464,11 @@ func answeredBy(ex proxy.Exchange, rec ledger.Record) (who string, local bool) {
 		}
 		return model + " (local)", true
 	}
+	if ex.Backend == "janus" {
+		// No model answered: janus did, with no Anthropic account behind
+		// it (#376).
+		return "janus", false
+	}
 	if ex.Backend == "openai" {
 		// The model OpenAI says answered, which the ledger keeps: Claude
 		// Code was told the name it asked for.

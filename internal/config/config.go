@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/risadams/janus/internal/guard"
@@ -197,6 +198,11 @@ type Price struct {
 // Backend is one model server janus can send requests to.
 type Backend struct {
 	BaseURL string `json:"baseUrl"`
+	// Off, for the upstream only, means there is no Anthropic account
+	// behind janus: nothing is ever sent to Anthropic, every Messages
+	// request goes along a routing rule's fallback list, and janus answers
+	// Claude Code's other requests itself (#376).
+	Off bool `json:"off,omitempty"`
 }
 
 // OpenAI is the OpenAI API and how janus reaches it.
@@ -358,6 +364,29 @@ type Rule struct {
 	// is reached (#240). With no report yet, or after a limit's reset, it
 	// does not match.
 	IfUsageAbove map[string]float64 `json:"ifUsageAbove,omitempty"`
+}
+
+// checkUpstreamOff says what is wrong with a config that has no Anthropic
+// account behind it: every rule must send its requests along a list that
+// does not name upstream, since the routes fall back to Claude.
+func (c Config) checkUpstreamOff() []error {
+	if !c.Upstream.Off {
+		return nil
+	}
+	var errs []error
+	if !c.Features.Route || len(c.Routing) == 0 {
+		errs = append(errs, errors.New(`upstream.off needs features.route on and a routing rule to send requests somewhere else, such as {"fallback": ["openai"]}`))
+	}
+	for i, rule := range c.Routing {
+		where := fmt.Sprintf("routing[%d]", i)
+		if rule.Route != "" {
+			errs = append(errs, fmt.Errorf("%s.route is %s, but upstream.off is set, and every route but a fallback list falls back to Claude; leave route out and list where requests go as fallback", where, rule.Route))
+		}
+		if slices.Contains(rule.Fallback, "upstream") {
+			errs = append(errs, fmt.Errorf("%s.fallback names upstream, but upstream.off is set", where))
+		}
+	}
+	return errs
 }
 
 // checkFallback says what is wrong with a rule's fallback list.
@@ -668,6 +697,7 @@ func (c Config) Validate() error {
 	if c.Features.Route && len(c.Local.Models) == 0 && !c.OpenAI.On() {
 		errs = append(errs, errors.New(`features.route is on but local.models is empty; add an entry such as "janus-local": {"model": "<id of a model in LM Studio>"}`))
 	}
+	errs = append(errs, c.checkUpstreamOff()...)
 	for i, rule := range c.Routing {
 		where := fmt.Sprintf("routing[%d]", i)
 		if rule.Name != "" {

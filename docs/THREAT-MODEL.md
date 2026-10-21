@@ -133,6 +133,16 @@ answer it Janus supplies a key of its own.
   v0.10.0 Janus held no credential beyond the request carrying it; now it
   holds one for as long as it runs.
 
+### With no Anthropic account
+
+With `upstream.off`, nothing is sent to Anthropic: a request no rule
+sends to OpenAI or a local model is refused, never passed through.
+Claude Code is given a placeholder credential so that it starts. Janus
+sends it nowhere, since OpenAI and LM Studio are sent none of Claude
+Code's headers. Auto mode's safety checks are then decided by the model
+on the list, so the quality of that decision is the quality of that
+model.
+
 ## Files on disk
 
 Under `logging.dir`:

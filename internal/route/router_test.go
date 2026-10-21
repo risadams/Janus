@@ -459,11 +459,11 @@ func TestRuleMatching(t *testing.T) {
 		"one condition unmet": {Rule{Class: Subagent, Model: "claude-opus-5-5", MaxTokens: 100, Tools: yes()}, "about 5000 tokens, over the rule's 100"},
 	}
 	for name, c := range cases {
-		if got := c.rule.mismatch(facts); got != c.want {
+		if got := c.rule.mismatch(facts, false); got != c.want {
 			t.Errorf("%s: mismatch = %q, want %q", name, got, c.want)
 		}
 	}
-	if got := (Rule{Tools: yes()}).mismatch(Facts{}); got != "the request offers no tools" {
+	if got := (Rule{Tools: yes()}).mismatch(Facts{}, false); got != "the request offers no tools" {
 		t.Errorf("mismatch = %q", got)
 	}
 }
