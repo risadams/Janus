@@ -20,7 +20,10 @@ here saves a round trip on a pull request.
   pull request. They are Markdown in `docs/`, published as the
   [docs site](https://risadams.github.io/Janus/); to preview it,
   `cd docs-site && npm ci && npm start`, which serves it at
-  http://localhost:3000/. Its build fails on a broken link. The site's
+  http://localhost:3000/. Its build fails on a broken link, and on a page
+  missing from `docs-site/sidebars.js`, which lists every page in the
+  order a reader meets it: a new page goes in by hand, with a short label,
+  where a reader would look for it. The site's
   default docs are the newest stable release's, from its `docs/vX.Y`
   branch, and main's are shown as "Next". A fix that the stable docs need
   too is made on main first, then cherry-picked onto that branch

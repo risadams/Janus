@@ -96,6 +96,8 @@ const config = {
     locales: ['en'],
   },
 
+  plugins: [require.resolve('./src/plugins/sidebar-complete.js')],
+
   presets: [
     [
       'classic',

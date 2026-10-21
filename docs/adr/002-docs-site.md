@@ -1,6 +1,6 @@
 # ADR-002: A documentation website built with Docusaurus
 
-Status: accepted · Date: 2026-10-14 · Amended 2026-10-21 (#404)
+Status: accepted · Date: 2026-10-14 · Amended 2026-10-21 (#404, #417)
 
 ## Context
 
@@ -34,6 +34,14 @@ GitHub.
 - Links that leave `docs/` (the README, SECURITY, source files) are
   rewritten to GitHub by a small remark plugin, `src/remark/repo-links.js`,
   rather than edited in the Markdown.
+- The sidebar is written by hand (#417): every page is listed in
+  `sidebars.js`, under a short label, in the order a reader meets it.
+  Research notes are grouped by topic, each group in the order its
+  questions were asked, and decisions by number. Docusaurus's generated
+  lists follow file names, which put unrelated notes side by side and
+  showed each under its full title. A small site plugin,
+  `src/plugins/sidebar-complete.js`, fails the build if a page of main's
+  docs is in no sidebar.
 - Broken links and anchors fail the build. The `docs` workflow builds the
   site on pull requests that touch it and publishes it to the `gh-pages`
   branch on pushes to `main` and on release tags, so the version it shows
