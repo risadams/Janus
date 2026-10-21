@@ -1,7 +1,9 @@
 // Package openai is janus's side of the OpenAI API, which can answer
 // Claude Code's requests in place of Anthropic (M10). It holds the one
-// credential janus keeps of its own, the OpenAI API key (ADR-005), and
-// builds the requests that carry it.
+// credential janus keeps of its own, the OpenAI API key (ADR-005), builds
+// the requests that carry it, and translates between the Messages API
+// Claude Code speaks and OpenAI's Responses API, both ways, as
+// docs/research/openai.md decided.
 package openai
 
 import (
