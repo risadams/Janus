@@ -24,6 +24,8 @@ Janus sits in the path of everything Claude Code sends and receives, so it
 handles:
 
 - **Your Anthropic credential**, in the headers of each request.
+- **Your OpenAI API key**, if the config has an `openai` section: the one
+  credential Janus holds of its own ([ADR-005](adr/005-openai-credential.md)).
 - **Your prompts, code, and tool output**, in request and response bodies.
 - **Secrets that happen to be in those**, which the guard may be replacing.
 - **Content you have marked local-only.**
@@ -95,6 +97,32 @@ the client sends. Anything that can reach the port can use it as a relay.
   to you. An `http://` upstream is allowed, for testing against a local
   server, and would send the credential in the clear. `janus doctor`
   prints the upstream in use; check it says `https://api.anthropic.com`.
+
+### The OpenAI key
+
+Claude Code sends nothing OpenAI would accept, so for an OpenAI model to
+answer it Janus supplies a key of its own.
+
+- **It is never in a file Janus reads or writes.** `openai.key` says only
+  where the key is kept, an environment variable or the credential store,
+  and a key written there is refused. Janus reads it once, at startup,
+  and keeps it in memory only.
+- **It prints as `[redacted]`.** The key is held in a type that shows
+  `[redacted]` in every log line, JSON record, and formatted string, so a
+  mistake that hands it to the console, a capture, or the ledger still
+  does not show it. Captures hold the client's headers, never the ones
+  Janus adds, so the key is not in them either. `janus doctor` says where
+  the key comes from and whether it was found.
+- **Credentials do not cross.** A request to OpenAI is built from nothing,
+  with the key as its only credential, so Claude Code's Anthropic
+  credential never reaches OpenAI. The key is set only there, so it never
+  reaches Anthropic or LM Studio.
+- **`openai.baseUrl` decides who receives it**, as `upstream.baseUrl` does
+  for the Anthropic credential. Whoever can edit the config can redirect
+  it.
+- **A memory dump or a debugger attached to Janus can read it.** Before
+  v0.10.0 Janus held no credential beyond the request carrying it; now it
+  holds one for as long as it runs.
 
 ## Files on disk
 
@@ -272,6 +300,7 @@ Messages requests so that it can read the response. It adds no identifying heade
 | A local model's tool calls are run as if Claude made them | Limit, inherent to routing locally |
 | Redaction does not stop a prompt injection from using a placeholder | Limit, inherent to reversible redaction |
 | `http://` upstream sends the credential in the clear | Limit; allowed for testing |
+| Janus holds an OpenAI key in memory for as long as it runs | Limit, inherent to answering Claude Code from OpenAI ([ADR-005](adr/005-openai-credential.md)) |
 | Windows and Linux binaries are not code-signed | Limit: `checksums.txt` is signed ([ADR-003](adr/003-signed-checksums.md)) and each archive's provenance attested; the macOS binaries are signed and notarized (#262) |
 | OpenSSF Scorecard: no approving review on changes (Code-Review) | Accepted: one maintainer. Every change goes through a pull request that CI must pass |
 | OpenSSF Scorecard: `braces` in the docs site's lockfile (GHSA-vfj7-8cjw-p6xm) | Accepted: no fixed version exists; Docusaurus uses it only to build the site, on this repository's own files. Nothing of it is in Janus or on the published site |

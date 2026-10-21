@@ -24,6 +24,7 @@ import (
 	"github.com/risadams/janus/internal/config"
 	"github.com/risadams/janus/internal/instance"
 	"github.com/risadams/janus/internal/ledger"
+	"github.com/risadams/janus/internal/openai"
 	"github.com/risadams/janus/internal/route"
 	"github.com/risadams/janus/internal/update"
 )
@@ -62,6 +63,9 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 			checkLogs(cfg.Logging.Dir),
 		)
 		findings = append(findings, checkLocal(client, cfg)...)
+		if cfg.OpenAI.On() {
+			findings = append(findings, checkOpenAI(cfg.OpenAI, os.LookupEnv))
+		}
 		ledgerCheck, seen := checkLedger(filepath.Join(cfg.Logging.Dir, "ledger"), time.Now(), elsewhere)
 		findings = append(findings, ledgerCheck, checkClaude(cfg.Listen, os.Getenv, claudeSettingsPath(os.Getenv), seen))
 		if f, seen := checkClaudeVersion(filepath.Join(cfg.Logging.Dir, "ledger"), time.Now()); seen {
@@ -253,6 +257,19 @@ func diagnoseUpstream(u *url.URL, err error) string {
 func isRefused(err error) bool {
 	var errno syscall.Errno
 	return errors.Is(err, syscall.ECONNREFUSED) || (errors.As(err, &errno) && errno == syscall.ECONNREFUSED)
+}
+
+// checkOpenAI says where the OpenAI key comes from and whether it was
+// found, never what it is (ADR-005). It sends nothing to OpenAI: there is
+// no account to test against yet (charter D7), and this version sends it
+// no requests. A missing key is a warning for the same reason.
+func checkOpenAI(o config.OpenAI, lookupEnv func(string) (string, bool)) finding {
+	_, err := openai.LoadKey(o, lookupEnv)
+	if err != nil {
+		return finding{"warn", "openai", err.Error()}
+	}
+	_, name := o.KeySource()
+	return finding{"ok", "openai", fmt.Sprintf("%s, key found in %s", o.URL(), name)}
 }
 
 // checkLocal looks at LM Studio, at each model a request can be routed
