@@ -111,6 +111,11 @@ regression case. Seeds are built by hand, never taken from captures.
   of the console in the README and the user guide is made by
   `go run ./scripts/consoleshot`, from made-up requests; a change to what
   the console prints reruns it.
+- docs/ on main describes main, which the docs site shows as "Next". Its
+  default docs are the newest stable release's, on the `docs/vX.Y`
+  branch that `scripts/tag-release.sh` moves to each stable tag (ADR-002).
+  A docs fix that is true of the stable release too is cherry-picked onto
+  that branch, with `-x`, once it is on main.
 
 ## Tracking work
 

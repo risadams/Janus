@@ -1,6 +1,6 @@
 # ADR-002: A documentation website built with Docusaurus
 
-Status: accepted · Date: 2026-10-14
+Status: accepted · Date: 2026-10-14 · Amended 2026-10-21 (#404)
 
 ## Context
 
@@ -38,6 +38,41 @@ GitHub.
   site on pull requests that touch it and publishes it to the `gh-pages`
   branch on pushes to `main` and on release tags, so the version it shows
   is the newest release (#212).
+
+## Versions
+
+Added 2026-10-21 (#404). The site published main's docs/ under a badge
+for the newest tag, which could be a release candidate. Every pull request
+documents its change as it merges, so once v0.10.0's work began, the live
+site would have described features the stable release lacks.
+
+- **The default docs are the newest stable release's.** At each stable
+  tag, `scripts/tag-release.sh` moves `docs/vX.Y` to it (creating it for a
+  new minor version), before pushing the tag. The site's default version
+  is docs/ on the newest such branch. main's docs/ is "Next", at
+  `/docs/next`, under Docusaurus's banner for unreleased docs, and a
+  dropdown switches between the two.
+- **docs/ on main stays the only committed copy.**
+  `docs-site/scripts/versions.js` writes the branch's docs/, and the
+  sidebar as that release had it, into Docusaurus's `versioned_docs/` at
+  build time; none of it is committed. A clone with no `docs/v*` branch
+  builds main's docs alone, as before.
+- **A fix reaches the stable docs by cherry-pick.** It is made on main,
+  then cherry-picked onto `docs/vX.Y` and pushed; the push rebuilds the
+  site, which publishes only if it builds. The next stable tag's docs
+  include the fix already, so moving the branch to the tag loses nothing:
+  where the branch cannot fast-forward, the release script adds a commit
+  on top of it that takes the tag's files.
+- **The badge and footer show the newest stable tag**, never a release
+  candidate.
+- **`docs/v*` branches are protected** by the "Protect docs branches"
+  ruleset: they cannot be deleted or force-pushed, and their history stays
+  linear. A pull request is not required, so that the release script can
+  move them.
+
+Only the newest stable release and main are built. Older releases' docs
+are on their branches on GitHub; building every version would make each
+publish slower for pages hardly anyone reads.
 
 ## Consequences
 

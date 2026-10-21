@@ -4,15 +4,34 @@
 // diagram source). None of those exist on the site, so this rewrites them
 // to the same file on GitHub. Links between pages, and images, are left for
 // Docusaurus to resolve.
+//
+// A page of the stable docs (#404) is read from
+// docs-site/versioned_docs/version-X.Y/, a copy of docs/ on the docs/vX.Y
+// branch, so its links are resolved as if it were in docs/ and point at
+// that branch rather than main.
 const path = require('path');
 
 const repo = 'https://github.com/risadams/Janus';
 const root = path.resolve(__dirname, '../../..');
 const docs = path.join(root, 'docs');
+const versioned = path.join(root, 'docs-site', 'versioned_docs');
 const page = /\.mdx?$/;
 const image = /\.(png|jpe?g|gif|svg|webp)$/i;
 
-function rewrite(url, from) {
+// place says which copy of docs/ a page is in: its folder, and the branch
+// the files around it are on.
+function place(from) {
+  const rel = path.relative(versioned, from);
+  const m = /^version-(\d+\.\d+)(?:[\\/]|$)/.exec(rel);
+  if (rel.startsWith('..') || !m) {
+    return { from, branch: 'main' };
+  }
+  const copy = path.join(versioned, `version-${m[1]}`);
+  return { from: path.join(root, 'docs', path.relative(copy, from)), branch: `docs/v${m[1]}` };
+}
+
+function rewrite(url, file) {
+  const { from, branch } = place(file);
   if (!url || /^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('#') || url.startsWith('/')) {
     return null;
   }
@@ -28,7 +47,7 @@ function rewrite(url, from) {
   }
   const relative = path.relative(root, resolved).split(path.sep).join('/');
   const kind = isFolder ? 'tree' : 'blob';
-  return `${repo}/${kind}/main/${relative}${fragment ? `#${fragment}` : ''}`;
+  return `${repo}/${kind}/${branch}/${relative}${fragment ? `#${fragment}` : ''}`;
 }
 
 function walk(node, from) {

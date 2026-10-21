@@ -1,20 +1,48 @@
 // @ts-check
 const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const risInk = require('./src/prism/ris-ink');
 const repoLinks = require('./src/remark/repo-links');
 
-// The version shown in the navbar is the newest release tag. A checkout
-// without tags (a shallow clone) shows "dev".
-function latestTag() {
+// The version shown in the navbar is the newest stable release tag, never
+// a release candidate: the site's default docs are the stable release's
+// (#404). A checkout without tags (a shallow clone) shows "dev".
+function latestStableTag() {
   try {
-    return execSync('git describe --tags --abbrev=0', { stdio: ['ignore', 'pipe', 'ignore'] })
+    const tags = execSync("git -c versionsort.suffix=- tag --list 'v[0-9]*' --sort=-v:refname", {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
       .toString()
-      .trim();
+      .split('\n')
+      .filter((tag) => /^v\d+\.\d+\.\d+$/.test(tag));
+    return tags[0] || 'dev';
   } catch {
     return 'dev';
   }
 }
-const version = latestTag();
+const version = latestStableTag();
+
+// The stable docs, if scripts/versions.js found a docs/vX.Y branch to take
+// them from. Then they are the default and main's docs are "Next", at
+// /docs/next, under a banner saying they describe what is not released.
+function stableDocs() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, 'versions.json'), 'utf8'))[0] || null;
+  } catch {
+    return null;
+  }
+}
+const stable = stableDocs();
+const versioning = stable
+  ? {
+      lastVersion: stable,
+      versions: {
+        current: { label: 'Next', path: 'next', banner: 'unreleased' },
+        [stable]: { label: `v${stable}`, banner: 'none' },
+      },
+    }
+  : {};
 
 // GitHub Pages serves the site at /Janus/, so a build uses that base. The
 // development server (docusaurus start) serves at /, so the site is at
@@ -77,8 +105,11 @@ const config = {
           path: '../docs',
           exclude: ['adr/000-template.md'],
           sidebarPath: require.resolve('./sidebars.js'),
+          // A fix to the stable docs is made on main and cherry-picked onto
+          // its docs/vX.Y branch, so every page is edited on main.
           editUrl: ({ docPath }) => `https://github.com/risadams/Janus/edit/main/docs/${docPath}`,
           beforeDefaultRemarkPlugins: [repoLinks],
+          ...versioning,
         },
         blog: false,
         theme: {
@@ -115,6 +146,7 @@ const config = {
             label: 'Releases',
             position: 'left',
           },
+          ...(stable ? [{ type: 'docsVersionDropdown', position: 'right' }] : []),
           {
             type: 'html',
             position: 'right',

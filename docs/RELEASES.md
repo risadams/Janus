@@ -22,7 +22,9 @@ with release candidates of a coming version as `vMAJOR.MINOR.PATCH-rc.N`.
   only with `-pre` or `update.prerelease`. The Homebrew, Scoop, and winget
   packages get stable releases only.
 - **A stable release** keeps the promises below for every later release
-  with the same major version.
+  with the same major version. Its docs become the
+  [docs site](https://risadams.github.io/Janus/)'s default; main's,
+  which may describe what is not released yet, are under "Next".
 
 ## Release notes
 

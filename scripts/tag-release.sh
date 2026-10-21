@@ -11,6 +11,9 @@
 # and tags nothing. Where there is no terminal to ask on, such as a command
 # run with ! in Claude Code, -m and --yes are needed (#181).
 #
+# A stable tag (not a release candidate) also moves docs/vX.Y to it, which
+# the docs site builds its default version from (#404).
+#
 # The release itself is never made by hand on GitHub: the workflow creates
 # it from the tag, and fails if one already exists (#166). The tag is signed
 # with the owner's SSH key, which a workflow cannot do, so this runs locally
@@ -76,6 +79,17 @@ case "$bump" in
 esac
 if $rc; then next="${next}-rc.1"; fi
 
+# A stable release's docs are the site's default from now on: docs/vX.Y is
+# moved to it, before the tag is pushed so that the docs run the tag starts
+# finds it. A fix cherry-picked onto the branch since the last release is
+# on main too, and so in this tag; when the branch cannot fast-forward for
+# that reason, a commit on top of it takes the tag's files, so its history
+# stays linear and nothing is force-pushed.
+docs_branch=""
+if [[ "$next" =~ ^v([0-9]+)\.([0-9]+)\.[0-9]+$ ]]; then
+  docs_branch="docs/v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+fi
+
 if git rev-parse --quiet --verify "refs/tags/$next" >/dev/null ||
   [ -n "$(git ls-remote --tags origin "refs/tags/$next")" ]; then
   die "$next is already tagged"
@@ -114,6 +128,10 @@ else
   echo "  $commits"
 fi
 
+if [ -n "$docs_branch" ]; then
+  echo "The docs site's default docs will be $next's, on $docs_branch."
+fi
+
 if $dry; then
   echo "Dry run: nothing tagged."
   exit 0
@@ -144,6 +162,18 @@ case "$answer" in
   y | Y | yes) ;;
   *) git tag -d "$next" >/dev/null; echo "Not pushed; the tag was removed."; exit 0 ;;
 esac
+if [ -n "$docs_branch" ]; then
+  if git ls-remote --exit-code --heads origin "$docs_branch" >/dev/null; then
+    git fetch --quiet origin "+refs/heads/$docs_branch:refs/remotes/origin/$docs_branch"
+    docs_tip="$head"
+    if ! git merge-base --is-ancestor "origin/$docs_branch" "$head"; then
+      docs_tip="$(git commit-tree -S "$head^{tree}" -p "origin/$docs_branch" -m "Take the docs of $next")"
+    fi
+    git push origin "$docs_tip:refs/heads/$docs_branch"
+  else
+    git push origin "$head:refs/heads/$docs_branch"
+  fi
+fi
 git push origin "refs/tags/$next"
 
 echo "Pushed. The release workflow builds and publishes it; follow it with"
