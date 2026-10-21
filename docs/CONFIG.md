@@ -36,6 +36,7 @@ the defaults below and carries on.
 | `upstream.baseUrl` | The Anthropic API, or a gateway in front of it. |
 | `local.baseUrl` | The LM Studio server. Change the default to yours. |
 | `local.models` | Optional. Model names answered locally; see [local models](#local-models). |
+| `openai` | Optional. The OpenAI API, its key's source, and its models; see [OpenAI](#openai). Left out, OpenAI is not used. |
 | `routing` | Optional. Rules that decide which requests go local; see [routing rules](#routing-rules). |
 | `features.route` | Switch on aliases and routing rules. Off by default. |
 | `features.guard` | Look for secrets in requests going upstream, and record them. See [the guard](GUARD.md). |
@@ -77,9 +78,42 @@ also refuses requests from web pages: any whose `Host` is not this
 machine or whose `Origin` is a page from elsewhere. The
 [threat model](THREAT-MODEL.md#the-listening-port) says why.
 
-Janus refuses to start if `upstream.baseUrl` or `local.baseUrl` is its own
-`listen` address, where it would send each request back to itself without
-end.
+Janus refuses to start if `upstream.baseUrl`, `local.baseUrl`, or
+`openai.baseUrl` is its own `listen` address, where it would send each
+request back to itself without end.
+
+## OpenAI
+
+An `openai` section lets an OpenAI model answer Claude Code's requests in
+Claude's place. This release reads and checks the section; nothing is
+sent to OpenAI until the provider lists that choose it arrive later in
+v0.10.0.
+
+```json
+"openai": {
+  "key": "env:OPENAI_API_KEY",
+  "models": { "sonnet": "gpt-6-luna" }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `openai.key` | Where the API key is kept: `env:NAME`, the environment variable `NAME`, or `keychain:NAME`, the entry `NAME` in your operating system's credential store. Required. |
+| `openai.baseUrl` | The OpenAI API, or a gateway in front of it, without `/v1`. Default `https://api.openai.com`. |
+| `openai.models` | Optional. Which OpenAI model answers when Claude Code asks for a Claude model: a family (`opus`, `sonnet`, `haiku`) or a model's full name, mapped to an OpenAI model id. Your entries replace the defaults one by one. |
+
+The default models are `gpt-6.1-sol` for `opus` and `sonnet`, and the
+smaller `gpt-6-luna` for `haiku`
+([the mapping](research/openai.md#models)).
+
+**The key is never in this file.** A config file gets copied between
+machines, pasted into issues, and backed up, and `janus config upgrade`
+leaves a `.bak` copy beside it, so Janus refuses a key written here, and
+its error does not repeat it. It reads
+the key once, at startup, from the source `openai.key` names, keeps it in
+memory only, and sends it to OpenAI and nowhere else
+([ADR-005](adr/005-openai-credential.md)). Use `keychain:` when Janus runs
+as a service, which does not see your shell's environment.
 
 ## Logs
 

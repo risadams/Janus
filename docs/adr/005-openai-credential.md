@@ -19,8 +19,8 @@ The ways considered:
 
 - **A key in the config file.** Simple, and the config is created
   owner-readable. But configs get pasted into issues, copied between
-  machines, and backed up, and Janus prints its config. A key there
-  leaks the first time any of that happens.
+  machines, and backed up, and `janus config upgrade` leaves a `.bak`
+  copy beside it. A key there leaks the first time any of that happens.
 - **The Codex CLI's ChatGPT login** (`~/.codex/auth.json`), to spend a
   ChatGPT plan instead of API credit. It would mean refreshing another
   program's tokens and calling an endpoint OpenAI does not document for
