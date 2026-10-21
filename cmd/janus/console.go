@@ -445,7 +445,8 @@ func className(class string) (string, style) {
 }
 
 // answeredBy names the model that answered, for a person: "Opus 5.5" for
-// Claude, the model's own name with "(local)" for LM Studio.
+// Claude, the model's own name with "(local)" for LM Studio and
+// "(openai)" for OpenAI.
 func answeredBy(ex proxy.Exchange, rec ledger.Record) (who string, local bool) {
 	model := ""
 	if rec.Response != nil {
@@ -462,6 +463,11 @@ func answeredBy(ex proxy.Exchange, rec ledger.Record) (who string, local bool) {
 			model = model[i+1:]
 		}
 		return model + " (local)", true
+	}
+	if ex.Backend == "openai" {
+		// The model OpenAI says answered, which the ledger keeps: Claude
+		// Code was told the name it asked for.
+		return model + " (openai)", false
 	}
 	return claudeName(model), false
 }

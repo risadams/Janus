@@ -120,10 +120,10 @@ used to; `janus stats` says how many, and `-json` has them as
 | `claude_code` | string | The Claude Code release that sent the request, such as `2.1.301`, from its `User-Agent`; `janus doctor` warns when it is outside the releases Janus was tested with. Omitted for other clients, and in records written by a Janus older than v0.9.0-rc.17. |
 | `method`, `path` | string | The request line |
 | `class` | string | What kind of request it was; see [classes](#class) |
-| `route` | string | Where the request was sent: `upstream`, `local`, or `shadow` for a shadow run |
+| `route` | string | Where the request was sent: `upstream`, `openai`, `local`, or `shadow` for a shadow run |
 | `reason` | string | What decided it: `passthrough` (nothing matched), `model alias <name>`, `rule <name>`, or `override <value>` for a request that chose its own route. When a rule's local route could not be used, the reason says why and ends `; sent upstream`. When a provider could not answer, it says what it did and where the request went next, e.g. `rule main: upstream answered HTTP 429; sent openai`; when the rest of the rule's `fallback` list could not take it either, it says why for each, e.g. `rule main: upstream answered HTTP 429; no local stand-in: this request is about 281000 tokens, …`, and a provider that could not take the request at all is named with why, e.g. `openai cannot take it: …`. For a refused request, why. |
 | `stages` | string[] | Changes made to the request on the way: `set_model`, `lift_tool_additions`, `drop_deferred_tools`, `fold_system_messages`, `tool_references_as_text`, `leave_out_messages`, `load_model` for a local request; `drop_unsigned_thinking` for an upstream one whose history a local model had a turn in |
-| `backend` | string | Which backend answered: `upstream`, `local`, or `none` if Janus refused the request itself |
+| `backend` | string | Which backend answered: `upstream`, `openai`, `local`, or `none` if Janus refused the request itself |
 | `status` | int | HTTP status, or `0` if no response was started |
 | `outcome` | string | See below |
 | `error` | string | The API's error type, when `outcome` is `api_error` |
@@ -139,6 +139,7 @@ used to; `janus stats` says how many, and `-json` has them as
 | `fault` | string | What went wrong getting the response from the backend: it could not be reached or did not answer in time, with no fallback (Janus then answered with an error of its own), or its response broke off part-way, e.g. a dropped connection. Absent for a response that arrived whole, and for one the client abandoned. |
 | `capture` | string | The capture's path under `captures/`, without extension |
 | `attempt` | object | Present when one backend was tried and another may have answered: `backend`, `model`, `verdict`, `why`, `cause`, `check`, `duration_ms`, and for a rejected attempt its `usage`. See below. |
+| `tried` | array | Present when a rule's `fallback` list moved past a provider: each provider before the one that answered, in order, as `provider` (`upstream`, `openai`, or `local`), `model` for a local one, `outcome`, `why`, and for a local one `cause`. See below. |
 | `local_cause` | string | Present when a rule or a stand-in meant the request for the local model and it was never tried there: why, as one of the causes below. |
 | `guard` | object | Present when secrets or local-only content were found in a request: `findings` (a count), `kinds` (count by kind), `where` (which parts of the request). When redacting, also `redacted` (distinct secrets replaced before sending; absent means the request went with its secrets in it), `restored` (placeholders put back in the answer), and `blocked` (why the exchange was stopped). Under a local-only policy, `local_only` (why the request held protected content, naming paths and markers) and `withheld` (pieces replaced by a notice in what was sent upstream; `local_only` without it means the request did not go upstream). It never holds a secret or protected content. See [the guard](GUARD.md). |
 | `transforms` | array | Present when a transform rewrote the request on its way upstream, or declined to. One entry per transform: `name`; `blocks` carrying its output, of which `rewritten` were rewritten for the first time and `revised` were already sent and changed; `declined` (answers not used); `tokens` (about how many fewer tokens were sent); `saved_usd` (what those would have cost on this request); `cost_usd` (cache written again because of a revision); `expected_usd` (the net-savings guard's estimate, when it decided, of what this request's decisions will save over the rest of the conversation); and `unpriced` when the model had no price. See below. |
@@ -201,6 +202,27 @@ model's answer, and `reason` ends `; sent local`. `attempt.limits` then
 holds Claude's retry and rate-limit headers, as `limits` does above, and
 with captures on, Claude's error body is saved as
 `.attempt.response.txt`.
+
+### `tried`
+
+Each entry is a provider on the rule's `fallback` list that came before
+the one that answered:
+
+| `outcome` | Meaning |
+| --- | --- |
+| `failed` | It was sent the request and did not answer it: `why` says how, as in `upstream answered HTTP 429` or `could not reach openai: …` |
+| `passed_over` | It could not take the request and was not sent it: `why` says why, as in `the request cannot be translated for OpenAI: …` or `OpenAI is out until janus restarts, since …` |
+
+```json
+"tried": [
+  {"provider": "upstream", "outcome": "failed", "why": "upstream answered HTTP 429"},
+  {"provider": "openai", "outcome": "passed_over", "why": "the request cannot be translated for OpenAI: tools[0]: …"}
+]
+```
+
+When nothing on the list answered, the last provider's error is the
+record's own, and `tried` holds those before it and any passed over after
+it. `attempt` still describes the first provider tried, as it always has.
 
 ### Why the local model did not answer
 

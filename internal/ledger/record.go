@@ -34,9 +34,9 @@ type Record struct {
 	Path   string `json:"path"`
 	Class  string `json:"class"`
 
-	// The decision: where the request was sent ("upstream" or "local"), the
-	// rule that sent it there, the changes made to it on the way, and which
-	// backend answered ("none" if janus refused it itself).
+	// The decision: where the request was sent ("upstream", "openai", or
+	// "local"), the rule that sent it there, the changes made to it on the
+	// way, and which backend answered ("none" if janus refused it itself).
 	Route   string   `json:"route"`
 	Reason  string   `json:"reason"`
 	Stages  []string `json:"stages"`
@@ -76,6 +76,11 @@ type Record struct {
 	// answered: the local model first with Claude as the fallback, or
 	// Claude first with the local model standing in when Claude was down.
 	Attempt *Attempt `json:"attempt,omitempty"`
+	// Tried is present when a rule's fallback list moved past a provider:
+	// every one before the provider that answered, in order, and why it
+	// did not (#429). When none answered, it ends with the last that
+	// could not.
+	Tried []Tried `json:"tried,omitempty"`
 	// LocalCause is present when a rule or a stand-in meant this request
 	// for the local model and it was never tried there: why, with the same
 	// names as Attempt.Cause, plus skipped (the local backend had failed
@@ -214,6 +219,26 @@ type Attempt struct {
 	// server error, its headers about rate limits and retrying.
 	Limits map[string]string `json:"limits,omitempty"`
 }
+
+// Tried is one provider on a rule's fallback list that did not answer.
+type Tried struct {
+	// Provider is "upstream", "openai", or "local".
+	Provider string `json:"provider"`
+	Model    string `json:"model,omitempty"`
+	// Outcome is "failed" (it was sent the request and did not answer it)
+	// or "passed_over" (it could not take the request, and was not sent
+	// it).
+	Outcome string `json:"outcome"`
+	Why     string `json:"why"`
+	// Cause is why a local model did not answer, as for Attempt.Cause.
+	Cause string `json:"cause,omitempty"`
+}
+
+// Outcomes of a provider tried.
+const (
+	OutcomeFailed     = "failed"
+	OutcomePassedOver = "passed_over"
+)
 
 // Verdicts of an attempt.
 const (
@@ -377,6 +402,14 @@ func FromExchange(ex proxy.Exchange) Record {
 				rec.Attempt.Usage.Input = u.Input - *u.CacheRead // as for any local answer
 			}
 		}
+	}
+
+	for _, step := range ex.Tried {
+		t := Tried{Provider: step.Backend, Model: step.Model, Outcome: OutcomePassedOver, Why: step.Why, Cause: step.Cause}
+		if step.Sent {
+			t.Outcome = OutcomeFailed
+		}
+		rec.Tried = append(rec.Tried, t)
 	}
 
 	if ex.IsMessages() && len(ex.RequestBody) > 0 && !ex.RequestTruncated {

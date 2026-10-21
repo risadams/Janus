@@ -37,6 +37,7 @@ minutes.
 | Run subagents on a local model, in detail | [Recipe: subagents](../recipes/claude-code.md) |
 | Try the local model first, with Claude as the net | [Recipe: local first](../recipes/local-first.md) |
 | Keep working when Claude is down | [Recipe: outages](../recipes/outage.md) |
+| Choose between Claude, OpenAI, and a local model, and their order | [Recipe: providers](../recipes/providers.md) |
 | Move work local before a usage limit runs out | [Recipe: pacing](../recipes/pace.md) |
 | Keep secrets and files from leaving | [Recipe: privacy](../recipes/privacy.md), [the guard](../GUARD.md) |
 | Hand file reading to the local model | [Recipe: workers](../recipes/workers.md) |

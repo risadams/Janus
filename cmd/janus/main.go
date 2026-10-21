@@ -510,20 +510,15 @@ func exchangeNotes(ex proxy.Exchange) []note {
 	if ex.Backend == "none" {
 		notes = append(notes, note{level: bad, text: "refused: " + ex.Reason})
 	}
-	if a := ex.Attempt; a != nil && !a.Accepted {
-		if a.Backend == "upstream" {
-			text := "Claude could not answer (" + a.Why + "), so the local model stood in"
-			if slices.Contains(ex.Stages, route.StageLeaveOut) {
-				text += ", with older turns left out to fit its context"
-			}
-			notes = append(notes, note{level: warn, text: text})
-		} else {
-			notes = append(notes, note{level: info, text: fmt.Sprintf("%s tried for %s first, then it went to Claude: %s", a.Backend, humanDuration(a.Duration), a.Why) + nextStep(a.Cause)})
-		}
+	switch a := ex.Attempt; {
+	case a != nil && !a.Accepted && a.Backend == "local" && len(ex.Tried) <= 1:
+		notes = append(notes, note{level: info, text: fmt.Sprintf("%s tried for %s first, then it went to %s: %s", a.Backend, humanDuration(a.Duration), provider(ex.Backend), a.Why) + nextStep(a.Cause)})
+	case len(ex.Tried) > 0 && ex.NoFallback == "":
+		notes = append(notes, triedNote(ex))
 	}
 	if ex.NoFallback != "" {
 		notes = append(notes, note{level: warn, text: ex.NoFallback + nextStep(ex.LocalCause)})
-	} else if ex.LocalCause != "" && ex.Attempt == nil {
+	} else if ex.LocalCause != "" && ex.Attempt == nil && len(ex.Tried) == 0 {
 		// A rule meant this for the local model and sent it to Claude
 		// without trying. Busy and the like recur on every parallel turn,
 		// so each cause is said once per conversation.
@@ -544,6 +539,54 @@ func exchangeNotes(ex proxy.Exchange) []note {
 		notes = append(notes, note{level: warn, text: "response not read: " + ex.Unread})
 	}
 	return notes
+}
+
+// provider names a backend for a person.
+func provider(backend string) string {
+	switch backend {
+	case "upstream":
+		return "Claude"
+	case "openai":
+		return "OpenAI"
+	case "local":
+		return "the local model"
+	}
+	return backend
+}
+
+// triedNote says which providers on a rule's list came before the one
+// that answered, and why each did not (#429). Claude failing and the local
+// model standing in is said as it always was.
+func triedNote(ex proxy.Exchange) note {
+	parts := make([]string, 0, len(ex.Tried))
+	level, cause := info, ""
+	for _, step := range ex.Tried {
+		if step.Sent {
+			parts = append(parts, fmt.Sprintf("%s could not answer (%s)", provider(step.Backend), step.Why))
+			level = warn
+		} else {
+			parts = append(parts, fmt.Sprintf("%s was passed over (%s)", provider(step.Backend), step.Why))
+		}
+		if cause == "" && step.Backend == "local" {
+			cause = step.Cause
+		}
+	}
+	text := strings.Join(parts, "; ")
+	if ex.Backend == "local" && ex.Tried[0].Backend == "upstream" && ex.Tried[0].Sent {
+		text += ", so the local model stood in"
+		if slices.Contains(ex.Stages, route.StageLeaveOut) {
+			text += ", with older turns left out to fit its context"
+		}
+	} else {
+		text += ", so it went to " + provider(ex.Backend)
+	}
+	n := note{level: level, text: text + nextStep(cause)}
+	if level == info {
+		// Passed over without being tried happens again on every turn
+		// like it, so it is said once per conversation.
+		n.once = n.text
+	}
+	return n
 }
 
 // nextStep is a cause's next step, as the tail of a console note.

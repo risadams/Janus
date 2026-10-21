@@ -79,6 +79,7 @@ func TestConsoleLines(t *testing.T) {
 			consoleExchange(func(ex *proxy.Exchange) {
 				ex.Backend, ex.BackendModel, ex.Duration = "local", "qwen/qwen3.8-27b", 3180*time.Millisecond
 				ex.Attempt = &proxy.Attempt{Backend: "upstream", Why: "upstream answered HTTP 429", Duration: 300 * time.Millisecond}
+				ex.Tried = []proxy.Step{{Backend: "upstream", Sent: true, Why: "upstream answered HTTP 429", Fault: true}}
 				ex.Summary = &anthropic.Summary{Model: "qwen/qwen3.8-27b", StopReason: "end_turn", Complete: true, Usage: anthropic.Usage{Input: 22, Output: 37}}
 			}),
 			"main       qwen3.8-27b (local)     ✓ 3.2s    answered    22 in                   37 out     free\n" +
@@ -89,6 +90,7 @@ func TestConsoleLines(t *testing.T) {
 				ex.Backend, ex.BackendModel, ex.Duration = "local", "qwen/qwen3.8-27b", 3180*time.Millisecond
 				ex.Stages = []string{"set_model", "leave_out_messages"}
 				ex.Attempt = &proxy.Attempt{Backend: "upstream", Why: "upstream answered HTTP 429", Duration: 300 * time.Millisecond}
+				ex.Tried = []proxy.Step{{Backend: "upstream", Sent: true, Why: "upstream answered HTTP 429", Fault: true}}
 				ex.Summary = &anthropic.Summary{Model: "qwen/qwen3.8-27b", StopReason: "end_turn", Complete: true, Usage: anthropic.Usage{Input: 22, Output: 37}}
 			}),
 			"main       qwen3.8-27b (local)     ✓ 3.2s    answered    22 in                   37 out     free\n" +
@@ -204,6 +206,7 @@ func TestConsoleColor(t *testing.T) {
 	local := consoleExchange(func(ex *proxy.Exchange) {
 		ex.Backend, ex.BackendModel = "local", "qwen/qwen3.8-27b"
 		ex.Attempt = &proxy.Attempt{Backend: "upstream", Why: "upstream answered HTTP 429"}
+		ex.Tried = []proxy.Step{{Backend: "upstream", Sent: true, Why: "upstream answered HTTP 429", Fault: true}}
 		ex.Summary = &anthropic.Summary{Model: "qwen/qwen3.8-27b", StopReason: "end_turn", Complete: true, Usage: anthropic.Usage{Input: 22, Output: 37}}
 	})
 	var plain, colored bytes.Buffer
@@ -414,6 +417,7 @@ func TestASafetyCheckThatCannotReachClaudeSaysToLeaveAutoMode(t *testing.T) {
 			ex.Header.Set("X-Claude-Code-Session-Id", session)
 			ex.Backend, ex.BackendModel = "local", "qwen/qwen3.8-27b"
 			ex.Attempt = &proxy.Attempt{Backend: "upstream", Why: "upstream answered HTTP 429"}
+			ex.Tried = []proxy.Step{{Backend: "upstream", Sent: true, Why: "upstream answered HTTP 429", Fault: true}}
 			ex.Summary = &anthropic.Summary{Model: "qwen/qwen3.8-27b", StopReason: "tool_use", Complete: true}
 		}), led, nil, nil, c)
 	}
@@ -549,6 +553,7 @@ func TestClaudeTakingAConversationBackIsMarked(t *testing.T) {
 		ex := proxy.Exchange{ID: "x", Start: now, Method: "POST", Path: "/v1/messages", Header: header, Backend: backend, Status: status}
 		if standIn {
 			ex.Attempt = &proxy.Attempt{Backend: "upstream", Why: "upstream answered HTTP 429", Fault: true}
+			ex.Tried = []proxy.Step{{Backend: "upstream", Sent: true, Why: "upstream answered HTTP 429", Fault: true}}
 		}
 		rec := ledger.FromExchange(ex)
 		rec.Class = "main"
@@ -624,5 +629,32 @@ func TestConsoleSaysOnceWhenAConversationHasGrownExpensive(t *testing.T) {
 	c.WarnAtContext(0)
 	if got := said(turn("s5", "main", 900_000)); got != nil {
 		t.Errorf("turned off: %q", got)
+	}
+}
+
+func TestTheConsoleSaysWhichProviderAnsweredAndWhyNotTheOnesBefore(t *testing.T) {
+	ex := consoleExchange(func(ex *proxy.Exchange) {
+		ex.Backend, ex.BackendModel = "openai", "gpt-6.1-sol"
+		ex.Tried = []proxy.Step{{Backend: "upstream", Sent: true, Why: "upstream answered HTTP 429", Fault: true}}
+		ex.Summary = &anthropic.Summary{Model: "gpt-6.1-sol-2026-08-01", StopReason: "end_turn", Complete: true, Usage: anthropic.Usage{Input: 22, Output: 37}}
+	})
+	var out bytes.Buffer
+	testConsole(&out).Request(ex, ledger.FromExchange(ex), exchangeNotes(ex))
+	for _, want := range []string{"gpt-6.1-sol-2026-08-01 (openai)", "↳ Claude could not answer (upstream answered HTTP 429), so it went to OpenAI"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("console lacks %q:\n%s", want, out.String())
+		}
+	}
+
+	passed := consoleExchange(func(ex *proxy.Exchange) {
+		ex.Tried = []proxy.Step{
+			{Backend: "openai", Why: "the request cannot be translated for OpenAI: tools[0]"},
+			{Backend: "local", Model: "qwen/qwen3.8-27b", Why: "qwen/qwen3.8-27b had 1 requests in flight, its limit, for 0s", Cause: proxy.CauseBusy},
+		}
+	})
+	notes := exchangeNotes(passed)
+	if len(notes) != 1 || notes[0].level != info || notes[0].once == "" ||
+		notes[0].text != "OpenAI was passed over (the request cannot be translated for OpenAI: tools[0]); the local model was passed over (qwen/qwen3.8-27b had 1 requests in flight, its limit, for 0s), so it went to Claude; next: "+proxy.CauseHint(proxy.CauseBusy) {
+		t.Errorf("notes = %+v", notes)
 	}
 }
