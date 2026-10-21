@@ -413,12 +413,12 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	// fromList plans the request for the first entry of a rule's list, from
 	// index start, that can take it, and gives it the rest as its fallback.
 	// passed are the entries already passed over, and why.
-	fromList := func(rule Rule, label string, start int, passed []*problem) (proxy.Plan, *proxy.Refusal, []string) {
+	fromList := func(rule Rule, label string, start int, passed []proxy.Step) (proxy.Plan, *proxy.Refusal, []string) {
 		var notes []string
 		var cause string
-		for _, why := range passed {
-			notes = append(notes, why.message)
-			cause = firstOf(cause, why.cause)
+		for _, step := range passed {
+			notes = append(notes, step.Why)
+			cause = firstOf(cause, step.Cause)
 		}
 		for i := start; i < len(rule.Fallback); i++ {
 			p := rule.Fallback[i]
@@ -434,6 +434,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			if why != nil {
 				notes = append(notes, why.message)
 				cause = firstOf(cause, why.cause)
+				passed = append(passed, why.step(p))
 				trace = append(trace, fmt.Sprintf("%s: %s cannot take it: %s", label, p, why.message))
 				if i == len(rule.Fallback)-1 {
 					message := strings.Join(notes, "; ")
@@ -448,6 +449,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			if len(notes) > 0 {
 				plan.Reason = fmt.Sprintf("%s: %s; sent %s", label, strings.Join(notes, "; "), p)
 			}
+			plan.PassedOver = passed
 			trace = append(trace, fmt.Sprintf("%s: %s%s", label, p, thenNote(rule.Fallback, i+1)))
 			return fallback(plan, rule, label, i+1), nil, trace
 		}
@@ -552,7 +554,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 					// Claude may not have this request; the rest of the
 					// list may.
 					trace = append(trace, fmt.Sprintf("%s: upstream cannot take it: %s", label, why.message))
-					return fromList(rule, label, 1, []*problem{why})
+					return fromList(rule, label, 1, []proxy.Step{why.step(rule.Fallback[0])})
 				}
 			}
 			plan := upstream(label)
@@ -611,6 +613,7 @@ func (r *Router) fallBackAlong(plan proxy.Plan, header http.Header, arrived []by
 	plan.Fallback = func(ctx context.Context) (proxy.Plan, bool) {
 		var notes []string
 		var cause string
+		var passed []proxy.Step
 		for i := from; i < len(list); i++ {
 			p := list[i]
 			req, err := anthropic.ParseRequest(arrived)
@@ -629,6 +632,7 @@ func (r *Router) fallBackAlong(plan proxy.Plan, header http.Header, arrived []by
 			if why != nil {
 				notes = append(notes, why.passedOver(p))
 				cause = firstOf(cause, why.cause)
+				passed = append(passed, why.step(p))
 				continue
 			}
 			// The proxy puts the rule and the failure before the reason, so
@@ -637,9 +641,10 @@ func (r *Router) fallBackAlong(plan proxy.Plan, header http.Header, arrived []by
 			added := append(notes, strings.TrimLeft(strings.TrimPrefix(next.Reason, label), ";, "))
 			next.Reason = strings.Trim(strings.Join(added, "; "), "; ")
 			next.LocalCause = firstOf(next.LocalCause, cause)
+			next.PassedOver = passed
 			return r.fallBackAlong(next, header, arrived, model, list, i+1, label), true
 		}
-		return proxy.Plan{Reason: strings.Join(notes, "; "), LocalCause: cause}, false
+		return proxy.Plan{Reason: strings.Join(notes, "; "), LocalCause: cause, PassedOver: passed}, false
 	}
 	return plan
 }
@@ -862,6 +867,15 @@ func (pr *problem) passedOver(p Provider) string {
 		return "no local stand-in: " + pr.message
 	}
 	return p.Name + " cannot take it: " + pr.message
+}
+
+// step records that p was passed over for pr, for the ledger.
+func (pr *problem) step(p Provider) proxy.Step {
+	step := proxy.Step{Backend: p.Name, Why: pr.message, Cause: pr.cause}
+	if p.Local != nil {
+		step.Backend, step.Model = "local", p.Local.ID
+	}
+	return step
 }
 
 // local builds the plan for sending req to a local model. The response

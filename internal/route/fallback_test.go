@@ -104,6 +104,10 @@ func TestAListIsFollowedPastEveryProviderThatCannotAnswer(t *testing.T) {
 	if strings.Count(ex.Reason, "rule all") != 1 {
 		t.Errorf("the reason repeats the rule: %q", ex.Reason)
 	}
+	if len(ex.Tried) != 2 || ex.Tried[0].Backend != "upstream" || !ex.Tried[0].Sent || ex.Tried[1].Backend != "openai" || !ex.Tried[1].Sent ||
+		!strings.Contains(ex.Tried[1].Why, "openai answered HTTP 429") {
+		t.Errorf("tried = %+v, want Claude and then OpenAI, each sent the request and failing it", ex.Tried)
+	}
 }
 
 func TestOpenAIOnlyIsAListOfOne(t *testing.T) {
@@ -136,6 +140,9 @@ func TestAProviderThatCannotTakeTheRequestIsPassedOver(t *testing.T) {
 	}
 	if !strings.Contains(res.Exchange.Reason, "the request cannot be translated for OpenAI") || !strings.HasSuffix(res.Exchange.Reason, "; sent upstream") {
 		t.Errorf("reason %q", res.Exchange.Reason)
+	}
+	if tried := res.Exchange.Tried; len(tried) != 1 || tried[0].Backend != "openai" || tried[0].Sent || !strings.Contains(tried[0].Why, "cannot be translated") {
+		t.Errorf("tried = %+v, want OpenAI passed over", tried)
 	}
 }
 

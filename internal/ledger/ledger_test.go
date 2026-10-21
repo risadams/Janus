@@ -444,3 +444,24 @@ func TestRecordCarriesTransforms(t *testing.T) {
 		t.Error("a request no transform touched has a transforms field")
 	}
 }
+
+func TestTheProvidersBeforeTheOneThatAnsweredAreRecordedInOrder(t *testing.T) {
+	ex := proxy.Exchange{Method: "POST", Path: "/v1/messages", Backend: "local", Status: 200, Tried: []proxy.Step{
+		{Backend: "upstream", Sent: true, Why: "upstream answered HTTP 429", Fault: true},
+		{Backend: "openai", Why: "the request cannot be translated for OpenAI: tools[0]: web_search"},
+		{Backend: "local", Model: "qwen/qwen3.8-27b", Sent: true, Why: "local answered HTTP 500", Cause: proxy.CauseServerError},
+	}}
+	b, err := json.Marshal(FromExchange(ex))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `"tried":[{"provider":"upstream","outcome":"failed","why":"upstream answered HTTP 429"},` +
+		`{"provider":"openai","outcome":"passed_over","why":"the request cannot be translated for OpenAI: tools[0]: web_search"},` +
+		`{"provider":"local","model":"qwen/qwen3.8-27b","outcome":"failed","why":"local answered HTTP 500","cause":"server_error"}]`
+	if !strings.Contains(string(b), want) {
+		t.Errorf("record = %s\nwant it to hold %s", b, want)
+	}
+	if b, _ := json.Marshal(FromExchange(proxy.Exchange{Method: "POST", Path: "/v1/messages", Backend: "upstream", Status: 200})); strings.Contains(string(b), "tried") {
+		t.Errorf("a request the first provider answered records %s", b)
+	}
+}

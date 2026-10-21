@@ -65,6 +65,10 @@ type Exchange struct {
 	// Attempt is set when a plan with a fallback was tried: either its
 	// answer was put on trial, or it failed and the fallback answered.
 	Attempt *Attempt
+	// Tried is every provider on a rule's list that came before the one
+	// that answered, in order: tried and failed, or passed over without
+	// being tried. Empty when the first answered.
+	Tried []Step
 	// BackendFault is true when the backend that was meant to answer could
 	// not be reached or timed out, and there was no fallback.
 	BackendFault bool
@@ -133,6 +137,22 @@ type Guard struct {
 	// be made safe to send, or the response referred to a secret in a form
 	// that could not be restored.
 	Blocked string
+}
+
+// Step is one provider on a rule's list that did not answer.
+type Step struct {
+	// Backend is the provider: "upstream", "openai", or "local".
+	Backend string
+	Model   string
+	// Sent says the request was sent and the provider failed it; without
+	// it, the provider was passed over and nothing was sent.
+	Sent bool
+	Why  string
+	// Cause is why a local model did not answer, as a Cause name.
+	Cause string
+	// Fault says a provider that was sent the request failed to answer,
+	// as opposed to answering it with an error about the request.
+	Fault bool
 }
 
 // Attempt is what became of a try at a backend that had a fallback.
@@ -273,6 +293,9 @@ type Plan struct {
 	// before anything else reads it. An error means the request is not
 	// sent.
 	Translate func(body []byte) (sent []byte, back func(*http.Response) error, err error)
+	// PassedOver are the providers on a rule's list, before this plan's,
+	// that could not take the request and were not sent it.
+	PassedOver []Step
 }
 
 // Shadow names the local model to compare an upstream answer against.
@@ -355,6 +378,8 @@ type exchangeState struct {
 	// back turns the response to a translated request back into a
 	// Messages one; see Plan.Translate.
 	back func(*http.Response) error
+	// tried is Exchange.Tried, as it builds.
+	tried []Step
 }
 
 // hold takes on what plan holds, to be freed by releaseNow.
@@ -646,6 +671,7 @@ func New(opts Options) http.Handler {
 					refusal = refused
 				} else {
 					state.plan = plan
+					state.tried = append(state.tried, plan.PassedOver...)
 					if plan.Body != nil {
 						send = plan.Body
 					}
@@ -783,9 +809,12 @@ func New(opts Options) http.Handler {
 					return *state.plan.Else, true
 				}
 				next, ok := state.plan.Fallback(base)
-				if !ok && next.Reason != "" {
-					state.noFallback = next.Reason
-					state.noFallbackCause = next.LocalCause
+				if !ok {
+					if next.Reason != "" {
+						state.noFallback = next.Reason
+						state.noFallbackCause = next.LocalCause
+					}
+					state.tried = append(state.tried, next.PassedOver...)
 				}
 				return next, ok
 			}
@@ -818,6 +847,14 @@ func New(opts Options) http.Handler {
 						}
 					}
 				}
+				step := Step{Backend: tried.Backend.Name(), Model: tried.BackendModel, Sent: true, Why: why, Fault: fault}
+				if step.Backend == "local" {
+					step.Cause = cause
+					if cause == CauseServerError && Overflowed(string(state.failedBody)) {
+						step.Cause = CauseTooLarge
+					}
+				}
+				state.tried = append(append(state.tried, step), next.PassedOver...)
 				state.plan = *next
 				state.hold(state.plan)
 				// The fallback's reason starts with the same rule; what it
@@ -876,6 +913,7 @@ func New(opts Options) http.Handler {
 				Transforms:     state.plan.Transforms,
 				Shadow:         state.plan.Shadow,
 				Attempt:        state.attempt,
+				Tried:          state.tried,
 				BackendFault:   state.backendFault,
 				Unread:         state.unread,
 				NoFallback:     state.noFallback,
