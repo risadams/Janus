@@ -266,6 +266,13 @@ type Plan struct {
 	// meant for the local model, or on a stand-in that could not be made:
 	// why the local model was not tried, as a Cause name.
 	LocalCause string
+	// Translate is set for a backend that does not speak the Messages API,
+	// such as OpenAI's. It is given the body as the guard leaves it, just
+	// before sending, and returns what to send instead and the function
+	// that turns the backend's response back into a Messages one, in place,
+	// before anything else reads it. An error means the request is not
+	// sent.
+	Translate func(body []byte) (sent []byte, back func(*http.Response) error, err error)
 }
 
 // Shadow names the local model to compare an upstream answer against.
@@ -345,6 +352,9 @@ type exchangeState struct {
 	// release frees what the current plan holds, if anything; see
 	// Plan.Release.
 	release func()
+	// back turns the response to a translated request back into a
+	// Messages one; see Plan.Translate.
+	back func(*http.Response) error
 }
 
 // hold takes on what plan holds, to be freed by releaseNow.
@@ -361,6 +371,11 @@ func (s *exchangeState) releaseNow() {
 	}
 }
 
+// remote reports whether a backend is off this machine, so that the guard
+// applies to what is sent to it. Only LM Studio is not; a backend janus
+// does not know is taken to be remote, so the guard fails closed.
+func remote(b backend.Backend) bool { return b.Name() != "local" }
+
 // failed reports whether a status from a plan's backend counts as the
 // backend failing, so that the plan's fallback should be used.
 func failed(plan Plan, status int, header http.Header) bool {
@@ -375,6 +390,19 @@ func failed(plan Plan, status int, header http.Header) bool {
 type errBackendStatus int
 
 func (e errBackendStatus) Error() string { return fmt.Sprintf("answered HTTP %d", int(e)) }
+
+// errUntranslatable is a plan's Translate failing: the request is not
+// sent, as when the guard blocks it.
+type errUntranslatable struct {
+	backend string
+	err     error
+}
+
+func (e errUntranslatable) Error() string {
+	return fmt.Sprintf("the request could not be translated for %s: %v", e.backend, e.err)
+}
+
+func (e errUntranslatable) Unwrap() error { return e.err }
 
 // trialLimit bounds the answer a trial will hold.
 const trialLimit = 8 << 20
@@ -417,6 +445,13 @@ func New(opts Options) http.Handler {
 			state, _ := resp.Request.Context().Value(stateKey{}).(*exchangeState)
 			if state == nil {
 				return nil
+			}
+			if state.back != nil {
+				// Everything after this, the fallback's decision included,
+				// sees the answer as Claude Code will.
+				if err := state.back(resp); err != nil {
+					return err
+				}
 			}
 			if state.fallBack != nil && failed(state.plan, resp.StatusCode, resp.Header) {
 				// Only give up this response if there really is somewhere
@@ -656,17 +691,15 @@ func New(opts Options) http.Handler {
 			}
 			return base, func() {}
 		}
-		// prepare gives what the plan sends: its own body if it has one,
-		// and otherwise the request as the client sent it; with secrets
-		// replaced if it is going upstream and a redactor is set. An error
-		// means the request could not be made safe and must not be sent.
-		prepare := func(plan Plan) ([]byte, error) {
+		// guarded is prepare before any translation: the Messages body the
+		// plan sends, made safe.
+		guarded := func(plan Plan) ([]byte, error) {
 			body := plan.Body
 			if body == nil {
 				body = original
 			}
-			state.redaction, state.sent = nil, plan.Body
-			if plan.Backend.Name() != "upstream" {
+			state.redaction, state.sent, state.back = nil, plan.Body, nil
+			if !remote(plan.Backend) {
 				return body, nil
 			}
 			if state.withhold {
@@ -705,15 +738,43 @@ func New(opts Options) http.Handler {
 			}
 			return rd.Body, nil
 		}
+		// prepare gives what the plan sends: its own body if it has one,
+		// and otherwise the request as the client sent it; with secrets
+		// replaced and local-only content withheld if it is leaving the
+		// machine; translated, if the backend needs it. An error means the
+		// request could not be made safe and must not be sent.
+		prepare := func(plan Plan) ([]byte, error) {
+			body, err := guarded(plan)
+			if err != nil || plan.Translate == nil {
+				return body, err
+			}
+			sent, back, err := plan.Translate(body)
+			if err != nil {
+				return nil, errUntranslatable{plan.Backend.Name(), err}
+			}
+			state.sent, state.back = sent, back
+			return sent, nil
+		}
 		// blocked answers the client when prepare fails. Nothing has been
 		// sent anywhere.
 		blocked := func(w http.ResponseWriter, err error) {
-			if state.guard == nil {
-				state.guard = &Guard{}
+			var untranslatable errUntranslatable
+			if errors.As(err, &untranslatable) {
+				// Not the guard's doing: the exchange records it as a fault.
+				state.fault = err
+				state.plan.Reason += ": " + err.Error() + "; not sent"
+			} else {
+				if state.guard == nil {
+					state.guard = &Guard{}
+				}
+				state.guard.Blocked = err.Error()
+				state.plan.Reason = "guard: " + err.Error() + "; not sent"
 			}
-			state.guard.Blocked = err.Error()
-			state.plan.Reason = "guard: " + err.Error() + "; not sent"
-			writeError(w, http.StatusInternalServerError, "api_error", fmt.Sprintf("janus: %v. The request was not sent upstream.", err))
+			where := "upstream"
+			if name := state.plan.Backend.Name(); name != "upstream" {
+				where = "to " + name
+			}
+			writeError(w, http.StatusInternalServerError, "api_error", fmt.Sprintf("janus: %v. The request was not sent %s.", err, where))
 		}
 
 		if state.messages && !truncated && (state.plan.Else != nil || state.plan.Fallback != nil) {

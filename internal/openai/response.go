@@ -17,8 +17,10 @@ import (
 // ResponseOptions are what translating an answer back needs from the
 // request it answers.
 type ResponseOptions struct {
-	// Model is the model Claude Code asked for, which the answer names, as
-	// for LM Studio.
+	// Model is the model the answer names. Empty names the model OpenAI
+	// says answered, which is what the proxy wants: the ledger reads the
+	// answer before the plan's ResponseModel renames it for Claude Code,
+	// as it does for LM Studio.
 	Model string
 	// Tools decodes the tool names OpenAI calls (TranslateRequest).
 	Tools ToolNames
@@ -27,6 +29,9 @@ type ResponseOptions struct {
 	// thinking text. Otherwise reasoning shows as an empty thinking block,
 	// as Claude's does with display "omitted".
 	Summary bool
+	// scrub, if set, is applied to what OpenAI sends before it is read
+	// (Key.scrub).
+	scrub func([]byte) []byte
 }
 
 // Usage is OpenAI's own count for one response, for the ledger (#381).
@@ -226,6 +231,9 @@ func ToolID(callID string) string {
 // TranslateResponse turns a non-streamed Responses answer into a Messages
 // body.
 func TranslateResponse(body []byte, opts ResponseOptions) ([]byte, Result, error) {
+	if opts.scrub != nil {
+		body = opts.scrub(body)
+	}
 	var r wireResponse
 	if err := json.Unmarshal(body, &r); err != nil {
 		return nil, Result{}, fmt.Errorf("openai: the response is not JSON: %w", err)
@@ -296,7 +304,7 @@ func TranslateResponse(body []byte, opts ResponseOptions) ([]byte, Result, error
 		StopReason   string         `json:"stop_reason"`
 		StopSequence *string        `json:"stop_sequence"`
 		Usage        anthropicUsage `json:"usage"`
-	}{messageID(r.ID), "message", "assistant", opts.Model, content, res.StopReason, nil, res.Usage.anthropic()})
+	}{messageID(r.ID), "message", "assistant", firstOf(opts.Model, r.Model), content, res.StopReason, nil, res.Usage.anthropic()})
 	if err != nil {
 		return nil, Result{}, fmt.Errorf("openai: %w", err)
 	}
@@ -308,6 +316,13 @@ func (n ToolNames) decode(name string) string {
 		return claude
 	}
 	return name // a tool the request did not offer; Claude Code says so
+}
+
+func firstOf(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 // streamState is a stream being translated.
@@ -336,6 +351,9 @@ func TranslateStream(w io.Writer, src io.Reader, opts ResponseOptions) (Result, 
 	var data bytes.Buffer
 	for sc.Scan() {
 		line := sc.Bytes()
+		if opts.scrub != nil {
+			line = opts.scrub(line)
+		}
 		if len(line) == 0 {
 			if data.Len() == 0 {
 				continue
@@ -390,7 +408,7 @@ func (s *streamState) start(responseID string) {
 	}
 	s.started = true
 	s.send("message_start", obj{"type": "message_start", "message": obj{
-		"id": messageID(responseID), "type": "message", "role": "assistant", "model": s.opts.Model,
+		"id": messageID(responseID), "type": "message", "role": "assistant", "model": firstOf(s.opts.Model, s.model),
 		"content": []any{}, "stop_reason": nil, "stop_sequence": nil,
 		"usage": anthropicUsage{},
 	}})

@@ -117,6 +117,15 @@ answer it Janus supplies a key of its own.
   with the key as its only credential, so Claude Code's Anthropic
   credential never reaches OpenAI. The key is set only there, so it never
   reaches Anthropic or LM Studio.
+- **What OpenAI says back is scrubbed of it.** OpenAI's errors can quote a
+  key, and what OpenAI says is passed on to Claude Code and kept in the
+  ledger and captures, so the key is replaced with `[redacted]` in every
+  answer, error, and stream before Janus reads it. A test sends requests
+  through Janus with a made-up key, OpenAI quoting it back each time, and
+  then finds it in no capture, ledger record, or console line.
+- **The guard covers OpenAI as it covers Anthropic.** Secrets are replaced
+  and local-only content withheld before a request is translated, so
+  OpenAI is sent what the guard checked.
 - **`openai.baseUrl` decides who receives it**, as `upstream.baseUrl` does
   for the Anthropic credential. Whoever can edit the config can redirect
   it.
