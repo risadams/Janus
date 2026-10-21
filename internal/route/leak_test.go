@@ -12,11 +12,13 @@ import (
 
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/guard/guardtest"
+	"github.com/risadams/janus/internal/openai/openaitest"
 )
 
 // The leak tests: requests seeded with every kind of secret and with
 // local-only content are sent down every route janus has, and nothing
-// protected may appear in any byte the fake Anthropic receives.
+// protected may appear in any byte the fake Anthropic or the fake OpenAI
+// receives.
 
 // localOnlyContent is what the policy protects in the seeded request. None
 // of it is shaped like a secret: only the policy can keep it back.
@@ -168,14 +170,17 @@ func TestNothingProtectedReachesTheUpstream(t *testing.T) {
 		io.WriteString(w, `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`)
 	}
 	mainLoop := []string{"X-Claude-Code-Agent-Id", ""}
+	done := openaitest.Answer(openaitest.Text{Text: "Done."})
+	refused := openaitest.Fail(http.StatusBadRequest, "invalid_request_error", "", "Invalid value for 'input'.")
 
 	routes := []struct {
 		name   string
 		opts   siteOptions
 		path   string
 		header []string
-		// upstream is how many requests the route sends to Anthropic
-		// when nothing makes the request local-only.
+		// upstream is how many requests the route sends off the
+		// machine, to Anthropic and OpenAI, when nothing makes the
+		// request local-only.
 		upstream int
 	}{
 		{name: "no routing at all", upstream: 1},
@@ -199,6 +204,12 @@ func TestNothingProtectedReachesTheUpstream(t *testing.T) {
 		{name: "rule: upstream, Anthropic overloaded, local stands in", opts: siteOptions{upstream: overloaded,
 			rules: []Rule{{Name: "all", Route: RouteUpstream, Fallback: []Provider{{Name: RouteUpstream}, {Name: "standin", Local: &local}}}}}, upstream: 1},
 		{name: "Anthropic overloaded, nothing stands in", opts: siteOptions{upstream: overloaded}, upstream: 1},
+		{name: "rule: OpenAI only", opts: siteOptions{openai: []openaitest.Reply{done, done},
+			rules: []Rule{{Name: "all", Fallback: []Provider{{Name: RouteOpenAI}}}}}, upstream: 1},
+		{name: "rule: Claude out of usage, OpenAI answers", opts: siteOptions{upstream: limitReached, openai: []openaitest.Reply{done, done},
+			rules: []Rule{{Name: "all", Fallback: []Provider{{Name: RouteUpstream}, {Name: RouteOpenAI}}}}}, upstream: 2},
+		{name: "rule: OpenAI refuses the translation, Claude answers", opts: siteOptions{openai: []openaitest.Reply{refused, refused},
+			rules: []Rule{{Name: "all", Fallback: []Provider{{Name: RouteOpenAI}, {Name: RouteUpstream}}}}}, upstream: 2},
 	}
 
 	total := 0
@@ -224,6 +235,11 @@ func TestNothingProtectedReachesTheUpstream(t *testing.T) {
 					s.mu.Lock()
 					sent := s.sent
 					s.mu.Unlock()
+					if s.openai != nil {
+						for _, r := range s.openai.Requests() {
+							sent = append(sent, r.Body)
+						}
+					}
 					total += len(sent)
 					for i, body := range sent {
 						if leaks := leaksIn(body); len(leaks) > 0 {
@@ -231,7 +247,8 @@ func TestNothingProtectedReachesTheUpstream(t *testing.T) {
 						}
 					}
 					// Under "local" a request holding local-only content
-					// goes nowhere near Anthropic, except to be counted.
+					// goes nowhere off the machine, except to Anthropic
+					// to be counted.
 					want := 2 * route.upstream
 					if action == "local" && path == "/v1/messages" {
 						want = 0

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/config"
 	"github.com/risadams/janus/internal/openai"
@@ -85,7 +86,7 @@ func never(t *testing.T) http.HandlerFunc {
 }
 
 func TestAListIsFollowedPastEveryProviderThatCannotAnswer(t *testing.T) {
-	oa, srv := fakeOpenAI(t, openaitest.Fail(http.StatusInternalServerError, "server_error", "server_error", "The server had an error."))
+	oa, srv := fakeOpenAI(t, openaitest.RateLimited("insufficient_quota", ""))
 	local, sawLocal := lmStudio(t, nil)
 
 	res := along(t, oa, local, limitReached, opusRequest, "upstream", "openai", "janus-local")
@@ -97,7 +98,7 @@ func TestAListIsFollowedPastEveryProviderThatCannotAnswer(t *testing.T) {
 		t.Errorf("OpenAI was asked %d times and LM Studio %d; want once each", len(srv.Requests()), len(sawLocal))
 	}
 	ex := res.Exchange
-	if ex.Backend != "local" || !strings.Contains(ex.Reason, "upstream answered HTTP 429") || !strings.Contains(ex.Reason, "openai answered HTTP 500") {
+	if ex.Backend != "local" || !strings.Contains(ex.Reason, "upstream answered HTTP 429") || !strings.Contains(ex.Reason, "openai answered HTTP 429") {
 		t.Errorf("backend %s, reason %q", ex.Backend, ex.Reason)
 	}
 	if strings.Count(ex.Reason, "rule all") != 1 {
@@ -153,5 +154,157 @@ func TestABriefFailureOfClaudeDoesNotMoveTheConversation(t *testing.T) {
 	res := along(t, oa, nil, upstreamSays(529, `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`), opusRequest, "upstream", "openai")
 	if res.Status != 529 || len(srv.Requests()) != 0 {
 		t.Errorf("status %d; OpenAI was sent %d requests", res.Status, len(srv.Requests()))
+	}
+}
+
+// claudeAnswers is Claude answering every request, keeping what it was
+// sent.
+func claudeAnswers(sent *[]string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		*sent = append(*sent, string(b))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"type":"message","role":"assistant","model":"claude-opus-5-5","content":[{"type":"text","text":"From Claude."}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
+	}
+}
+
+// What retrying will not fix moves the request on at once, with the
+// request as it arrived; what needs the owner takes OpenAI out until a
+// restart, so the next request does not ask again.
+func TestOpenAIIsLeftAtOnceForWhatRetryingWillNotFix(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		reply openaitest.Reply
+		out   bool
+	}{
+		{"too long", openaitest.Fail(http.StatusBadRequest, "invalid_request_error", "context_length_exceeded", "Your input exceeds the context window of this model."), false},
+		{"a request janus translated wrongly", openaitest.Fail(http.StatusBadRequest, "invalid_request_error", "", "Invalid value for 'input[3].content'."), false},
+		{"key refused", openaitest.Fail(http.StatusUnauthorized, "invalid_request_error", "invalid_api_key", "Incorrect API key provided."), true},
+		{"quota used up", openaitest.RateLimited("insufficient_quota", ""), true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			oa, srv := fakeOpenAI(t, c.reply, c.reply)
+			var sent []string
+			up := httptest.NewServer(claudeAnswers(&sent))
+			defer up.Close()
+			r := listRouter(t, up, oa, "openai", "upstream")
+
+			for turn := 1; turn <= 2; turn++ {
+				res := r.send(t, opusRequest)
+				if res.Status != http.StatusOK || !strings.Contains(res.Body, "From Claude.") {
+					t.Fatalf("turn %d: status %d, body %s", turn, res.Status, res.Body)
+				}
+				if turn == 2 && c.out && !strings.Contains(res.Exchange.Reason, "OpenAI is out until janus restarts") {
+					t.Errorf("turn 2 reason %q", res.Exchange.Reason)
+				}
+			}
+			if sent[0] != opusRequest {
+				t.Errorf("Claude was sent %s, not the request as it arrived", sent[0])
+			}
+			want := 2
+			if c.out {
+				want = 1
+			}
+			if got := len(srv.Requests()); got != want {
+				t.Errorf("OpenAI was asked %d times, want %d", got, want)
+			}
+		})
+	}
+}
+
+// A failure that passes by itself is Claude Code's to retry, as Claude's
+// is, until it has gone on long enough to be an outage (#150).
+func TestABriefOpenAIFailureIsClaudeCodesToRetry(t *testing.T) {
+	serverError := openaitest.Fail(http.StatusInternalServerError, "server_error", "server_error", "The server had an error.")
+	oa, srv := fakeOpenAI(t, openaitest.RateLimited("rate_limit_exceeded", "7"), serverError, serverError)
+	var sent []string
+	up := httptest.NewServer(claudeAnswers(&sent))
+	defer up.Close()
+	r := listRouter(t, up, oa, "openai", "upstream")
+
+	if res := r.send(t, opusRequest); res.Status != http.StatusTooManyRequests || res.Exchange.Backend != "openai" {
+		t.Errorf("a per-minute limit: status %d from %s", res.Status, res.Exchange.Backend)
+	}
+	if res := r.send(t, opusRequest); res.Status != http.StatusInternalServerError {
+		t.Errorf("a second failure: status %d", res.Status)
+	}
+	if res := r.send(t, opusRequest); res.Status != http.StatusOK || !strings.Contains(res.Body, "From Claude.") {
+		t.Errorf("the third failure in two minutes: status %d, body %s", res.Status, res.Body)
+	}
+	if len(srv.Requests()) != 3 || len(sent) != 1 {
+		t.Errorf("OpenAI was asked %d times and Claude %d", len(srv.Requests()), len(sent))
+	}
+}
+
+func TestAPerMinuteLimitWithALongWaitMovesOnAtOnce(t *testing.T) {
+	oa, _ := fakeOpenAI(t, openaitest.RateLimited("rate_limit_exceeded", "120"))
+	var sent []string
+	up := httptest.NewServer(claudeAnswers(&sent))
+	defer up.Close()
+	if res := listRouter(t, up, oa, "openai", "upstream").send(t, opusRequest); res.Status != http.StatusOK || len(sent) != 1 {
+		t.Errorf("status %d; Claude was asked %d times", res.Status, len(sent))
+	}
+}
+
+func TestAProviderTheRequestMayNotReachIsPassedOver(t *testing.T) {
+	oa, srv := fakeOpenAI(t)
+	var sent []string
+	up := httptest.NewServer(claudeAnswers(&sent))
+	defer up.Close()
+	r := listRouter(t, up, oa, "openai", "upstream")
+	r.Barred = func(provider string, _ *anthropic.Request) string {
+		if provider == "openai" {
+			return "the employer has not approved OpenAI"
+		}
+		return ""
+	}
+	res := r.send(t, opusRequest)
+	if res.Status != http.StatusOK || len(srv.Requests()) != 0 || !strings.Contains(res.Exchange.Reason, "the employer has not approved OpenAI") {
+		t.Errorf("status %d, OpenAI asked %d times, reason %q", res.Status, len(srv.Requests()), res.Exchange.Reason)
+	}
+
+	r.Barred = func(string, *anthropic.Request) string { return "nowhere is approved" }
+	res = r.send(t, opusRequest)
+	if res.Status != http.StatusForbidden || len(sent) != 1 || len(srv.Requests()) != 0 {
+		t.Errorf("with every provider barred: status %d; Claude asked %d times, OpenAI %d", res.Status, len(sent), len(srv.Requests()))
+	}
+}
+
+// listJanus is janus with one rule, whose list is names, kept for several
+// requests so the router's state carries from one to the next.
+type listJanus struct {
+	*Router
+	url      string
+	reported chan proxy.Exchange
+}
+
+func listRouter(t *testing.T, up *httptest.Server, oa *openai.Backend, names ...string) *listJanus {
+	t.Helper()
+	u, _ := url.Parse(up.URL)
+	list := make([]Provider, len(names))
+	for i, n := range names {
+		list[i] = Provider{Name: n}
+	}
+	j := &listJanus{Router: &Router{Upstream: backend.NewUpstream(u, nil), OpenAI: oa, Rules: []Rule{{Name: "all", Fallback: list}}}, reported: make(chan proxy.Exchange, 1)}
+	srv := httptest.NewServer(proxy.New(proxy.Options{Upstream: j.Upstream, Plan: j.Plan, Done: func(ex proxy.Exchange) { j.Report(ex); j.reported <- ex }}))
+	t.Cleanup(srv.Close)
+	j.url = srv.URL
+	return j
+}
+
+func (j *listJanus) send(t *testing.T, body string) result {
+	t.Helper()
+	resp, err := http.Post(j.url+"/v1/messages", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	got, _ := io.ReadAll(resp.Body)
+	select {
+	case ex := <-j.reported:
+		return result{resp.StatusCode, string(got), ex}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no exchange reported")
+		return result{}
 	}
 }

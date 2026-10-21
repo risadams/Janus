@@ -60,11 +60,11 @@ func TestTheOpenAIKeyIsFoundInNoCaptureLedgerRecordOrLogLine(t *testing.T) {
 		Upstream: backend.NewUpstream(unused, nil),
 		Redactor: guard.NewRedactor(detector),
 		Plan: func(ctx context.Context, header http.Header, req *anthropic.Request) (proxy.Plan, *proxy.Refusal) {
-			choice, translate, err := b.Translation(header, req)
+			tr, err := b.Translation(header, req)
 			if err != nil {
 				t.Fatal(err)
 			}
-			return proxy.Plan{Backend: b, Route: "openai", Reason: "test", BackendModel: choice.Model, ResponseModel: req.Model(), Translate: translate}, nil
+			return proxy.Plan{Backend: b, Route: "openai", Reason: "test", BackendModel: tr.Choice.Model, ResponseModel: req.Model(), Translate: tr.Translate}, nil
 		},
 		KeepBodies: true,
 		Done: func(ex proxy.Exchange) {

@@ -161,6 +161,10 @@ type Router struct {
 	// OpenAI is the OpenAI API, for rules that name it. Nil if it is not
 	// configured.
 	OpenAI *openai.Backend
+	// Barred, when set, says why a provider ("upstream", "openai", or a
+	// local model's name) may not have a request, or "" if it may. An
+	// entry of a fallback list it bars is passed over (#406).
+	Barred func(provider string, req *anthropic.Request) string
 	// Aliases maps a requested model name to a local model.
 	Aliases map[string]LocalModel
 	Rules   []Rule
@@ -173,6 +177,9 @@ type Router struct {
 	// down decides when Claude has been down long enough to move down a
 	// fallback list (#150).
 	down outage
+	// openaiDown is the same for OpenAI: one per router, since OpenAI is
+	// one service.
+	openaiDown outage
 	// limits is Claude's latest word on the usage limits, for rules with
 	// IfUsageAbove (#240).
 	limits headroom
@@ -309,6 +316,9 @@ func (r *Router) Report(ex proxy.Exchange) {
 	if ex.Backend == "upstream" && ex.Status > 0 && ex.Status < 400 {
 		r.down.recovered() // Claude answered
 	}
+	if ex.Backend == RouteOpenAI && ex.Status > 0 && ex.Status < 400 {
+		r.openaiDown.recovered()
+	}
 	switch {
 	case ex.Backend == "upstream":
 		r.limits.observe(anthropic.QuotaFrom(ex.ResponseHeader))
@@ -398,6 +408,51 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	// the plan's backend turns out not to be able to answer.
 	fallback := func(plan proxy.Plan, rule Rule, label string, from int) proxy.Plan {
 		return r.fallBackAlong(plan, header, arrived, facts.Model, rule.Fallback, from, label)
+	}
+
+	// fromList plans the request for the first entry of a rule's list, from
+	// index start, that can take it, and gives it the rest as its fallback.
+	// passed are the entries already passed over, and why.
+	fromList := func(rule Rule, label string, start int, passed []*problem) (proxy.Plan, *proxy.Refusal, []string) {
+		var notes []string
+		var cause string
+		for _, why := range passed {
+			notes = append(notes, why.message)
+			cause = firstOf(cause, why.cause)
+		}
+		for i := start; i < len(rule.Fallback); i++ {
+			p := rule.Fallback[i]
+			var plan proxy.Plan
+			why := r.barred(p, req)
+			switch {
+			case why != nil:
+			case p.Name == RouteUpstream:
+				plan = upstream(label)
+			default:
+				plan, why = r.provider(ctx, header, req, p, facts.Model, label, i == len(rule.Fallback)-1)
+			}
+			if why != nil {
+				notes = append(notes, why.message)
+				cause = firstOf(cause, why.cause)
+				trace = append(trace, fmt.Sprintf("%s: %s cannot take it: %s", label, p, why.message))
+				if i == len(rule.Fallback)-1 {
+					message := strings.Join(notes, "; ")
+					return proxy.Plan{}, &proxy.Refusal{Status: why.status, Type: why.kind, Message: "janus: no provider on the list can take this request: " + message,
+						Route: p.Name, Reason: label + ": refused: " + message}, trace
+				}
+				continue
+			}
+			if plan.LocalCause == "" {
+				plan.LocalCause = cause
+			}
+			if len(notes) > 0 {
+				plan.Reason = fmt.Sprintf("%s: %s; sent %s", label, strings.Join(notes, "; "), p)
+			}
+			trace = append(trace, fmt.Sprintf("%s: %s%s", label, p, thenNote(rule.Fallback, i+1)))
+			return fallback(plan, rule, label, i+1), nil, trace
+		}
+		trace = append(trace, label+": an empty list; upstream")
+		return upstream(label), nil, trace
 	}
 
 	// An alias has no upstream model behind it, so there is nowhere to
@@ -491,49 +546,27 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				trace = append(trace, fmt.Sprintf("%s: local, to %s", label, rule.Local.ID))
 			}
 			return plan, nil, trace
-		case RouteShadow:
+		case RouteShadow, RouteUpstream:
+			if len(rule.Fallback) > 0 {
+				if why := r.barred(rule.Fallback[0], req); why != nil {
+					// Claude may not have this request; the rest of the
+					// list may.
+					trace = append(trace, fmt.Sprintf("%s: upstream cannot take it: %s", label, why.message))
+					return fromList(rule, label, 1, []*problem{why})
+				}
+			}
 			plan := upstream(label)
-			plan.Shadow = &proxy.Shadow{Model: rule.Local.ID, ContextTokens: rule.Local.ContextTokens, Timeout: rule.Local.Timeout, Reason: label}
-			trace = append(trace, fmt.Sprintf("%s: upstream, and shadowed on %s%s", label, rule.Local.ID, thenNote(rule.Fallback, 1)))
+			if rule.Route == RouteShadow {
+				plan.Shadow = &proxy.Shadow{Model: rule.Local.ID, ContextTokens: rule.Local.ContextTokens, Timeout: rule.Local.Timeout, Reason: label}
+				trace = append(trace, fmt.Sprintf("%s: upstream, and shadowed on %s%s", label, rule.Local.ID, thenNote(rule.Fallback, 1)))
+			} else {
+				trace = append(trace, label+": upstream"+thenNote(rule.Fallback, 1))
+			}
 			return fallback(plan, rule, label, 1), nil, trace
-		case RouteUpstream:
-			trace = append(trace, label+": upstream"+thenNote(rule.Fallback, 1))
-			return fallback(upstream(label), rule, label, 1), nil, trace
 		default:
 			// The list is the route: the first provider that can take the
 			// request has it.
-			var notes []string
-			var cause string
-			for i, p := range rule.Fallback {
-				var plan proxy.Plan
-				var why *problem
-				if p.Name == RouteUpstream {
-					plan = upstream(label)
-				} else {
-					plan, why = r.provider(ctx, header, req, p, facts.Model, label, i == len(rule.Fallback)-1)
-				}
-				if why != nil {
-					notes = append(notes, why.message)
-					cause = firstOf(cause, why.cause)
-					trace = append(trace, fmt.Sprintf("%s: %s cannot take it: %s", label, p, why.message))
-					if i == len(rule.Fallback)-1 {
-						message := strings.Join(notes, "; ")
-						return proxy.Plan{}, &proxy.Refusal{Status: why.status, Type: why.kind, Message: "janus: no provider on the list can take this request: " + message,
-							Route: p.Name, Reason: label + ": refused: " + message}, trace
-					}
-					continue
-				}
-				if plan.LocalCause == "" {
-					plan.LocalCause = cause
-				}
-				if len(notes) > 0 {
-					plan.Reason = fmt.Sprintf("%s: %s; sent %s", label, strings.Join(notes, "; "), p)
-				}
-				trace = append(trace, fmt.Sprintf("%s: %s%s", label, p, thenNote(rule.Fallback, i+1)))
-				return fallback(plan, rule, label, i+1), nil, trace
-			}
-			trace = append(trace, label+": an empty list; upstream")
-			return upstream(label), nil, trace
+			return fromList(rule, label, 0, nil)
 		}
 	}
 
@@ -585,10 +618,12 @@ func (r *Router) fallBackAlong(plan proxy.Plan, header http.Header, arrived []by
 				return proxy.Plan{Reason: "no fallback: the request could not be read again: " + err.Error(), LocalCause: proxy.CauseUnsupported}, false
 			}
 			var next proxy.Plan
-			var why *problem
-			if p.Name == RouteUpstream {
+			why := r.barred(p, req)
+			switch {
+			case why != nil:
+			case p.Name == RouteUpstream:
 				next, _, _ = r.upstreamPlan(header, req, label)
-			} else {
+			default:
 				next, why = r.provider(ctx, header, req, p, model, label, i == len(list)-1)
 			}
 			if why != nil {
@@ -620,13 +655,18 @@ func (r *Router) provider(ctx context.Context, header http.Header, req *anthropi
 		if r.OpenAI == nil {
 			return proxy.Plan{}, &problem{http.StatusInternalServerError, "api_error", "openai is not configured", ""}
 		}
-		choice, translate, err := r.OpenAI.Translation(header, req)
+		if why := r.OpenAI.Out(); why != "" {
+			return proxy.Plan{}, &problem{http.StatusServiceUnavailable, "api_error",
+				"OpenAI is out until janus restarts, since " + strings.TrimPrefix(why, "janus: "), ""}
+		}
+		tr, err := r.OpenAI.Translation(header, req)
 		if err != nil {
 			return proxy.Plan{}, &problem{http.StatusBadRequest, "invalid_request_error", "the request cannot be translated for OpenAI: " + err.Error(), ""}
 		}
 		return proxy.Plan{
 			Backend: r.OpenAI, Route: RouteOpenAI, Reason: reason,
-			BackendModel: choice.Model, ResponseModel: model, Translate: translate,
+			BackendModel: tr.Choice.Model, ResponseModel: model, Translate: tr.Translate,
+			FallBackOn: func(status int, header http.Header) bool { return r.leaveOpenAI(tr.Failure(), status, header) },
 		}, nil
 	case p.Local != nil:
 		local := *p.Local
@@ -662,6 +702,40 @@ func (r *Router) provider(ctx context.Context, header http.Header, req *anthropi
 		return plan, nil
 	}
 	return proxy.Plan{}, &problem{http.StatusInternalServerError, "api_error", fmt.Sprintf("%q is not upstream, openai, or a local model", p.Name), ""}
+}
+
+// leaveOpenAI is an OpenAI plan's FallBackOn: whether OpenAI's failure
+// means the next on the list should have the request
+// (docs/research/openai.md, Errors). A conversation too long for the
+// model, and a request OpenAI refused, which most likely means janus
+// translated it wrongly, move on at once, the next provider getting the
+// request as it arrived. So do a refused key and a used-up quota, which
+// take OpenAI out until a restart (Backend.Out). A per-minute rate limit,
+// a server error, overload, and no answer at all are judged as Claude's
+// failures are (#150): at once if Retry-After says a minute or more,
+// otherwise on the third within two minutes, Claude Code retrying the
+// ones before.
+func (r *Router) leaveOpenAI(f *openai.Failure, status int, header http.Header) bool {
+	if f != nil {
+		switch f.Kind {
+		case openai.TooLong, openai.BadRequest, openai.KeyRefused, openai.QuotaExhausted:
+			return true
+		}
+	}
+	return r.openaiDown.standIn(status, header)
+}
+
+// barred says why p may not have req, or nil if it may: the check through
+// which content can be allowed to reach some providers and not others
+// (#406). Nil Barred allows every provider.
+func (r *Router) barred(p Provider, req *anthropic.Request) *problem {
+	if r.Barred == nil {
+		return nil
+	}
+	if why := r.Barred(p.Name, req); why != "" {
+		return &problem{http.StatusForbidden, "permission_error", why, ""}
+	}
+	return nil
 }
 
 // thenNote says, for the trace, what comes after list[from-1]. from is at

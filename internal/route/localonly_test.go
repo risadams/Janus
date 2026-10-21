@@ -14,6 +14,7 @@ import (
 
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/guard"
+	"github.com/risadams/janus/internal/openai/openaitest"
 	"github.com/risadams/janus/internal/proxy"
 )
 
@@ -55,6 +56,7 @@ type site struct {
 	janus  *httptest.Server
 	mu     sync.Mutex
 	sent   [][]byte // every body the upstream received
+	openai *openaitest.Server
 	local  chan received
 	report chan proxy.Exchange
 }
@@ -67,6 +69,8 @@ type siteOptions struct {
 	lmStudio http.HandlerFunc
 	noLocal  bool // LM Studio is not there at all
 	noGuard  bool // no policy and no redactor: janus as a plain proxy
+	// openai, if set, is how a fake OpenAI answers, in turn.
+	openai []openaitest.Reply
 }
 
 func newSite(t *testing.T, o siteOptions) *site {
@@ -98,6 +102,9 @@ func newSite(t *testing.T, o siteOptions) *site {
 		local, s.local = lmStudio(t, o.lmStudio)
 	}
 	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local, Aliases: qwen, Rules: o.rules}
+	if o.openai != nil {
+		r.OpenAI, s.openai = fakeOpenAI(t, o.openai...)
+	}
 	policy, err := guard.NewPolicy([]string{"secrets/**"}, []string{"COMPANY CONFIDENTIAL"})
 	if err != nil {
 		t.Fatal(err)

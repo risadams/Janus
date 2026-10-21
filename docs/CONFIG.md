@@ -395,9 +395,26 @@ provider.
 
 An entry that cannot take the request at all is passed over, and the
 ledger's `reason` says why: a request OpenAI's API has no way to express,
-a local model too busy or too small for it, LM Studio unreachable. If no
-entry can take it, the request is refused with an error naming each
-reason, and nothing is sent.
+OpenAI out (below), a local model too busy or too small for it, LM Studio
+unreachable. If no entry can take it, the request is refused with an
+error naming each reason, and nothing is sent.
+
+When the provider in use fails, whether the request moves down the list
+depends on the provider and the failure:
+
+| Provider | Moves on at once | Moves on once it is an outage | Never moves on |
+| --- | --- | --- | --- |
+| Claude | A rate limit whose headers say a minute or more | Any other 429, 5xx, or 529, or no answer, on the third within two minutes | Any other error, such as a bad request or an expired login |
+| OpenAI | A conversation too long for the model; a request OpenAI refused (most likely janus translated it wrongly); a refused key; a used-up quota or spend limit | A per-minute rate limit (at once if `Retry-After` says a minute or more), a server error, overload, or no answer, on the third within two minutes | — |
+| A local model | Any error, or no answer | | |
+
+"Once it is an outage" is the rule described under
+[Keep working when Claude is down](#keep-working-when-claude-is-down):
+until then the failure goes to Claude Code, which retries, and usually
+gets through. A refused OpenAI key and a used-up quota need you to act,
+so OpenAI is then left out of every list until Janus restarts, rather
+than asked again. Whatever moves on, the next provider is sent the
+request as Claude Code sent it.
 
 Before config version 2 a rule named one local stand-in with
 `"ifDown": "janus-local"`. Janus reads that as
