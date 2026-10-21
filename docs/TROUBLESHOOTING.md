@@ -233,8 +233,8 @@ or lower `contextTokens`.
 
 ## When Claude is down
 
-With an `ifDown` rule, the local model answers when Claude can't. When it
-didn't, the console line has a note saying why, starting `no local
+With a local model on a rule's `fallback` list, the local model answers
+when Claude can't. When it didn't, the console line has a note saying why, starting `no local
 stand-in:`. The usual reasons are below.
 
 **`no local stand-in: ... more than the N-token context of local model
@@ -258,12 +258,11 @@ Another request held the model for the whole of `timeoutSeconds`. Stand-ins
 wait their turn, but not forever.
 
 **Claude Code shows an overloaded or rate-limit error and retries, though
-the rule has `ifDown`.** That is on purpose when the failure looks brief:
-Janus hands it to Claude Code to retry, and stands in only for a usage
-limit, or after three failures within two minutes. If it keeps happening
+the rule has a `fallback` list.** That is on purpose when the failure looks brief:
+Janus hands it to Claude Code to retry, and moves down the list only for
+a usage limit, or after three failures within two minutes. If it keeps happening
 and the local model never answers, the request's class may not be
-covered: `ifDown` on a `main` rule
-doesn't cover subagents, and Claude Code's background requests (`quota`,
+covered: a `fallback` list on a `main` rule doesn't cover subagents, and Claude Code's background requests (`quota`,
 `status`, `safety`) have classes of their own. The ledger's `class`
 says which it was.
 

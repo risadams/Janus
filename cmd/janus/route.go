@@ -15,6 +15,7 @@ import (
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/config"
+	"github.com/risadams/janus/internal/openai"
 	"github.com/risadams/janus/internal/route"
 )
 
@@ -79,7 +80,12 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 
 	upstreamURL, _ := url.Parse(cfg.Upstream.BaseURL)
 	localURL, _ := url.Parse(cfg.Local.BaseURL)
-	router := newRouter(cfg, backend.NewUpstream(upstreamURL, nil), backend.NewLocal(localURL, nil))
+	// Explaining sends nothing, so OpenAI is planned for without its key.
+	var oa *openai.Backend
+	if cfg.OpenAI.On() {
+		oa, _ = openai.NewBackend(cfg.OpenAI, openai.Key{}, nil) // Validate has checked the base URL
+	}
+	router := newRouter(cfg, backend.NewUpstream(upstreamURL, nil), backend.NewLocal(localURL, nil), oa)
 	plan, refusal, trace := router.Explain(context.Background(), header, req)
 	if plan.Release != nil {
 		plan.Release() // only explaining: nothing is sent
@@ -100,11 +106,16 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "%s%s: %s answers, and its whole answer is checked before the client\n", decision, p.paint(magenta, "local first"), plan.BackendModel)
 		fmt.Fprintf(stdout, "          sees any of it. If it passes it is reported as %s; if not, Claude answers.\n", plan.ResponseModel)
 		fmt.Fprintf(stdout, "          changes on the way: %s\n", strings.Join(plan.Stages, ", "))
+	case plan.Backend.Name() == "openai":
+		fmt.Fprintf(stdout, "%s%s: %s answers, reported to the client as %s\n", decision, p.paint(cyan, "openai"), plan.BackendModel, plan.ResponseModel)
+		if plan.Fallback != nil {
+			fmt.Fprintf(stdout, "          if it cannot answer, the next on the rule's list answers instead\n")
+		}
 	case plan.Backend.Name() == "local":
 		fmt.Fprintf(stdout, "%s%s: %s answers, reported to the client as %s\n", decision, p.paint(magenta, "local"), plan.BackendModel, plan.ResponseModel)
 		fmt.Fprintf(stdout, "          changes on the way: %s\n", strings.Join(plan.Stages, ", "))
 		if plan.Else != nil || plan.Fallback != nil {
-			fmt.Fprintf(stdout, "          if it cannot be reached or answers with an error, Claude answers instead\n")
+			fmt.Fprintf(stdout, "          if it cannot be reached or answers with an error, the next on the rule's list answers instead\n")
 		}
 	default:
 		if plan.Body != nil {
@@ -113,7 +124,7 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "%supstream, untouched\n", decision)
 		}
 		if plan.Fallback != nil {
-			fmt.Fprintf(stdout, "          if Claude cannot answer (unreachable, rate limited, overloaded, failing),\n          the local model answers instead\n")
+			fmt.Fprintf(stdout, "          if Claude cannot answer (unreachable, rate limited, overloaded, failing),\n          the next on the rule's list answers instead\n")
 		}
 		if plan.Shadow != nil {
 			fmt.Fprintf(stdout, "          then run again on %s for comparison; that answer is only recorded\n", plan.Shadow.Model)

@@ -332,11 +332,16 @@ type Rule struct {
 	// Local names the entry of local.models to use. Required unless Route
 	// is "upstream".
 	Local string `json:"local,omitempty"`
-	// IfDown names an entry of local.models to answer instead when this
-	// rule sends a request upstream and Claude cannot answer it: it is
-	// unreachable, rate limited, overloaded, or failing. For the upstream
-	// and shadow routes. Left out, the failure reaches the client.
-	IfDown string `json:"ifDown,omitempty"`
+	// Fallback lists where a matching request may go, in order:
+	// "upstream", "openai", or entries of local.models. With route left
+	// out, the list is the route: the request goes to the first that can
+	// take it, and moves down the list when one cannot answer, so
+	// ["openai"] is OpenAI only and ["upstream", "openai", "janus-local"]
+	// tries all three. With route upstream or shadow, the list starts
+	// with "upstream" and the rest answer when Claude cannot: it is
+	// unreachable, rate limited, overloaded, or failing. Left out, the
+	// failure reaches the client. It replaces ifDown (config version 2).
+	Fallback []string `json:"fallback,omitempty"`
 	// SkipChecks turns off named checks on the local answer, for the
 	// local-then-escalate route: empty, truncated, tools, schema, refusal.
 	SkipChecks []string `json:"skipChecks,omitempty"`
@@ -353,6 +358,37 @@ type Rule struct {
 	// is reached (#240). With no report yet, or after a limit's reset, it
 	// does not match.
 	IfUsageAbove map[string]float64 `json:"ifUsageAbove,omitempty"`
+}
+
+// checkFallback says what is wrong with a rule's fallback list.
+func (c Config) checkFallback(where string, rule Rule) []error {
+	if len(rule.Fallback) == 0 {
+		return nil
+	}
+	var errs []error
+	seen := map[string]bool{}
+	for i, name := range rule.Fallback {
+		_, local := c.Local.Models[name]
+		switch {
+		case seen[name]:
+			errs = append(errs, fmt.Errorf("%s.fallback names %q twice", where, name))
+		case name == "openai" && !c.OpenAI.On():
+			errs = append(errs, fmt.Errorf(`%s.fallback names openai, but there is no openai section; add one with "key": "env:OPENAI_API_KEY"`, where))
+		case name != "upstream" && name != "openai" && !local:
+			errs = append(errs, fmt.Errorf("%s.fallback[%d] %q is not upstream, openai, or an entry of local.models", where, i, name))
+		}
+		seen[name] = true
+	}
+	switch rule.Route {
+	case "":
+	case "upstream", "shadow":
+		if rule.Fallback[0] != "upstream" {
+			errs = append(errs, fmt.Errorf("%s.fallback must start with \"upstream\" when route is %s, which sends the request upstream first; leave route out to start elsewhere", where, rule.Route))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("%s.fallback only applies when route is upstream or shadow, or left out; route %s already falls back to Claude", where, rule.Route))
+	}
+	return errs
 }
 
 // DefaultTrialSeconds is how long a local-then-escalate attempt may take
@@ -629,7 +665,7 @@ func (c Config) Validate() error {
 			errs = append(errs, fmt.Errorf(`guard.localOnly.action is %q; it must be "withhold" or "local"`, lo.Action))
 		}
 	}
-	if c.Features.Route && len(c.Local.Models) == 0 {
+	if c.Features.Route && len(c.Local.Models) == 0 && !c.OpenAI.On() {
 		errs = append(errs, errors.New(`features.route is on but local.models is empty; add an entry such as "janus-local": {"model": "<id of a model in LM Studio>"}`))
 	}
 	for i, rule := range c.Routing {
@@ -653,20 +689,13 @@ func (c Config) Validate() error {
 		if len(rule.SkipChecks) > 0 && rule.Route != "local-then-escalate" {
 			errs = append(errs, fmt.Errorf("%s.skipChecks only applies when route is local-then-escalate", where))
 		}
-		if rule.IfDown != "" {
-			if _, ok := c.Local.Models[rule.IfDown]; !ok {
-				errs = append(errs, fmt.Errorf("%s.ifDown %q is not an entry of local.models", where, rule.IfDown))
-			}
-			if rule.Route != "upstream" && rule.Route != "shadow" {
-				errs = append(errs, fmt.Errorf("%s.ifDown only applies when route is upstream or shadow; the other routes already try the local model", where))
-			}
-		}
+		errs = append(errs, c.checkFallback(where, rule)...)
 		for window, share := range rule.IfUsageAbove {
 			if window == "" || share <= 0 || share > 1 {
 				errs = append(errs, fmt.Errorf("%s.ifUsageAbove %q: %v is not a share above 0 and at most 1; use, say, {\"5h\": 0.8}", where, window, share))
 			}
 		}
-		if len(rule.IfUsageAbove) > 0 && rule.Route == "upstream" {
+		if len(rule.IfUsageAbove) > 0 && rule.Route == "upstream" && len(rule.Fallback) == 0 {
 			errs = append(errs, fmt.Errorf("%s.ifUsageAbove sends nothing anywhere new with route upstream; use a route that tries the local model", where))
 		}
 		switch {
@@ -684,7 +713,11 @@ func (c Config) Validate() error {
 				errs = append(errs, fmt.Errorf("%s.local %q is not an entry of local.models", where, rule.Local))
 			}
 		case "":
-			errs = append(errs, fmt.Errorf("%s.route is not set; use upstream, local, shadow, or local-then-escalate", where))
+			if len(rule.Fallback) == 0 {
+				errs = append(errs, fmt.Errorf("%s.route is not set; use upstream, local, shadow, or local-then-escalate, or list where to send the request as fallback", where))
+			} else if rule.Local != "" {
+				errs = append(errs, fmt.Errorf("%s.local is not used when fallback is the route; name the local model in the list", where))
+			}
 		default:
 			errs = append(errs, fmt.Errorf("%s.route %q is not one of upstream, local, shadow, local-then-escalate", where, rule.Route))
 		}

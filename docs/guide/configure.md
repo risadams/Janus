@@ -110,7 +110,7 @@ A rule's `route` says what happens to the requests it matches:
 
 | `route` | What happens |
 | --- | --- |
-| `upstream` | Claude answers. With `ifDown`, the local model answers instead when Claude cannot. |
+| `upstream` | Claude answers. With a `fallback` list, the next on it answers instead when Claude cannot. |
 | `shadow` | Claude answers, and the local model answers the same request on the side, for comparison only. |
 | `local-then-escalate` | The local model answers first. Janus checks the answer, and if it is broken, or takes longer than `maxSeconds`, Claude answers instead. |
 | `local` | The local model answers. If it cannot take the request at all, Claude does. |
@@ -180,8 +180,8 @@ model answers instead:
   },
   "features": { "route": true },
   "routing": [
-    { "name": "main", "class": "main", "route": "upstream", "ifDown": "janus-local" },
-    { "name": "subagents", "class": "subagent", "route": "upstream", "ifDown": "janus-local" }
+    { "name": "main", "class": "main", "route": "upstream", "fallback": ["upstream", "janus-local"] },
+    { "name": "subagents", "class": "subagent", "route": "upstream", "fallback": ["upstream", "janus-local"] }
   ]
 }
 ```
@@ -234,7 +234,7 @@ stand-in for the main conversation when Claude is down, and the guard on.
   },
   "features": { "route": true, "guard": true },
   "routing": [
-    { "name": "main", "class": "main", "route": "upstream", "ifDown": "janus-local" },
+    { "name": "main", "class": "main", "route": "upstream", "fallback": ["upstream", "janus-local"] },
     { "name": "subagents", "class": "subagent", "route": "local-then-escalate", "local": "janus-local", "maxSeconds": 90 }
   ],
   "guard": {

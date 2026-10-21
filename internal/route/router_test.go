@@ -1300,7 +1300,7 @@ func claudeDownWith(t *testing.T, models string, upstream http.HandlerFunc, lms 
 	u, _ := url.Parse(up.URL)
 	model := LocalModel{ID: "qwen/qwen3.8-27b", Timeout: time.Second}
 	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: backend.NewLocal(localURL, nil),
-		Rules: []Rule{{Name: "main", Class: Main, Route: RouteUpstream, IfDown: &model}}}
+		Rules: []Rule{{Name: "main", Class: Main, Route: RouteUpstream, Fallback: []Provider{{Name: RouteUpstream}, {Name: "standin", Local: &model}}}}}
 	// Claude has already failed twice in the last two minutes, so the
 	// failure under test makes it an outage and the stand-in answers. When
 	// that is decided, and when not, is TestAStandInWaitsForClaudeToBeDown.
@@ -1517,7 +1517,7 @@ func TestSafetyChecksStayWithClaudeUnlessARuleNamesThem(t *testing.T) {
 	}
 
 	mainDown := router(local, nil)
-	mainDown.Rules = []Rule{{Name: "main", Class: Main, Route: RouteUpstream, IfDown: &model}, {Name: "any", Route: RouteUpstream, IfDown: &model}}
+	mainDown.Rules = []Rule{{Name: "main", Class: Main, Route: RouteUpstream, Fallback: []Provider{{Name: RouteUpstream}, {Name: "standin", Local: &model}}}, {Name: "any", Route: RouteUpstream, Fallback: []Provider{{Name: RouteUpstream}, {Name: "standin", Local: &model}}}}
 	plan, _ = mainDown.Plan(context.Background(), header, parse(t, check))
 	if plan.Fallback != nil || plan.Else != nil {
 		t.Errorf("a safety check got a local stand-in: reason %q", plan.Reason)
@@ -1784,7 +1784,7 @@ func TestAStandInWaitsForABusyLocalModel(t *testing.T) {
 	r := router(local, nil)
 	one := qwen["janus-local"]
 	one.MaxConcurrent = 1
-	r.Rules = []Rule{{Route: RouteUpstream, IfDown: &one}}
+	r.Rules = []Rule{{Route: RouteUpstream, Fallback: []Provider{{Name: RouteUpstream}, {Name: "standin", Local: &one}}}}
 	a, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
 	b, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
 	standIn, ok := a.Fallback(context.Background())
@@ -1863,7 +1863,7 @@ func TestJanusLoadsAnUnloadedModelButNeverReloads(t *testing.T) {
 	u, _ := url.Parse(srv.URL)
 	r := router(backend.NewLocal(u, nil), nil)
 	standIn := qwen["janus-local"]
-	r.Rules = []Rule{{Route: RouteUpstream, IfDown: &standIn}}
+	r.Rules = []Rule{{Route: RouteUpstream, Fallback: []Provider{{Name: RouteUpstream}, {Name: "standin", Local: &standIn}}}}
 
 	plan, _, _ := r.Explain(context.Background(), mainHeader(), parse(t, opusRequest))
 	local, ok := plan.Fallback(context.Background())
@@ -1881,7 +1881,7 @@ func TestJanusLoadsAnUnloadedModelButNeverReloads(t *testing.T) {
 	// Loaded, but too small for this request: refused, and not reloaded.
 	listing = `{"data":[{"id":"qwen/qwen3.8-27b","state":"loaded","loaded_context_length":4096,"max_context_length":262144}]}`
 	r = router(backend.NewLocal(u, nil), nil)
-	r.Rules = []Rule{{Route: RouteUpstream, IfDown: &standIn}}
+	r.Rules = []Rule{{Route: RouteUpstream, Fallback: []Provider{{Name: RouteUpstream}, {Name: "standin", Local: &standIn}}}}
 	medium := `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"` + strings.Repeat("word ", 8000) + `"}]}`
 	plan, _, _ = r.Explain(context.Background(), mainHeader(), parse(t, medium))
 	if refused, ok := plan.Fallback(context.Background()); ok || !strings.Contains(refused.Reason, "more than the 3072 tokens local model") {

@@ -345,7 +345,7 @@ when it doesn't.
 
 ## When Claude is down
 
-With an `ifDown` rule ([configuring](configure.md#keep-working-when-claude-is-down)),
+With a local model on a rule's `fallback` list ([configuring](configure.md#keep-working-when-claude-is-down)),
 an outage looks like this on the console:
 
 ```

@@ -37,6 +37,7 @@ import (
 	"github.com/risadams/janus/internal/guard"
 	"github.com/risadams/janus/internal/instance"
 	"github.com/risadams/janus/internal/ledger"
+	"github.com/risadams/janus/internal/openai"
 	"github.com/risadams/janus/internal/proxy"
 	"github.com/risadams/janus/internal/route"
 	"github.com/risadams/janus/internal/shadow"
@@ -139,10 +140,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	local := backend.NewLocal(localURL, nil)
 
+	// The key is read once, here, and only if a rule can send a request
+	// to OpenAI.
+	var oa *openai.Backend
+	if namesOpenAI(cfg) {
+		key, err := openai.LoadKey(cfg.OpenAI, os.LookupEnv)
+		if err == nil {
+			oa, err = openai.NewBackend(cfg.OpenAI, key, nil)
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "janus: %v. A routing rule's fallback names openai, which needs it.\n", err)
+			return 1
+		}
+	}
+
 	var plan proxy.Planner
 	var router *route.Router
 	if cfg.Features.Route {
-		router = newRouter(cfg, upstream, local)
+		router = newRouter(cfg, upstream, local, oa)
 		plan = router.Plan
 	}
 
@@ -220,7 +235,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			// routing is on.
 			planner := router
 			if planner == nil {
-				planner = newRouter(cfg, upstream, local)
+				planner = newRouter(cfg, upstream, local, nil)
 			}
 			keepLocal = planner.LocalOnly(cfg.Guard.LocalOnly.Local)
 		}
@@ -295,8 +310,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 // systemd's TimeoutStopSec leave it this long.
 const shutdownGrace = time.Minute
 
+// namesOpenAI reports whether a routing rule in force can send a request
+// to OpenAI.
+func namesOpenAI(cfg config.Config) bool {
+	if !cfg.Features.Route {
+		return false
+	}
+	for _, r := range cfg.Routing {
+		if slices.Contains(r.Fallback, route.RouteOpenAI) {
+			return true
+		}
+	}
+	return false
+}
+
 // newRouter builds the router from the config's local models and rules.
-func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local) *route.Router {
+// oa is the OpenAI backend, or nil if no rule names it.
+func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local, oa *openai.Backend) *route.Router {
 	models := make(map[string]route.LocalModel, len(cfg.Local.Models))
 	for name, m := range cfg.Local.Models {
 		seconds := m.TimeoutSeconds
@@ -316,11 +346,15 @@ func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local
 			Route: r.Route, Local: models[r.Local], SkipChecks: r.SkipChecks, TrialTimeout: trialTimeout(r),
 			IfUsageAbove: r.IfUsageAbove,
 		}
-		if m, ok := models[r.IfDown]; ok {
-			rules[i].IfDown = &m
+		for _, name := range r.Fallback {
+			p := route.Provider{Name: name}
+			if m, ok := models[name]; ok {
+				p.Local = &m
+			}
+			rules[i].Fallback = append(rules[i].Fallback, p)
 		}
 	}
-	return &route.Router{Upstream: upstream, Local: local, Aliases: models, Rules: rules}
+	return &route.Router{Upstream: upstream, Local: local, OpenAI: oa, Aliases: models, Rules: rules}
 }
 
 // trialTimeout is how long a local-then-escalate rule lets the local model
@@ -639,6 +673,8 @@ func routingSummary(cfg config.Config) []string {
 		}
 		target := r.Route
 		switch r.Route {
+		case "":
+			target = describeProvider(cfg, r.Fallback[0])
 		case route.RouteUpstream:
 		case route.RouteShadow:
 			target = "upstream, shadowed on " + cfg.Local.Models[r.Local].Model
@@ -652,12 +688,28 @@ func routingSummary(cfg config.Config) []string {
 		if name == "" {
 			name = fmt.Sprintf("%d", i+1)
 		}
-		if r.IfDown != "" {
-			target += ", or local " + cfg.Local.Models[r.IfDown].Model + " if Claude cannot answer"
+		if len(r.Fallback) > 1 {
+			rest := make([]string, 0, len(r.Fallback)-1)
+			for _, name := range r.Fallback[1:] {
+				rest = append(rest, describeProvider(cfg, name))
+			}
+			first := "it"
+			if r.Fallback[0] == route.RouteUpstream {
+				first = "Claude"
+			}
+			target += fmt.Sprintf(", or %s if %s cannot answer", strings.Join(rest, ", then "), first)
 		}
 		lines = append(lines, fmt.Sprintf("rule %s: %s -> %s", name, when, target))
 	}
 	return lines
+}
+
+// describeProvider names an entry of a fallback list for the banner.
+func describeProvider(cfg config.Config, name string) string {
+	if m, ok := cfg.Local.Models[name]; ok {
+		return "local " + m.Model
+	}
+	return name
 }
 
 // printClaudeCommand gives the exact command that starts Claude Code

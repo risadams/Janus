@@ -39,7 +39,7 @@ Then add a rule before the others:
     "local": "janus-local",
     "ifUsageAbove": { "5h": 0.8 }
   },
-  { "name": "everything", "route": "upstream", "ifDown": "janus-local" }
+  { "name": "everything", "route": "upstream", "fallback": ["upstream", "janus-local"] }
 ],
 "features": { "route": true }
 ```

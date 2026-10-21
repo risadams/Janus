@@ -113,7 +113,7 @@ func TestABriefFailureReachesClaudeCodeToRetry(t *testing.T) {
 	lmsURL, _ := url.Parse(lms.URL)
 	model := LocalModel{ID: "qwen/qwen3.8-27b", Timeout: 5 * time.Second}
 	r := &Router{Upstream: backend.NewUpstream(upURL, nil), Local: backend.NewLocal(lmsURL, nil),
-		Rules: []Rule{{Name: "main", Class: Main, Route: RouteUpstream, IfDown: &model}}}
+		Rules: []Rule{{Name: "main", Class: Main, Route: RouteUpstream, Fallback: []Provider{{Name: RouteUpstream}, {Name: "standin", Local: &model}}}}}
 	janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: r.Upstream, Plan: r.Plan, Done: r.Report}))
 	defer janus.Close()
 

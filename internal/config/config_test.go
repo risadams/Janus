@@ -314,13 +314,33 @@ func TestValidate(t *testing.T) {
 		}, "maxSeconds is negative"},
 		{"an upstream rule with a local fallback", func(c *Config) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
-			c.Routing = []Rule{{Class: "main", Route: "upstream", IfDown: "janus-local"}}
+			c.Routing = []Rule{{Class: "main", Route: "upstream", Fallback: []string{"upstream", "janus-local"}}}
 		}, ""},
-		{"ifDown naming a missing model", func(c *Config) { c.Routing = []Rule{{Route: "upstream", IfDown: "nope"}} }, `routing[0].ifDown "nope" is not an entry`},
-		{"ifDown on a route that is already local", func(c *Config) {
+		{"a list that is the route", func(c *Config) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
-			c.Routing = []Rule{{Route: "local", Local: "janus-local", IfDown: "janus-local"}}
-		}, "ifDown only applies"},
+			c.OpenAI = OpenAI{Key: "env:OPENAI_API_KEY"}
+			c.Routing = []Rule{{Fallback: []string{"openai", "upstream", "janus-local"}}}
+		}, ""},
+		{"OpenAI only, with no local model", func(c *Config) {
+			c.Local.Models = nil
+			c.OpenAI = OpenAI{Key: "env:OPENAI_API_KEY"}
+			c.Routing = []Rule{{Fallback: []string{"openai"}}}
+		}, ""},
+		{"fallback naming a missing model", func(c *Config) { c.Routing = []Rule{{Fallback: []string{"upstream", "nope"}}} }, `routing[0].fallback[1] "nope" is not upstream, openai, or an entry`},
+		{"fallback naming openai with no openai section", func(c *Config) { c.Routing = []Rule{{Fallback: []string{"openai"}}} }, "fallback names openai, but there is no openai section"},
+		{"fallback naming one twice", func(c *Config) { c.Routing = []Rule{{Fallback: []string{"upstream", "upstream"}}} }, `fallback names "upstream" twice`},
+		{"an upstream route whose list starts elsewhere", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Route: "upstream", Fallback: []string{"janus-local", "upstream"}}}
+		}, `fallback must start with "upstream" when route is upstream`},
+		{"fallback on a route that is already local", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Route: "local", Local: "janus-local", Fallback: []string{"upstream"}}}
+		}, "fallback only applies"},
+		{"local beside a list that is the route", func(c *Config) {
+			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+			c.Routing = []Rule{{Local: "janus-local", Fallback: []string{"janus-local"}}}
+		}, "local is not used when fallback is the route"},
 		{"a rule that waits for the five-hour limit", func(c *Config) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
 			c.Routing = []Rule{{Class: "subagent", Route: "local-then-escalate", Local: "janus-local", IfUsageAbove: map[string]float64{"5h": 0.8}}}

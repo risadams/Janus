@@ -197,7 +197,7 @@ func TestNothingProtectedReachesTheUpstream(t *testing.T) {
 		{name: "rule: escalate, local model too slow", opts: siteOptions{lmStudio: slow,
 			rules: []Rule{{Name: "try", Route: RouteEscalate, Local: local, TrialTimeout: 100 * time.Millisecond}}}, upstream: 1},
 		{name: "rule: upstream, Anthropic overloaded, local stands in", opts: siteOptions{upstream: overloaded,
-			rules: []Rule{{Name: "all", Route: RouteUpstream, IfDown: &local}}}, upstream: 1},
+			rules: []Rule{{Name: "all", Route: RouteUpstream, Fallback: []Provider{{Name: RouteUpstream}, {Name: "standin", Local: &local}}}}}, upstream: 1},
 		{name: "Anthropic overloaded, nothing stands in", opts: siteOptions{upstream: overloaded}, upstream: 1},
 	}
 

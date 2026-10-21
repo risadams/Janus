@@ -118,7 +118,7 @@ func TestRouteBadInput(t *testing.T) {
 
 func TestBannerListsRoutes(t *testing.T) {
 	cfg := testConfigWithRules()
-	cfg.Routing[2].IfDown = "janus-local"
+	cfg.Routing[2].Fallback = []string{"upstream", "janus-local"}
 	lines := routingSummary(cfg)
 	want := []string{
 		`model "janus-local" -> local qwen/qwen3.8-27b`,
@@ -143,7 +143,7 @@ func TestRouteExplainsLocalFirstAndFallback(t *testing.T) {
 	)
 
 	out, _ = explain(t, lms.URL, true, subagentsLocal, subagentBody)
-	wantLines(t, out, "Decision local: qwen/qwen3.8-27b answers", "if it cannot be reached or answers with an error, Claude answers instead")
+	wantLines(t, out, "Decision local: qwen/qwen3.8-27b answers", "if it cannot be reached or answers with an error, the next on the rule's list answers instead")
 }
 
 func TestRouteExplainsOverrideAndStandIn(t *testing.T) {
@@ -159,6 +159,6 @@ func TestRouteExplainsOverrideAndStandIn(t *testing.T) {
 	out, _ = explain(t, lms.URL, true, nil, mainBody, "-override", "sideways")
 	wantLines(t, out, "Decision refused with HTTP 400", "is not upstream, local, or local=")
 
-	out, _ = explain(t, lms.URL, true, []map[string]any{{"name": "main", "class": "main", "route": "upstream", "ifDown": "janus-local"}}, mainBody)
-	wantLines(t, out, "rule main: upstream, or qwen/qwen3.8-27b if Claude cannot answer", "if Claude cannot answer (unreachable, rate limited, overloaded, failing),", "the local model answers instead")
+	out, _ = explain(t, lms.URL, true, []map[string]any{{"name": "main", "class": "main", "route": "upstream", "fallback": []string{"upstream", "janus-local"}}}, mainBody)
+	wantLines(t, out, "rule main: upstream, or qwen/qwen3.8-27b if Claude cannot answer", "if Claude cannot answer (unreachable, rate limited, overloaded, failing),", "the next on the rule's list answers instead")
 }

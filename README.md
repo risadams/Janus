@@ -152,7 +152,7 @@ Everything except the ledger is off until you switch it on in
 | The books | always on | A ledger line per request, and full captures of requests and responses, kept 7 days | [Ledger](docs/LEDGER.md) |
 | Routing | `features.route` and `routing` rules | Sends chosen requests to a local model, in shadow, local-then-escalate, or local mode | [Local first](docs/recipes/local-first.md), [subagents](docs/recipes/claude-code.md) |
 | Pacing | a rule's `ifUsageAbove` | Sends a rule's requests local once a subscription usage limit is nearly used, before Claude refuses | [Pacing](docs/recipes/pace.md) |
-| Outage stand-in | a rule's `ifDown` | The local model answers when Claude cannot. Janus loads it if needed, and cuts a conversation too long for it down to its start and latest turns | [Outage](docs/recipes/outage.md) |
+| Outage stand-in | a rule's `fallback` list | The local model answers when Claude cannot. Janus loads it if needed, and cuts a conversation too long for it down to its start and latest turns | [Outage](docs/recipes/outage.md) |
 | Guard | `features.guard`, `guard.redact`, `guard.localOnly` | Finds secrets and swaps them for placeholders; keeps named files and markers away from Anthropic | [Guard](docs/GUARD.md), [privacy](docs/recipes/privacy.md) |
 | Worker tools | `janus mcp` | Lets Claude hand file reading to the local model, and fetch the originals of digested output | [Workers](docs/recipes/workers.md) |
 | Compression | `features.compress` | Replaces large tool results with digests written by the local model. Off by default, because it saved about 1.5% when measured | [Config](docs/CONFIG.md#compression), [evaluation](docs/research/digest.md) |
