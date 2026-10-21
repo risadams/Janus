@@ -791,7 +791,8 @@ func New(opts Options) http.Handler {
 			}
 			// The plan may have a fallback. Record the attempt, switch to
 			// the fallback, and serve that.
-			state.fallBack = func(w http.ResponseWriter, why string, fault bool, cause string) bool {
+			var fallBack func(w http.ResponseWriter, why string, fault bool, cause string) bool
+			fallBack = func(w http.ResponseWriter, why string, fault bool, cause string) bool {
 				tried := state.plan
 				state.fallBack = nil
 				state.releaseNow() // the tried backend is done with the request
@@ -826,6 +827,12 @@ func New(opts Options) http.Handler {
 				if added != "" {
 					state.plan.Reason += ", " + added
 				}
+				if next.Else != nil || next.Fallback != nil {
+					// A list of providers: the fallback has a fallback of
+					// its own, armed in turn.
+					state.next, state.noFallback, state.noFallbackCause = nil, "", ""
+					state.fallBack = fallBack
+				}
 
 				body, err := prepare(state.plan)
 				if err != nil {
@@ -839,6 +846,7 @@ func New(opts Options) http.Handler {
 				rp.ServeHTTP(w, r.WithContext(ctx))
 				return true
 			}
+			state.fallBack = fallBack
 		}
 
 		ctx, cancel := withTimeout(state.plan)

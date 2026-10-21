@@ -3,7 +3,6 @@ package openai
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -29,11 +28,10 @@ type Backend struct {
 }
 
 // NewBackend returns the OpenAI backend for o, sending with key. client is
-// used only for Health; pass nil for the default.
+// used only for Health; pass nil for the default. A backend with no key
+// can plan, as janus route does, but OpenAI refuses everything it sends;
+// janus refuses to start serving a rule that names openai without one.
 func NewBackend(o config.OpenAI, key Key, client *http.Client) (*Backend, error) {
-	if !key.Set() {
-		return nil, errors.New("openai: no API key")
-	}
 	base, err := url.Parse(o.URL())
 	if err != nil || (base.Scheme != "https" && base.Scheme != "http") || base.Host == "" {
 		return nil, fmt.Errorf("openai: base URL %q is not an http(s) address", o.URL())

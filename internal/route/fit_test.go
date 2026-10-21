@@ -111,7 +111,7 @@ func TestAStandInOnALongConversationLeavesOutOlderTurns(t *testing.T) {
 	local, _ := lmStudio(t, nil) // qwen loaded with a 61,696-token context
 	r := router(local, nil)
 	standIn := qwen["janus-local"]
-	r.Rules = []Rule{{Route: RouteUpstream, IfDown: &standIn}}
+	r.Rules = []Rule{{Route: RouteUpstream, Fallback: []Provider{{Name: RouteUpstream}, {Name: "standin", Local: &standIn}}}}
 	body := longSession(400, 3000) // about 417k tokens
 	req := parse(t, body)
 

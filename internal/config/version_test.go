@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,7 +83,7 @@ func TestRewriteUpgradesTheFileAndKeepsACopy(t *testing.T) {
 }
 
 func TestRewriteOfACurrentConfigChangesNothing(t *testing.T) {
-	path := writeConfig(t, `{"listen": "127.0.0.1:9999"}`)
+	path := writeConfig(t, fmt.Sprintf(`{"version": %d, "listen": "127.0.0.1:9999"}`, Version()))
 	notes, err := Rewrite(path)
 	if err != nil || notes != nil {
 		t.Errorf("Rewrite = %q, %v", notes, err)
@@ -111,7 +112,41 @@ func TestTheStarterFileSaysItsVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(path)
-	if !strings.Contains(string(b), `"version": 1`) {
+	if !strings.Contains(string(b), fmt.Sprintf(`"version": %d`, Version())) {
 		t.Errorf("starter file has no version:\n%s", b)
+	}
+}
+
+func TestIfDownIsReadAsAListStartingWithClaude(t *testing.T) {
+	cfg, err := Read(writeConfig(t, `{
+		"local": {"baseUrl": "http://studio.local:1234", "models": {"janus-local": {"model": "q"}}},
+		"routing": [
+			{"name": "main", "class": "main", "route": "upstream", "ifDown": "janus-local"},
+			{"route": "shadow", "local": "janus-local", "ifDown": "janus-local"},
+			{"route": "upstream"}
+		]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"upstream", "janus-local"}
+	for i, rule := range cfg.Routing[:2] {
+		if strings.Join(rule.Fallback, ",") != strings.Join(want, ",") {
+			t.Errorf("routing[%d].fallback = %q, want %q", i, rule.Fallback, want)
+		}
+	}
+	if cfg.Routing[2].Fallback != nil {
+		t.Errorf("a rule with no ifDown was given a list: %q", cfg.Routing[2].Fallback)
+	}
+	if len(cfg.Upgraded) != 2 || !strings.Contains(cfg.Upgraded[0], `"ifDown": "janus-local" is now "fallback": ["upstream", "janus-local"]`) {
+		t.Errorf("notes = %q", cfg.Upgraded)
+	}
+}
+
+// In the current version ifDown is gone, and naming it is the error any
+// unknown setting is.
+func TestIfDownInACurrentConfigIsRefused(t *testing.T) {
+	_, err := Read(writeConfig(t, fmt.Sprintf(`{"version": %d, "routing": [{"route": "upstream", "ifDown": "janus-local"}]}`, Version())))
+	if err == nil || !strings.Contains(err.Error(), "ifDown") {
+		t.Errorf("err = %v", err)
 	}
 }

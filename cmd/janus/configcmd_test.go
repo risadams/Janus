@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/risadams/janus/internal/config"
 )
 
 func TestConfigUpgradeOfACurrentConfigChangesNothing(t *testing.T) {
@@ -14,7 +17,7 @@ func TestConfigUpgradeOfACurrentConfigChangesNothing(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
-	wantLines(t, out, "is already in this version's form (config version 1); nothing to change.")
+	wantLines(t, out, fmt.Sprintf("is already in this version's form (config version %d); nothing to change.", config.Version()))
 	if b, _ := os.ReadFile(path); string(b) != `{"listen": "127.0.0.1:9999"}` {
 		t.Errorf("the file changed: %s", b)
 	}

@@ -150,12 +150,12 @@ You count lines in the files you are given and report one count per file.
 
 ## Two more things worth setting up
 
-**Keep working when Claude is down.** Add `ifDown` to a rule for the main
-conversation, and the local model answers when Claude is unreachable, rate
-limited, or failing:
+**Keep working when Claude is down.** Give a rule for the main
+conversation a `fallback` list, and the local model answers when Claude is
+unreachable, rate limited, or failing:
 
 ```json
-{ "name": "main", "class": "main", "route": "upstream", "ifDown": "janus-local" }
+{ "name": "main", "class": "main", "route": "upstream", "fallback": ["upstream", "janus-local"] }
 ```
 
 **Override for one session.** To bypass local routing, or to keep a session

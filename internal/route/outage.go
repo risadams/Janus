@@ -7,11 +7,11 @@ import (
 	"time"
 )
 
-// When Claude fails, an ifDown stand-in should answer only if Claude is
-// down for a while: a session limit, or an outage. A brief failure is
-// better relayed to Claude Code, which retries with backoff and usually
-// reaches Claude a few seconds later; a local model's turn would stay in
-// the conversation for no reason (#150).
+// When Claude fails, the next on a fallback list should answer only if
+// Claude is down for a while: a session limit, or an outage. A brief
+// failure is better relayed to Claude Code, which retries with backoff and
+// usually reaches Claude a few seconds later; another model's turn would
+// stay in the conversation for no reason (#150).
 //
 // The ledger's rate-limit headers on real failures (docs/research/
 // standin.md) show a session limit as a 429 whose retry-after is the time

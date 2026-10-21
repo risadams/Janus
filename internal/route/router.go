@@ -11,6 +11,7 @@ import (
 
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/backend"
+	"github.com/risadams/janus/internal/openai"
 	"github.com/risadams/janus/internal/proxy"
 	"github.com/risadams/janus/internal/transform"
 	"github.com/risadams/janus/internal/validate"
@@ -62,10 +63,14 @@ type Rule struct {
 	// SkipChecks names validators to leave out when judging a local answer
 	// on the escalate route.
 	SkipChecks []string
-	// IfDown is a local model to answer instead when the rule sends a
-	// request upstream and Claude cannot answer it: unreachable, rate
-	// limited, overloaded, or failing. Nil means the failure stands.
-	IfDown *LocalModel
+	// Fallback is where a matching request may go, in order. With Route
+	// empty the list is the route: the request goes to the first provider
+	// that can take it, and moves down the list when one cannot answer.
+	// With Route upstream or shadow the list starts with upstream, and
+	// the rest are where the request goes if Claude cannot answer:
+	// unreachable, rate limited, overloaded, or failing. Empty means the
+	// failure stands.
+	Fallback []Provider
 	// TrialTimeout is how long the local model gets to produce its whole
 	// answer on the escalate route. It applies as well as the model's own
 	// Timeout; whichever is shorter wins.
@@ -75,6 +80,20 @@ type Rule struct {
 	// used past the share given, from 0 to 1, as Claude last reported.
 	IfUsageAbove map[string]float64
 }
+
+// RouteOpenAI is the OpenAI API, which answers in Anthropic's place
+// (FR-11).
+const RouteOpenAI = "openai"
+
+// Provider is one entry of a rule's fallback list.
+type Provider struct {
+	// Name is RouteUpstream, RouteOpenAI, or the name of a local model.
+	Name string
+	// Local is the model, for a local entry.
+	Local *LocalModel
+}
+
+func (p Provider) String() string { return p.Name }
 
 // Facts is what a rule is matched against.
 type Facts struct {
@@ -139,6 +158,9 @@ func (rule Rule) label(index int) string {
 type Router struct {
 	Upstream backend.Backend
 	Local    *backend.Local
+	// OpenAI is the OpenAI API, for rules that name it. Nil if it is not
+	// configured.
+	OpenAI *openai.Backend
 	// Aliases maps a requested model name to a local model.
 	Aliases map[string]LocalModel
 	Rules   []Rule
@@ -148,8 +170,8 @@ type Router struct {
 
 	health breaker
 	busy   slots
-	// down decides when Claude has been down long enough for an ifDown
-	// stand-in (#150).
+	// down decides when Claude has been down long enough to move down a
+	// fallback list (#150).
 	down outage
 	// limits is Claude's latest word on the usage limits, for rules with
 	// IfUsageAbove (#240).
@@ -321,24 +343,8 @@ func (r *Router) Plan(ctx context.Context, header http.Header, req *anthropic.Re
 // Explain is Plan with its reasoning: one line per step considered, ending
 // with the decision.
 func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic.Request) (plan proxy.Plan, refusal *proxy.Refusal, trace []string) {
-	// Whatever sends a request upstream, a history that a local model had a
-	// turn in is repaired first, or the API would reject it. For a
-	// conversation that only ever went to Claude this finds nothing and
-	// the request goes exactly as it arrived. Then the transforms, if
-	// any, rewrite it to send fewer tokens.
 	upstreamPlan := func(req *anthropic.Request, reason string) (plan proxy.Plan, repaired bool, transformed []string) {
-		plan = proxy.Plan{Backend: r.Upstream, Route: RouteUpstream, Reason: reason}
-		if backend.RepairForUpstream(req) {
-			plan.Stages = []string{backend.StageDropThinking}
-			repaired = true
-		}
-		plan.Transforms = r.Transforms.Apply(header, req)
-		transformed = transform.Stages(plan.Transforms)
-		plan.Stages = append(plan.Stages, transformed...)
-		if len(plan.Stages) > 0 {
-			plan.Body = req.Bytes()
-		}
-		return plan, repaired, transformed
+		return r.upstreamPlan(header, req, reason)
 	}
 	const repairNote = "removed the unsigned thinking a local answer left in the history, which the API would reject"
 	upstream := func(reason string) proxy.Plan {
@@ -388,51 +394,10 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		}
 	}
 
-	// ifDown gives an upstream plan a local fallback, planned only if
-	// Claude turns out not to be able to answer.
-	ifDown := func(plan proxy.Plan, rule Rule, label string) proxy.Plan {
-		if rule.IfDown == nil {
-			return plan
-		}
-		local := *rule.IfDown
-		plan.FallBackOn = r.down.standIn
-		// When there is no stand-in after all, the returned plan's Reason
-		// says why, for the record: Claude's failure is the answer.
-		noStandIn := func(cause, why string) (proxy.Plan, bool) {
-			return proxy.Plan{Reason: "no local stand-in: " + why, LocalCause: cause}, false
-		}
-		plan.Fallback = func(ctx context.Context) (proxy.Plan, bool) {
-			if skip, failures, until := r.health.open(); skip {
-				return noStandIn(proxy.CauseSkipped, fmt.Sprintf("the local backend has failed %d times in a row and is being skipped until %s",
-					failures, until.Format("15:04:05")))
-			}
-			copy, err := anthropic.ParseRequest(arrived)
-			if err != nil {
-				return noStandIn(proxy.CauseUnsupported, "the request could not be read again: "+err.Error())
-			}
-			// A stand-in waits its turn: slower is better than Claude's
-			// error. It waits no longer than the model would be given to
-			// answer.
-			release, ok, waited := r.busy.wait(ctx, local, local.Timeout)
-			if !ok {
-				return noStandIn(proxy.CauseBusy, fmt.Sprintf("%s had %d requests in flight, its limit, for %s", local.ID, local.MaxConcurrent, waited.Round(100*time.Millisecond)))
-			}
-			reason := label
-			if waited >= time.Second {
-				reason = fmt.Sprintf("%s, after waiting %s for the local model", label, waited.Round(time.Second))
-			}
-			fallback, _, problem := r.local(ctx, copy, local, facts.Model, reason, true)
-			if problem != nil {
-				release()
-				if problem.status == http.StatusBadGateway {
-					r.health.record(false)
-				}
-				return noStandIn(problem.cause, problem.message)
-			}
-			fallback.Release = release
-			return fallback, true
-		}
-		return plan
+	// fallback gives a plan the rest of the rule's list, planned only if
+	// the plan's backend turns out not to be able to answer.
+	fallback := func(plan proxy.Plan, rule Rule, label string, from int) proxy.Plan {
+		return r.fallBackAlong(plan, header, arrived, facts.Model, rule.Fallback, from, label)
 	}
 
 	// An alias has no upstream model behind it, so there is nowhere to
@@ -529,15 +494,46 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		case RouteShadow:
 			plan := upstream(label)
 			plan.Shadow = &proxy.Shadow{Model: rule.Local.ID, ContextTokens: rule.Local.ContextTokens, Timeout: rule.Local.Timeout, Reason: label}
-			trace = append(trace, fmt.Sprintf("%s: upstream, and shadowed on %s", label, rule.Local.ID))
-			return ifDown(plan, rule, label), nil, trace
+			trace = append(trace, fmt.Sprintf("%s: upstream, and shadowed on %s%s", label, rule.Local.ID, thenNote(rule.Fallback, 1)))
+			return fallback(plan, rule, label, 1), nil, trace
+		case RouteUpstream:
+			trace = append(trace, label+": upstream"+thenNote(rule.Fallback, 1))
+			return fallback(upstream(label), rule, label, 1), nil, trace
 		default:
-			note := label + ": upstream"
-			if rule.IfDown != nil {
-				note += fmt.Sprintf(", or %s if Claude cannot answer", rule.IfDown.ID)
+			// The list is the route: the first provider that can take the
+			// request has it.
+			var notes []string
+			var cause string
+			for i, p := range rule.Fallback {
+				var plan proxy.Plan
+				var why *problem
+				if p.Name == RouteUpstream {
+					plan = upstream(label)
+				} else {
+					plan, why = r.provider(ctx, header, req, p, facts.Model, label, i == len(rule.Fallback)-1)
+				}
+				if why != nil {
+					notes = append(notes, why.message)
+					cause = firstOf(cause, why.cause)
+					trace = append(trace, fmt.Sprintf("%s: %s cannot take it: %s", label, p, why.message))
+					if i == len(rule.Fallback)-1 {
+						message := strings.Join(notes, "; ")
+						return proxy.Plan{}, &proxy.Refusal{Status: why.status, Type: why.kind, Message: "janus: no provider on the list can take this request: " + message,
+							Route: p.Name, Reason: label + ": refused: " + message}, trace
+					}
+					continue
+				}
+				if plan.LocalCause == "" {
+					plan.LocalCause = cause
+				}
+				if len(notes) > 0 {
+					plan.Reason = fmt.Sprintf("%s: %s; sent %s", label, strings.Join(notes, "; "), p)
+				}
+				trace = append(trace, fmt.Sprintf("%s: %s%s", label, p, thenNote(rule.Fallback, i+1)))
+				return fallback(plan, rule, label, i+1), nil, trace
 			}
-			trace = append(trace, note)
-			return ifDown(upstream(label), rule, label), nil, trace
+			trace = append(trace, label+": an empty list; upstream")
+			return upstream(label), nil, trace
 		}
 	}
 
@@ -545,10 +541,167 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	return upstream("passthrough"), nil, trace
 }
 
+// upstreamPlan is the plan that sends req upstream. Whatever sends a
+// request upstream, a history that a local model or OpenAI had a turn in
+// is repaired first, or the API would reject it. For a conversation that
+// only ever went to Claude this finds nothing and the request goes exactly
+// as it arrived. Then the transforms, if any, rewrite it to send fewer
+// tokens.
+func (r *Router) upstreamPlan(header http.Header, req *anthropic.Request, reason string) (plan proxy.Plan, repaired bool, transformed []string) {
+	plan = proxy.Plan{Backend: r.Upstream, Route: RouteUpstream, Reason: reason}
+	if backend.RepairForUpstream(req) {
+		plan.Stages = []string{backend.StageDropThinking}
+		repaired = true
+	}
+	plan.Transforms = r.Transforms.Apply(header, req)
+	transformed = transform.Stages(plan.Transforms)
+	plan.Stages = append(plan.Stages, transformed...)
+	if len(plan.Stages) > 0 {
+		plan.Body = req.Bytes()
+	}
+	return plan, repaired, transformed
+}
+
+// fallBackAlong gives plan the providers list[from:] as its fallback. Each
+// is planned only when the one before it has failed, from the request as
+// it arrived, and one that cannot take the request is passed over, saying
+// why. Leaving Claude is decided by the #150 rules (outage.standIn), so
+// that a brief failure is retried by Claude Code rather than moving the
+// conversation.
+func (r *Router) fallBackAlong(plan proxy.Plan, header http.Header, arrived []byte, model string, list []Provider, from int, label string) proxy.Plan {
+	if from >= len(list) {
+		return plan
+	}
+	if plan.Route == RouteUpstream {
+		plan.FallBackOn = r.down.standIn
+	}
+	plan.Fallback = func(ctx context.Context) (proxy.Plan, bool) {
+		var notes []string
+		var cause string
+		for i := from; i < len(list); i++ {
+			p := list[i]
+			req, err := anthropic.ParseRequest(arrived)
+			if err != nil {
+				return proxy.Plan{Reason: "no fallback: the request could not be read again: " + err.Error(), LocalCause: proxy.CauseUnsupported}, false
+			}
+			var next proxy.Plan
+			var why *problem
+			if p.Name == RouteUpstream {
+				next, _, _ = r.upstreamPlan(header, req, label)
+			} else {
+				next, why = r.provider(ctx, header, req, p, model, label, i == len(list)-1)
+			}
+			if why != nil {
+				notes = append(notes, why.passedOver(p))
+				cause = firstOf(cause, why.cause)
+				continue
+			}
+			// The proxy puts the rule and the failure before the reason, so
+			// the reason keeps only what it adds: a wait for the model,
+			// older turns left out, the entries passed over.
+			added := append(notes, strings.TrimLeft(strings.TrimPrefix(next.Reason, label), ";, "))
+			next.Reason = strings.Trim(strings.Join(added, "; "), "; ")
+			next.LocalCause = firstOf(next.LocalCause, cause)
+			return r.fallBackAlong(next, header, arrived, model, list, i+1, label), true
+		}
+		return proxy.Plan{Reason: strings.Join(notes, "; "), LocalCause: cause}, false
+	}
+	return plan
+}
+
+// provider plans req for one entry of a fallback list that is not
+// upstream, or says why the entry cannot take it. last says that nothing
+// comes after it on the list: a local model then waits its turn rather
+// than giving way, since slower is better than an error, and has older
+// turns left out to fit, since there is nowhere else to send them.
+func (r *Router) provider(ctx context.Context, header http.Header, req *anthropic.Request, p Provider, model, reason string, last bool) (proxy.Plan, *problem) {
+	switch {
+	case p.Name == RouteOpenAI:
+		if r.OpenAI == nil {
+			return proxy.Plan{}, &problem{http.StatusInternalServerError, "api_error", "openai is not configured", ""}
+		}
+		choice, translate, err := r.OpenAI.Translation(header, req)
+		if err != nil {
+			return proxy.Plan{}, &problem{http.StatusBadRequest, "invalid_request_error", "the request cannot be translated for OpenAI: " + err.Error(), ""}
+		}
+		return proxy.Plan{
+			Backend: r.OpenAI, Route: RouteOpenAI, Reason: reason,
+			BackendModel: choice.Model, ResponseModel: model, Translate: translate,
+		}, nil
+	case p.Local != nil:
+		local := *p.Local
+		if skip, failures, until := r.health.open(); skip {
+			return proxy.Plan{}, &problem{http.StatusBadGateway, "api_error",
+				fmt.Sprintf("the local backend has failed %d times in a row and is being skipped until %s", failures, until.Format("15:04:05")), proxy.CauseSkipped}
+		}
+		var release func()
+		var ok bool
+		var waited time.Duration
+		if last {
+			// It waits no longer than the model would be given to answer.
+			release, ok, waited = r.busy.wait(ctx, local, local.Timeout)
+		} else {
+			release, ok = r.busy.take(local)
+		}
+		if !ok {
+			return proxy.Plan{}, &problem{529, "overloaded_error",
+				fmt.Sprintf("%s had %d requests in flight, its limit, for %s", local.ID, local.MaxConcurrent, waited.Round(100*time.Millisecond)), proxy.CauseBusy}
+		}
+		if waited >= time.Second {
+			reason = fmt.Sprintf("%s, after waiting %s for the local model", reason, waited.Round(time.Second))
+		}
+		plan, _, why := r.local(ctx, req, local, model, reason, last)
+		if why != nil {
+			release()
+			if why.status == http.StatusBadGateway {
+				r.health.record(false) // LM Studio could not be reached
+			}
+			return proxy.Plan{}, why
+		}
+		plan.Release = release
+		return plan, nil
+	}
+	return proxy.Plan{}, &problem{http.StatusInternalServerError, "api_error", fmt.Sprintf("%q is not upstream, openai, or a local model", p.Name), ""}
+}
+
+// thenNote says, for the trace, what comes after list[from-1]. from is at
+// least 1.
+func thenNote(list []Provider, from int) string {
+	if from >= len(list) {
+		return ""
+	}
+	names := make([]string, 0, len(list)-from)
+	for _, p := range list[from:] {
+		names = append(names, p.describe())
+	}
+	who := "it"
+	if list[from-1].Name == RouteUpstream {
+		who = "Claude"
+	}
+	return ", or " + strings.Join(names, ", then ") + " if " + who + " cannot answer"
+}
+
+// describe names a provider for people: a local model by its id.
+func (p Provider) describe() string {
+	if p.Local != nil {
+		return p.Local.ID
+	}
+	return p.Name
+}
+
+func firstOf(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // UpstreamDown reports whether a status from the upstream means Claude
 // could not answer, as opposed to the request being wrong. A rate limit
 // counts: on a subscription it is what running out of usage looks like.
-// It is what decides whether an ifDown stand-in is tried.
+// It is what decides whether the rest of a fallback list is tried.
 func UpstreamDown(status int) bool {
 	return status == http.StatusTooManyRequests || status >= 500
 }
@@ -627,6 +780,14 @@ type problem struct {
 	message string
 	// cause is why, as one of the proxy's Cause names.
 	cause string
+}
+
+// passedOver says why p was passed over on a fallback list.
+func (pr *problem) passedOver(p Provider) string {
+	if p.Local != nil {
+		return "no local stand-in: " + pr.message
+	}
+	return p.Name + " cannot take it: " + pr.message
 }
 
 // local builds the plan for sending req to a local model. The response

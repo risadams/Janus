@@ -222,7 +222,7 @@ func testConfigWithRules() config.Config {
 func TestNewRouterResolvesRulesAndTimeouts(t *testing.T) {
 	cfg := testConfigWithRules()
 	cfg.Local.Models["quick"] = config.LocalModel{Model: "gemma", TimeoutSeconds: 30, ContextTokens: 8000}
-	r := newRouter(cfg, nil, nil)
+	r := newRouter(cfg, nil, nil, nil)
 
 	if got := r.Aliases["janus-local"]; got.ID != "qwen/qwen3.8-27b" || got.Timeout != time.Duration(config.DefaultLocalTimeoutSeconds)*time.Second {
 		t.Errorf("janus-local = %+v, want the default timeout", got)
@@ -236,12 +236,13 @@ func TestNewRouterResolvesRulesAndTimeouts(t *testing.T) {
 	if r.Rules[1].TrialTimeout != time.Duration(config.DefaultTrialSeconds)*time.Second || r.Rules[0].TrialTimeout != 0 {
 		t.Errorf("trial timeouts: escalate rule %s (want the default), local rule %s (want none)", r.Rules[1].TrialTimeout, r.Rules[0].TrialTimeout)
 	}
-	if r.Rules[2].IfDown != nil {
-		t.Errorf("a rule with no ifDown got one: %+v", r.Rules[2].IfDown)
+	if r.Rules[2].Fallback != nil {
+		t.Errorf("a rule with no fallback got one: %+v", r.Rules[2].Fallback)
 	}
-	cfg.Routing[2].IfDown = "quick"
-	if got := newRouter(cfg, nil, nil).Rules[2].IfDown; got == nil || got.ID != "gemma" {
-		t.Errorf("ifDown was not resolved: %+v", got)
+	cfg.Routing[2].Fallback = []string{"upstream", "quick"}
+	got := newRouter(cfg, nil, nil, nil).Rules[2].Fallback
+	if len(got) != 2 || got[0].Name != "upstream" || got[0].Local != nil || got[1].Local == nil || got[1].Local.ID != "gemma" {
+		t.Errorf("fallback was not resolved: %+v", got)
 	}
 	if r.Rules[2].Route != "upstream" || r.Rules[2].Local.ID != "" {
 		t.Errorf("rules[2] = %+v", r.Rules[2])

@@ -14,11 +14,38 @@ import (
 // of releases ago is told what their old settings now mean (#269).
 type migration func(raw map[string]any) (notes []string)
 
-// migrations[i] brings a config from version i+1 to i+2. Every release so
-// far has only added settings, so there are none yet: the first setting
+// migrations[i] brings a config from version i+1 to i+2. A setting
 // renamed, moved, or changed in meaning adds one here, rather than
 // breaking every config that still uses the old form.
-var migrations []migration
+var migrations = []migration{
+	ifDownToFallback, // v0.10.0
+}
+
+// ifDownToFallback reads a rule's ifDown, the one local model that
+// answered when Claude could not, as the two-entry list that replaced it
+// (#427): fallback ["upstream", X] means the same thing.
+func ifDownToFallback(raw map[string]any) (notes []string) {
+	rules, _ := raw["routing"].([]any)
+	for i, r := range rules {
+		rule, _ := r.(map[string]any)
+		down, ok := rule["ifDown"]
+		if !ok {
+			continue
+		}
+		delete(rule, "ifDown")
+		name, _ := down.(string)
+		if name == "" {
+			continue // an empty ifDown meant no stand-in
+		}
+		if _, set := rule["fallback"]; set {
+			notes = append(notes, fmt.Sprintf("routing[%d]: ifDown %q was dropped, since the rule also has a fallback list, which replaced it", i, name))
+			continue
+		}
+		rule["fallback"] = []any{"upstream", name}
+		notes = append(notes, fmt.Sprintf(`routing[%d]: "ifDown": %q is now "fallback": ["upstream", %q], which means the same: Claude first, then %s if Claude cannot answer`, i, name, name, name))
+	}
+	return notes
+}
 
 // Version is the config format this janus writes and reads: one more than
 // the migrations it knows. A config with no version is version 1, the
@@ -26,7 +53,8 @@ var migrations []migration
 func Version() int { return 1 + len(migrations) }
 
 // upgrade brings data, a config's JSON, up to Version, and returns it with
-// a note for each change. A config already current comes back as it was.
+// a note for each change. A config already current, or using nothing that
+// has changed since its version, comes back as it was.
 // One written for a newer janus is refused, saying so, since this janus
 // cannot know what its settings mean.
 func upgrade(data []byte) (upgraded []byte, notes []string, err error) {
@@ -53,6 +81,11 @@ func upgrade(data []byte) (upgraded []byte, notes []string, err error) {
 	}
 	for v := from; v < Version(); v++ {
 		notes = append(notes, migrations[v-1](raw)...)
+	}
+	if len(notes) == 0 {
+		// Nothing it uses has changed: it reads the same as it is, and
+		// is left so, rather than rewritten for its version number alone.
+		return data, nil, nil
 	}
 	raw["version"] = Version()
 	upgraded, err = json.MarshalIndent(raw, "", "  ")

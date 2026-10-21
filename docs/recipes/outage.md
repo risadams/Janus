@@ -18,11 +18,11 @@ together over one five-hour window.
 
 You need a local model configured, as in
 [the subagents recipe](claude-code.md#1-tell-janus-about-the-local-model).
-Then name it as the stand-in on a rule that sends requests upstream:
+Then list it after `upstream` on a rule that sends requests upstream:
 
 ```json
 "routing": [
-  { "name": "everything", "route": "upstream", "ifDown": "janus-local" }
+  { "name": "everything", "route": "upstream", "fallback": ["upstream", "janus-local"] }
 ],
 "features": { "route": true, "escalate": false, "compress": false, "guard": false }
 ```

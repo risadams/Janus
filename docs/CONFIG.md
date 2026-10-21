@@ -210,9 +210,9 @@ With `features.route` on, a request for that name is answered locally.
 **Why `maxConcurrent` defaults to 1.** A local model runs requests side by
 side in your machine's memory: on a 36 GB Mac, two parallel subagents
 took a 27B model past 31 GB within four minutes. Past the limit, a rule
-sends the request to Claude, and the ledger says why. An `ifDown`
-stand-in, which has nowhere else to go, waits for a place instead, for up
-to `timeoutSeconds`. Model aliases and the local-only policy are not
+sends the request on, and the ledger says why. A local model last on a
+rule's `fallback` list, which has nowhere else to send it, waits for a
+place instead, for up to `timeoutSeconds`. Model aliases and the local-only policy are not
 limited, since they have nowhere else to send a request either. Raise it
 only with memory to spare.
 
@@ -264,12 +264,12 @@ Outcome.
 
 | Field | Meaning |
 | --- | --- |
-| `route` | `upstream`, `local`, `shadow`, or `local-then-escalate`. The last two are described below. |
-| `local` | Which entry of `local.models` to use. Required unless `route` is `upstream`. |
+| `route` | `upstream`, `local`, `shadow`, or `local-then-escalate`. The last two are described below. Left out when `fallback` is the route. |
+| `local` | Which entry of `local.models` to use, for `local`, `shadow`, and `local-then-escalate`. |
 | `name` | Shown in the ledger and in `janus route`. Optional. |
 | `skipChecks` | For `local-then-escalate`: checks to leave out. See below. |
 | `maxSeconds` | For `local-then-escalate`: how long the local model gets before Claude is asked. Default 120. |
-| `ifDown` | For `upstream` and `shadow`: an entry of `local.models` to answer instead when Claude cannot. See below. |
+| `fallback` | Where the request may go, in order: `upstream`, `openai`, or entries of `local.models`. With `route` left out the list is the route; with `upstream` or `shadow` it starts with `upstream`, and the rest answer when Claude cannot. See below. |
 | `ifUsageAbove` | Match only once a subscription usage limit is used past a share, as Claude last reported: `{"5h": 0.8}` for the five-hour limit, `"7d"` for the weekly one; any one past its share is enough. Until Claude has answered, and after a limit's reset, it does not match. Not for `upstream`. See [the pacing recipe](recipes/pace.md). |
 
 The classes:
@@ -281,8 +281,8 @@ The classes:
   conversation for a five-word answer, so leave it upstream.
 - **`safety`** is auto mode's classifier grading an action before it
   runs. It decides whether the agent may act, so **only a rule that names
-  `class: "safety"` matches it**: rules without `class`, and `ifDown` on
-  other rules, leave it with Claude.
+  `class: "safety"` matches it**: rules without `class`, and `fallback`
+  lists on other rules, leave it with Claude.
 - Claude Code's start-up quota check and its compaction requests are not
   `main`: only a rule without `class` matches them.
 
@@ -370,16 +370,50 @@ A conversation can move between the local model and Claude turn by turn.
 Janus removes the local model's thinking from the history before Claude
 sees it, because Claude rejects thinking it did not produce.
 
-### Keep working when Claude is down
+### A list of providers
 
-A rule that sends requests upstream can name a local model to stand in when
-Claude cannot answer:
+`fallback` names where a request may go, in order, and Janus sends it to
+the first that can take it. When that one cannot answer, the request goes
+to the next, and so on down the list:
 
 ```json
-{ "name": "main", "class": "main", "route": "upstream", "ifDown": "janus-local" }
+{ "name": "main", "class": "main", "fallback": ["upstream", "openai", "janus-local"] }
 ```
 
-The local model answers when Claude is down for a while, not on every
+- **`upstream`** is Claude, through `upstream.baseUrl`.
+- **`openai`** is the OpenAI API, through the `openai` section, whose key
+  Janus reads when it starts: a rule that names `openai` without a key
+  set stops Janus from starting, saying which variable to set. What
+  OpenAI is sent, and how its answers come back, is in
+  [the OpenAI research note](research/openai.md).
+- **An entry of `local.models`** is that local model.
+
+A list of one is one provider and nothing else: `["openai"]` sends the
+rule's requests to OpenAI only, and `["janus-local"]` to the local model
+only, refusing what it cannot take. Two entries can't name the same
+provider.
+
+An entry that cannot take the request at all is passed over, and the
+ledger's `reason` says why: a request OpenAI's API has no way to express,
+a local model too busy or too small for it, LM Studio unreachable. If no
+entry can take it, the request is refused with an error naming each
+reason, and nothing is sent.
+
+Before config version 2 a rule named one local stand-in with
+`"ifDown": "janus-local"`. Janus reads that as
+`"fallback": ["upstream", "janus-local"]`, which means the same thing,
+and `janus config upgrade` rewrites it so.
+
+### Keep working when Claude is down
+
+A rule that sends requests upstream can list what answers when Claude
+cannot:
+
+```json
+{ "name": "main", "class": "main", "route": "upstream", "fallback": ["upstream", "janus-local"] }
+```
+
+Janus moves off Claude when it is down for a while, not on every
 failure:
 
 ![When the local model stands in for Claude: an error about the request itself is passed on; a 429 lasting a minute or more brings the local model in at once; anything else goes to Claude Code to retry, and the third failure within two minutes brings the local model in](diagrams/stand-in.svg#gh-light-mode-only)
@@ -417,9 +451,9 @@ and the local model is not consulted.
   rest is room to answer), with a note saying how many messages were left
   out. The model works without the middle of the conversation, so it may
   repeat work or miss a decision made there. Claude's copy is never cut.
-- **If the local model cannot help either** (LM Studio down, or even the
-  latest turn too large), the client gets Claude's error exactly as
-  Claude sent it.
+- **If nothing further down the list can help either** (LM Studio down,
+  or even the latest turn too large), the client gets the last error
+  exactly as it was sent.
 - **It costs nothing while Claude is healthy.** The fallback is only worked
   out when it is needed; LM Studio is not contacted otherwise.
 - The conversation can go back to Claude on the next turn.
@@ -428,9 +462,9 @@ and the local model is not consulted.
 
 In auto mode, Claude Code asks Claude whether each tool call is safe
 before it runs it. Those checks are their own class, `safety`, and stay
-with Claude: `ifDown` on a `main` rule does not cover them. So while the
-local model stands in for the conversation, Claude Code refuses every tool
-call as "temporarily unavailable". The console says so, once per
+with Claude: a `fallback` list on a `main` rule does not cover them. So
+while the local model stands in for the conversation, Claude Code refuses
+every tool call as "temporarily unavailable". The console says so, once per
 conversation. Press Shift+Tab to leave auto mode; Claude Code then asks
 you before each tool call, and the session goes on.
 
@@ -438,7 +472,7 @@ To have the local model grade the checks instead, give them a rule of
 their own:
 
 ```json
-{ "name": "safety", "class": "safety", "route": "upstream", "ifDown": "janus-local" }
+{ "name": "safety", "class": "safety", "route": "upstream", "fallback": ["upstream", "janus-local"] }
 ```
 
 That puts a security decision in the hands of a weaker model, so it is
