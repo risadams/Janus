@@ -57,8 +57,10 @@ and command output are), and the arguments of earlier tool calls.
 It skips thinking blocks, whose signatures are random by design and not
 yours, and images.
 
-Only requests sent upstream are scanned. One that was answered by the
-local model and never went to Anthropic is not.
+Only requests that leave the machine are scanned: those sent upstream,
+and those sent to OpenAI, which are checked as Claude Code sent them,
+before they are translated. One answered by the local model is not.
+Throughout this page, "upstream" means either.
 
 ## What it finds
 

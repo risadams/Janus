@@ -321,11 +321,17 @@ Claude gave them. `janus stats` counts them at no upstream cost.
 
 ## The guard
 
-**A `500` saying `janus: ... The request was not sent upstream.`** The
-guard could not make the request safe to send and stopped it. The message
-says why: the request could not be read, was too large to check (over
-32 MB), or still held a secret or local-only content after replacement.
-`janus audit` lists these under "Stopped by the guard".
+**A `500` saying `janus: ... The request was not sent upstream.`** (or
+`not sent to openai`) The guard could not make the request safe to send
+and stopped it. The message says why: the request could not be read, was
+too large to check (over 32 MB), or still held a secret or local-only
+content after replacement. `janus audit` lists these under "Stopped by
+the guard".
+
+**A `500` saying `janus: the request could not be translated for
+openai`.** The request holds something the Responses API has no way to
+take, and it was not sent. The message names it. Please report it with
+the ledger record.
 
 **Claude Code says `Server error mid-response` and the turn stops.** If
 the ledger record's `guard.blocked` says the model referred to a redacted

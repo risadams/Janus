@@ -780,3 +780,38 @@ func TestInterimContinueIsNotTheRecordedStatus(t *testing.T) {
 		t.Fatal("no exchange reported")
 	}
 }
+
+// A plan whose request cannot be translated for its backend sends nothing,
+// and says why.
+func TestARequestThatCannotBeTranslatedIsNotSent(t *testing.T) {
+	var hits atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1) }))
+	defer target.Close()
+	u, _ := url.Parse(target.URL)
+	plan := func(ctx context.Context, h http.Header, req *anthropic.Request) (Plan, *Refusal) {
+		return Plan{Backend: backend.NewUpstream(u, nil), Route: "test", Reason: "test",
+			Translate: func([]byte) ([]byte, func(*http.Response) error, error) {
+				return nil, nil, fmt.Errorf("a block it has no way to send")
+			}}, nil
+	}
+	reported := make(chan Exchange, 1)
+	front := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Plan: plan, Done: func(ex Exchange) { reported <- ex }}))
+	defer front.Close()
+
+	resp, err := plainClient.Post(front.URL+"/v1/messages", "application/json", strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	ex := <-reported
+	if hits.Load() != 0 {
+		t.Error("the request was sent")
+	}
+	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(body), "janus: the request could not be translated") {
+		t.Errorf("status %d, body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(ex.Fault, "a block it has no way to send") || ex.Guard != nil {
+		t.Errorf("the exchange records fault %q, guard %+v; want the translation's fault, and nothing of the guard", ex.Fault, ex.Guard)
+	}
+}

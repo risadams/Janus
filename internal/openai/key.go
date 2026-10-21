@@ -113,7 +113,22 @@ func NewRequest(ctx context.Context, key Key, base, path string, body []byte) (*
 	if err != nil {
 		return nil, fmt.Errorf("openai: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+key.secret)
-	req.Header.Set("Content-Type", "application/json")
+	key.authorize(req.Header)
 	return req, nil
+}
+
+// scrub replaces the key wherever it appears in b. OpenAI's errors can
+// quote a key back, and what OpenAI says is passed on to Claude Code and
+// kept in the ledger and captures.
+func (k Key) scrub(b []byte) []byte {
+	if k.secret == "" {
+		return b
+	}
+	return bytes.ReplaceAll(b, []byte(k.secret), []byte(redacted))
+}
+
+// authorize sets h to carry the key and a JSON body, and nothing else.
+func (k Key) authorize(h http.Header) {
+	h.Set("Authorization", "Bearer "+k.secret)
+	h.Set("Content-Type", "application/json")
 }

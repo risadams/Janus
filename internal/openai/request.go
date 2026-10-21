@@ -45,6 +45,9 @@ type Translated struct {
 	// Dropped names what the request asked for that OpenAI has no way to
 	// honour, such as stop_sequences, for the ledger.
 	Dropped []string
+	// Summary is set when reasoning summaries were asked for, which the
+	// answer then streams as thinking text (ResponseOptions.Summary).
+	Summary bool
 }
 
 // TranslateRequest turns Claude Code's Messages request into a Responses
@@ -102,7 +105,10 @@ func TranslateRequest(req *anthropic.Request, opts RequestOptions) (*Translated,
 	if err := enc.Encode(b); err != nil {
 		return nil, fmt.Errorf("openai: %w", err)
 	}
-	return &Translated{Body: bytes.TrimSuffix(out.Bytes(), []byte("\n")), Tools: t.names, Dropped: t.dropped}, nil
+	return &Translated{
+		Body: bytes.TrimSuffix(out.Bytes(), []byte("\n")), Tools: t.names, Dropped: t.dropped,
+		Summary: b.Reasoning != nil && b.Reasoning.Summary != "",
+	}, nil
 }
 
 // The Responses request, in the order its fields are written.
