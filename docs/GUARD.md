@@ -271,9 +271,17 @@ Secrets
 If any request went with secrets in it, the audit lists each one by id,
 kind, and place, and says to rotate them. It never prints a secret.
 
+Once a request in the range has gone to OpenAI, the report adds the same
+two lines for OpenAI below Anthropic's, and the lines after them say
+"Anthropic or OpenAI". A request sent to both, Claude unable to answer
+and OpenAI answering, is counted under each.
+
 **`-verify` does not take the ledger's word for it.** It opens the saved
-copy of every request that went to Anthropic, as it was sent, and runs the
-detector over it again. It exits with status 1 if any still holds a
+copy of every request that left the machine, as it was sent, and runs the
+detector over it again. What OpenAI was sent is the translated request,
+in OpenAI's own shape; the detector reads every piece of text in it, and
+the local-only policy, which reads a request's structure, re-checks only
+what went to Anthropic. It exits with status 1 if any still holds a
 secret, so it can be used in a script. Because it uses the detector as
 configured now, it also catches what a pattern you have added since would
 have caught at the time.
@@ -315,9 +323,10 @@ leak). The fields, in snake_case as `janus stats -json` has them:
 | `from`, `to` | The first and last request counted; left out when there were none |
 | `requests` | Requests carrying your content in the range |
 | `anthropic` | Those that reached Anthropic: `untouched`, `changed`, and of the changed, `redacted`, `withheld`, `repaired` |
+| `openai` | Those that reached OpenAI, in the same shape. A request sent to both is counted in each. |
 | `local_only`, `stopped` | Those answered only by the local model, and those sent nowhere |
-| `kept_local` | Those the local-only policy kept from Anthropic altogether |
-| `secrets` | `requests` that carried a secret to Anthropic, how many had them `replaced`, the `kinds` found with counts, and the `exposed` requests sent with them in: each an `id`, its `kinds`, and `where` |
+| `kept_local` | Those the local-only policy kept off the machine altogether |
+| `secrets` | `requests` that carried a secret off the machine, how many had them `replaced`, the `kinds` found with counts, and the `exposed` requests sent with them in: each an `id`, its `kinds`, and `where` |
 | `blocked` | Requests the guard stopped: `id` and `why` |
 | `verify` | Only with `-verify`: `checked`, `clean`, `unchecked`, and the `leaks`, shaped as `exposed` is |
 
