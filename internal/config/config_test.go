@@ -229,6 +229,23 @@ func TestValidate(t *testing.T) {
 			c.Compress.Digest.Tools = []string{"Bash", " "}
 		}, "compress.digest.tools[1] is empty"},
 		{"guard on", func(c *Config) { c.Features.Guard = true }, ""},
+		{"openai with a key from the environment", func(c *Config) { c.OpenAI.Key = "env:OPENAI_API_KEY" }, ""},
+		{"openai with a key from the keychain", func(c *Config) { c.OpenAI.Key = "keychain:janus-openai" }, ""},
+		{"openai with no key", func(c *Config) { c.OpenAI.Models = map[string]string{"haiku": "gpt-6-luna"} }, "openai.key is not set"},
+		{"openai key as a literal", func(c *Config) { c.OpenAI.Key = "sk-proj-abc123" }, "looks like an API key itself"},
+		{"openai key with no source", func(c *Config) { c.OpenAI.Key = "abc123" }, "looks like an API key itself"},
+		{"openai key from an unknown source", func(c *Config) { c.OpenAI.Key = "vault:openai" }, "must say where the key is kept"},
+		{"openai key from a badly named variable", func(c *Config) { c.OpenAI.Key = "env:OPENAI-KEY" }, "not a valid name"},
+		{"openai key from an unnamed keychain entry", func(c *Config) { c.OpenAI.Key = "keychain: " }, `"keychain:" with no name`},
+		{"openai not a url", func(c *Config) {
+			c.OpenAI = OpenAI{BaseURL: "api.openai.com", Key: "env:OPENAI_API_KEY"}
+		}, "openai.baseUrl"},
+		{"openai is janus itself", func(c *Config) {
+			c.OpenAI = OpenAI{BaseURL: "http://127.0.0.1:8787", Key: "env:OPENAI_API_KEY"}
+		}, `openai.baseUrl "http://127.0.0.1:8787" is janus's own listen address`},
+		{"openai model left empty", func(c *Config) {
+			c.OpenAI = OpenAI{Key: "env:OPENAI_API_KEY", Models: map[string]string{"opus": ""}}
+		}, "openai.models has an entry"},
 		{"a rule for status summaries", func(c *Config) {
 			c.Routing = []Rule{{Class: "status", Route: "upstream"}}
 		}, ""},
@@ -410,5 +427,62 @@ func TestContextWarnDefaultsAndCanBeTurnedOff(t *testing.T) {
 		if got := (Console{ContextWarnTokens: set}).ContextWarn(); got != want {
 			t.Errorf("contextWarnTokens %d: %d, want %d", set, got, want)
 		}
+	}
+}
+
+func TestOpenAIKeyIsNeverRepeatedInAnError(t *testing.T) {
+	for _, key := range []string{"sk-proj-Q7Rz2Lp9XvB4nKd8", "Q7Rz2Lp9XvB4nKd8Yt3WmHs6", "bearer:Q7Rz2Lp9XvB4nKd8"} {
+		c := Default()
+		c.OpenAI.Key = key
+		err := c.Validate()
+		if err == nil {
+			t.Fatalf("key %q was accepted", key)
+		}
+		if strings.Contains(err.Error(), "Q7Rz2Lp9XvB4nKd8") {
+			t.Errorf("the error repeats the key: %v", err)
+		}
+	}
+}
+
+func TestOpenAIDefaultsWhenOnlyTheKeyIsSet(t *testing.T) {
+	o := OpenAI{Key: "env:OPENAI_API_KEY"}
+	if !o.On() || o.URL() != DefaultOpenAIURL {
+		t.Fatalf("On() = %v, URL() = %q", o.On(), o.URL())
+	}
+	if kind, name := o.KeySource(); kind != "env" || name != "OPENAI_API_KEY" {
+		t.Fatalf("KeySource() = %q, %q", kind, name)
+	}
+	if (OpenAI{}).On() {
+		t.Fatal("an empty openai section counts as on")
+	}
+}
+
+func TestConfigWithoutOpenAIIsUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "janus.config.json")
+	Load(path)
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), "openai") {
+		t.Errorf("starter file has an openai section:\n%s", data)
+	}
+	if Default().OpenAI.On() {
+		t.Error("the default config uses OpenAI")
+	}
+}
+
+func TestLoadReadsTheOpenAISection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "janus.config.json")
+	body := `{"openai": {"key": "env:OPENAI_API_KEY", "models": {"sonnet": "gpt-6-luna"}}}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if c.OpenAI.Key != "env:OPENAI_API_KEY" || c.OpenAI.Models["sonnet"] != "gpt-6-luna" || c.OpenAI.URL() != DefaultOpenAIURL {
+		t.Fatalf("openai = %+v", c.OpenAI)
 	}
 }

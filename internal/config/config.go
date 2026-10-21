@@ -39,6 +39,9 @@ type Config struct {
 
 	Upstream Backend `json:"upstream"`
 	Local    Local   `json:"local"`
+	// OpenAI is the OpenAI API, which can answer Claude Code's requests in
+	// Anthropic's place (FR-11). Left out, it is not used.
+	OpenAI OpenAI `json:"openai,omitzero"`
 	// Routing is the list of rules that decide where a Messages request
 	// goes, tried in order; the first that matches wins, and a request no
 	// rule matches goes upstream. Rules apply only with features.route on.
@@ -194,6 +197,78 @@ type Price struct {
 // Backend is one model server janus can send requests to.
 type Backend struct {
 	BaseURL string `json:"baseUrl"`
+}
+
+// OpenAI is the OpenAI API and how janus reaches it.
+type OpenAI struct {
+	// BaseURL is the API's address, without /v1. Empty means
+	// DefaultOpenAIURL.
+	BaseURL string `json:"baseUrl,omitempty"`
+	// Key says where the API key comes from: "env:NAME" for the
+	// environment variable NAME, or "keychain:NAME" for the entry NAME in
+	// the operating system's credential store. The key itself is never
+	// written here (ADR-005).
+	Key string `json:"key,omitempty"`
+	// Models maps what Claude Code asks for to an OpenAI model: a Claude
+	// model's family ("opus", "sonnet", "haiku") or its full name. Entries
+	// here replace those in DefaultOpenAIModels.
+	Models map[string]string `json:"models,omitempty"`
+}
+
+// DefaultOpenAIURL is the OpenAI API.
+const DefaultOpenAIURL = "https://api.openai.com"
+
+// DefaultOpenAIModels are the models that answer for each Claude family
+// unless openai.models says otherwise: the owner chose the smaller model
+// where two were close (docs/research/openai.md, Models; #374).
+var DefaultOpenAIModels = map[string]string{
+	"opus":   "gpt-6.1-sol",
+	"sonnet": "gpt-6.1-sol",
+	"haiku":  "gpt-6-luna",
+}
+
+// On reports whether the config has an openai section at all.
+func (o OpenAI) On() bool { return o.BaseURL != "" || o.Key != "" || len(o.Models) > 0 }
+
+// URL is the API's address, with the default filled in.
+func (o OpenAI) URL() string {
+	if o.BaseURL == "" {
+		return DefaultOpenAIURL
+	}
+	return o.BaseURL
+}
+
+// KeySource splits Key into where the key is kept, "env" or "keychain",
+// and the name it is kept under.
+func (o OpenAI) KeySource() (kind, name string) {
+	kind, name, _ = strings.Cut(o.Key, ":")
+	return kind, name
+}
+
+// envName is what a POSIX shell accepts as a variable's name.
+var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// checkOpenAIKey says what is wrong with openai.key. It never repeats the
+// value: a value that is not a source may be the key itself.
+func checkOpenAIKey(key string) error {
+	const how = `set it to "env:OPENAI_API_KEY" and put the key in that environment variable, or to "keychain:<name>" for an entry in the operating system's credential store`
+	kind, name, ok := strings.Cut(key, ":")
+	switch {
+	case key == "":
+		return errors.New("openai.key is not set; " + how)
+	case ok && kind == "env" && envName.MatchString(name):
+		return nil
+	case ok && kind == "env":
+		return errors.New(`openai.key names an environment variable that is not a valid name; use letters, digits, and "_", as in "env:OPENAI_API_KEY"`)
+	case ok && kind == "keychain" && strings.TrimSpace(name) != "":
+		return nil
+	case ok && kind == "keychain":
+		return errors.New(`openai.key is "keychain:" with no name; name the credential store's entry, as in "keychain:janus-openai"`)
+	case strings.HasPrefix(key, "sk-") || !ok:
+		return errors.New("openai.key looks like an API key itself, and janus never reads a key from its config file, which gets copied, shared, and backed up; " + how)
+	default:
+		return errors.New("openai.key must say where the key is kept; " + how)
+	}
 }
 
 // Local is the LM Studio server and the models on it that janus may use.
@@ -477,10 +552,21 @@ func (c Config) Validate() error {
 
 	errs = append(errs, checkURL("upstream.baseUrl", c.Upstream.BaseURL, "https://api.anthropic.com"))
 	errs = append(errs, checkURL("local.baseUrl", c.Local.BaseURL, "http://studio.local:1234"))
-	for _, b := range []struct{ field, raw string }{
+	backends := []struct{ field, raw string }{
 		{"upstream.baseUrl", c.Upstream.BaseURL},
 		{"local.baseUrl", c.Local.BaseURL},
-	} {
+	}
+	if c.OpenAI.On() {
+		errs = append(errs, checkURL("openai.baseUrl", c.OpenAI.URL(), DefaultOpenAIURL))
+		errs = append(errs, checkOpenAIKey(c.OpenAI.Key))
+		for from, to := range c.OpenAI.Models {
+			if strings.TrimSpace(from) == "" || strings.TrimSpace(to) == "" {
+				errs = append(errs, fmt.Errorf(`openai.models has an entry %q: %q; both sides must name a model, as in "sonnet": "gpt-6.1-sol"`, from, to))
+			}
+		}
+		backends = append(backends, struct{ field, raw string }{"openai.baseUrl", c.OpenAI.URL()})
+	}
+	for _, b := range backends {
 		if PointsAtListen(c.Listen, b.raw) {
 			errs = append(errs, fmt.Errorf("%s %q is janus's own listen address, so janus would send each request back to itself without end; point it at the backend, or move listen to another port", b.field, b.raw))
 		}
