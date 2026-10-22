@@ -44,7 +44,7 @@ func readWindowsCredential(name, add string) (string, error) {
 	if r == 0 {
 		return "", fmt.Errorf("the Windows Credential Manager has no generic credential %s (%v); add it with: %s", name, callErr, add)
 	}
-	defer credFree.Call(uintptr(unsafe.Pointer(c))) // #nosec G103 G104 -- frees what CredReadW allocated; it returns nothing to check
+	defer credFree.Call(uintptr(unsafe.Pointer(c)))              // #nosec G103 G104 -- frees what CredReadW allocated; it returns nothing to check
 	blob := unsafe.Slice(c.CredentialBlob, c.CredentialBlobSize) // #nosec G103 -- the blob and its size as CredReadW gave them
 	if len(blob)%2 == 0 {
 		u := make([]uint16, len(blob)/2)
