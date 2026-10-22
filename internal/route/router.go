@@ -71,6 +71,13 @@ type Rule struct {
 	// unreachable, rate limited, overloaded, or failing. Empty means the
 	// failure stands.
 	Fallback []Provider
+	// Strict passes over a provider that would drop anything the request
+	// asked for, as OpenAI does stop_sequences and the sampling settings,
+	// saying what (#454).
+	Strict bool
+	// MaxUSD, when above zero, passes over a provider whose most the
+	// request could cost is above it (#454). See Router.Cost.
+	MaxUSD float64
 	// TrialTimeout is how long the local model gets to produce its whole
 	// answer on the escalate route. It applies as well as the model's own
 	// Timeout; whichever is shorter wins.
@@ -164,6 +171,11 @@ type Router struct {
 	// OpenAI is the OpenAI API, for rules that name it. Nil if it is not
 	// configured.
 	OpenAI *openai.Backend
+	// Cost prices a request of inputTokens and outputTokens on model at
+	// list price, or ok false if the model has no price. Nil leaves
+	// Rule.MaxUSD unchecked. It is a function, not a table, because the
+	// ledger that holds the prices imports this package.
+	Cost func(model string, inputTokens, outputTokens int) (usd float64, ok bool)
 	// NoUpstream is set when there is no Anthropic account behind janus
 	// (upstream.off): Upstream is backend.Nowhere, nothing is planned for
 	// it, and a request no rule sends elsewhere is refused (#376).
@@ -471,7 +483,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	// fallback gives a plan the rest of the rule's list, planned only if
 	// the plan's backend turns out not to be able to answer.
 	fallback := func(plan proxy.Plan, rule Rule, label string, from int) proxy.Plan {
-		return r.fallBackAlong(plan, header, arrived, facts.Model, rule.Fallback, from, label)
+		return r.fallBackAlong(plan, header, arrived, facts.Model, rule.Fallback, from, label, rule.limits())
 	}
 
 	// fromList plans the request for the first entry of a rule's list, from
@@ -487,13 +499,13 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		for i := start; i < len(rule.Fallback); i++ {
 			p := rule.Fallback[i]
 			var plan proxy.Plan
-			why := r.barred(p, req)
+			why := r.barred(p, req, rule.limits())
 			switch {
 			case why != nil:
 			case p.Name == RouteUpstream:
 				plan = upstream(label)
 			default:
-				plan, why = r.provider(ctx, header, req, p, facts.Model, label, i == len(rule.Fallback)-1)
+				plan, why = r.provider(ctx, header, req, p, facts.Model, label, i == len(rule.Fallback)-1, rule.limits())
 			}
 			if why != nil {
 				notes = append(notes, why.message)
@@ -554,10 +566,12 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		// would have decided, so the chain still covers OpenAI failing.
 		list := []Provider{{Name: RouteOpenAI}}
 		label := how + " openai"
+		var matched Rule
 		for i, rule := range r.Rules {
 			if rule.mismatch(facts, r.NoUpstream) != "" {
 				continue
 			}
+			matched = rule
 			label = how + " openai, then " + rule.label(i)
 			for _, p := range rule.Fallback {
 				if p.Name != RouteOpenAI {
@@ -567,7 +581,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			break
 		}
 		trace = append(trace, label+": openai first")
-		return fromList(Rule{Fallback: list}, label, 0, nil)
+		return fromList(Rule{Fallback: list, Strict: matched.Strict, MaxUSD: matched.MaxUSD}, label, 0, nil)
 	} else if openaiFirst {
 		trace = append(trace, "override openai: refused, since openai is not configured")
 		return proxy.Plan{}, &proxy.Refusal{Status: http.StatusBadRequest, Type: "invalid_request_error",
@@ -647,7 +661,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			}
 			if len(rule.Fallback) > 0 {
 				// The rule's list is where it escalates to, in order.
-				plan = r.fallBackAlong(plan, header, arrived, facts.Model, rule.Fallback, 0, label)
+				plan = r.fallBackAlong(plan, header, arrived, facts.Model, rule.Fallback, 0, label, rule.limits())
 			}
 			if rule.Route == RouteEscalate {
 				if rule.TrialTimeout > 0 && (plan.Timeout == 0 || rule.TrialTimeout < plan.Timeout) {
@@ -668,7 +682,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			return plan, nil, trace
 		case RouteShadow, RouteUpstream:
 			if len(rule.Fallback) > 0 {
-				if why := r.barred(rule.Fallback[0], req); why != nil {
+				if why := r.barred(rule.Fallback[0], req, rule.limits()); why != nil {
 					// Claude may not have this request; the rest of the
 					// list may.
 					trace = append(trace, fmt.Sprintf("%s: upstream cannot take it: %s", label, why.message))
@@ -726,7 +740,7 @@ func (r *Router) upstreamPlan(header http.Header, req *anthropic.Request, reason
 // why. Leaving Claude is decided by the #150 rules (outage.standIn), so
 // that a brief failure is retried by Claude Code rather than moving the
 // conversation.
-func (r *Router) fallBackAlong(plan proxy.Plan, header http.Header, arrived []byte, model string, list []Provider, from int, label string) proxy.Plan {
+func (r *Router) fallBackAlong(plan proxy.Plan, header http.Header, arrived []byte, model string, list []Provider, from int, label string, lim limits) proxy.Plan {
 	if from >= len(list) {
 		return plan
 	}
@@ -744,13 +758,13 @@ func (r *Router) fallBackAlong(plan proxy.Plan, header http.Header, arrived []by
 				return proxy.Plan{Reason: "no fallback: the request could not be read again: " + err.Error(), LocalCause: proxy.CauseUnsupported}, false
 			}
 			var next proxy.Plan
-			why := r.barred(p, req)
+			why := r.barred(p, req, lim)
 			switch {
 			case why != nil:
 			case p.Name == RouteUpstream:
 				next, _, _ = r.upstreamPlan(header, req, label)
 			default:
-				next, why = r.provider(ctx, header, req, p, model, label, i == len(list)-1)
+				next, why = r.provider(ctx, header, req, p, model, label, i == len(list)-1, lim)
 			}
 			if why != nil {
 				notes = append(notes, why.passedOver(p))
@@ -765,7 +779,7 @@ func (r *Router) fallBackAlong(plan proxy.Plan, header http.Header, arrived []by
 			next.Reason = strings.Trim(strings.Join(added, "; "), "; ")
 			next.LocalCause = firstOf(next.LocalCause, cause)
 			next.PassedOver = passed
-			return r.fallBackAlong(next, header, arrived, model, list, i+1, label), true
+			return r.fallBackAlong(next, header, arrived, model, list, i+1, label, lim), true
 		}
 		return proxy.Plan{Reason: strings.Join(notes, "; "), LocalCause: cause, PassedOver: passed}, false
 	}
@@ -777,7 +791,7 @@ func (r *Router) fallBackAlong(plan proxy.Plan, header http.Header, arrived []by
 // comes after it on the list: a local model then waits its turn rather
 // than giving way, since slower is better than an error, and has older
 // turns left out to fit, since there is nowhere else to send them.
-func (r *Router) provider(ctx context.Context, header http.Header, req *anthropic.Request, p Provider, model, reason string, last bool) (proxy.Plan, *problem) {
+func (r *Router) provider(ctx context.Context, header http.Header, req *anthropic.Request, p Provider, model, reason string, last bool, lim limits) (proxy.Plan, *problem) {
 	switch {
 	case p.Name == RouteOpenAI:
 		if r.OpenAI == nil {
@@ -790,6 +804,10 @@ func (r *Router) provider(ctx context.Context, header http.Header, req *anthropi
 		tr, err := r.OpenAI.Translation(header, req)
 		if err != nil {
 			return proxy.Plan{}, &problem{http.StatusBadRequest, "invalid_request_error", "the request cannot be translated for OpenAI: " + err.Error(), ""}
+		}
+		if dropped := tr.Dropped(); lim.strict && len(dropped) > 0 {
+			return proxy.Plan{}, &problem{http.StatusBadRequest, "invalid_request_error",
+				"the rule is strict, and OpenAI would drop what the request asked for: " + strings.Join(dropped, ", "), ""}
 		}
 		// Compression and digests rewrite the request before it is
 		// translated, through the same memo as for Claude, so a block is
@@ -918,8 +936,11 @@ func (r *Router) leaveClaude(status int, header http.Header) bool {
 //
 // It also passes over a provider waiting for a limit to reset, or out for
 // an outage's backoff (#378).
-func (r *Router) barred(p Provider, req *anthropic.Request) *problem {
+func (r *Router) barred(p Provider, req *anthropic.Request, lim limits) *problem {
 	who := providerName(p)
+	if why := r.overPrice(p, req, lim.maxUSD); why != "" {
+		return &problem{http.StatusBadRequest, "invalid_request_error", who + " " + why, ""}
+	}
 	why := r.resets.out(p.Name)
 	if p.Name == RouteOpenAI && r.OpenAI != nil {
 		// Only the model this request would go to: the others may answer.
@@ -939,6 +960,42 @@ func (r *Router) barred(p Provider, req *anthropic.Request) *problem {
 		return &problem{http.StatusForbidden, "permission_error", why, ""}
 	}
 	return nil
+}
+
+// limits are a rule's checks on the providers of its list (#454).
+type limits struct {
+	strict bool
+	maxUSD float64
+}
+
+func (rule Rule) limits() limits { return limits{strict: rule.Strict, maxUSD: rule.MaxUSD} }
+
+// outputCeiling is the most output a request is priced at.
+const outputCeiling = 128_000
+
+// overPrice says why p is passed over for cost, or "" if it is not: the
+// most the request could cost on it, at list price, is above cap. That is
+// a ceiling, not a forecast: the whole prompt at the uncached rate, which
+// ignores the cache reads Claude Code's turns mostly are, plus an answer
+// as long as max_tokens allows, and the prompt's size is estimated high, at
+// three bytes a token. A local model is free, and a model the prices do
+// not know is not passed over, since it cannot be told to cost too much.
+func (r *Router) overPrice(p Provider, req *anthropic.Request, cap float64) string {
+	if cap <= 0 || r.Cost == nil || p.Local != nil {
+		return ""
+	}
+	model := req.Model()
+	if p.Name == RouteOpenAI {
+		if r.OpenAI == nil {
+			return ""
+		}
+		model = r.OpenAI.ModelFor(req)
+	}
+	usd, ok := r.Cost(model, EstimateTokens(req.Bytes()), min(req.MaxTokens(), outputCeiling))
+	if !ok || usd <= cap {
+		return ""
+	}
+	return fmt.Sprintf("(%s) could cost up to about $%.2f for this request, over the rule's maxUsd of $%.2f (a ceiling at list price)", model, usd, cap)
 }
 
 // providerName names p in a reason.

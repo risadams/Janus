@@ -389,7 +389,7 @@ func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local
 		rules[i] = route.Rule{
 			Name: r.Name, Class: route.Class(r.Class), Model: r.Model, MaxTokens: r.MaxTokens, Tools: r.Tools,
 			Route: r.Route, Local: models[r.Local], SkipChecks: r.SkipChecks, TrialTimeout: trialTimeout(r),
-			IfUsageAbove: r.IfUsageAbove,
+			IfUsageAbove: r.IfUsageAbove, Strict: r.Strict, MaxUSD: r.MaxUSD,
 		}
 		for _, name := range r.Fallback {
 			p := route.Provider{Name: name}
@@ -399,7 +399,12 @@ func newRouter(cfg config.Config, upstream backend.Backend, local *backend.Local
 			rules[i].Fallback = append(rules[i].Fallback, p)
 		}
 	}
-	return &route.Router{Upstream: upstream, Local: local, OpenAI: oa, Aliases: models, Rules: rules, NoUpstream: cfg.Upstream.Off}
+	table := prices(cfg)
+	cost := func(model string, input, output int) (float64, bool) {
+		usd, unpriced := table.Cost(model, ledger.Usage{Input: input, Output: output})
+		return usd, unpriced == ""
+	}
+	return &route.Router{Upstream: upstream, Local: local, OpenAI: oa, Aliases: models, Rules: rules, NoUpstream: cfg.Upstream.Off, Cost: cost}
 }
 
 // trialTimeout is how long a local-then-escalate rule lets the local model
