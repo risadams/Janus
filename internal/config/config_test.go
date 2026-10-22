@@ -506,3 +506,32 @@ func TestLoadReadsTheOpenAISection(t *testing.T) {
 		t.Fatalf("openai = %+v", c.OpenAI)
 	}
 }
+
+func TestKeepFromNamesAProviderAndSomethingToKeep(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		keep map[string]KeepFrom
+		want string
+	}{
+		{"a marker kept from OpenAI", map[string]KeepFrom{"openai": {Markers: []string{"ORION"}}}, ""},
+		{"everything kept from Claude", map[string]KeepFrom{"upstream": {Everything: true}}, ""},
+		{"a provider that is not one", map[string]KeepFrom{"janus-local": {Markers: []string{"x"}}}, "guard.keepFrom.janus-local: name upstream or openai"},
+		{"nothing to keep", map[string]KeepFrom{"openai": {}}, "guard.keepFrom.openai keeps nothing"},
+	} {
+		cfg := Default()
+		cfg.Features.Guard = true
+		cfg.Guard.KeepFrom = c.keep
+		err := cfg.Validate()
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%s: %v", c.name, err)
+		case c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)):
+			t.Errorf("%s: err = %v, want %q", c.name, err, c.want)
+		}
+	}
+	cfg := Default()
+	cfg.Guard.KeepFrom = map[string]KeepFrom{"openai": {Everything: true}}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "features.guard is off") {
+		t.Errorf("with the guard off: %v", err)
+	}
+}

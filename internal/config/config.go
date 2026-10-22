@@ -121,6 +121,21 @@ type Guard struct {
 	// LocalOnly names content that must never be sent upstream, whatever
 	// is in it.
 	LocalOnly LocalOnly `json:"localOnly,omitzero"`
+	// KeepFrom names content that must not reach one provider, by its
+	// name: "upstream" or "openai" (#406). An employer may approve one and
+	// not the other. Content it names may still go to the rest; LocalOnly
+	// is what keeps content from all of them.
+	KeepFrom map[string]KeepFrom `json:"keepFrom,omitempty"`
+}
+
+// KeepFrom is what must not reach one provider.
+type KeepFrom struct {
+	// Paths and Markers are as for LocalOnly.
+	Paths   []string `json:"paths,omitempty"`
+	Markers []string `json:"markers,omitempty"`
+	// Everything keeps every request from the provider, whatever a
+	// routing rule says.
+	Everything bool `json:"everything,omitempty"`
 }
 
 // Compress configures the transforms that rewrite requests going upstream.
@@ -672,6 +687,19 @@ func (c Config) Validate() error {
 	for i, pattern := range c.Guard.Patterns {
 		if _, err := regexp.Compile(pattern); err != nil {
 			errs = append(errs, fmt.Errorf("guard.patterns[%d] is not a valid regular expression: %v", i, err))
+		}
+	}
+	for name, k := range c.Guard.KeepFrom {
+		switch {
+		case name != "upstream" && name != "openai":
+			errs = append(errs, fmt.Errorf("guard.keepFrom.%s: name upstream or openai; for content that must stay on this machine, use guard.localOnly", name))
+		case !k.Everything && len(k.Paths) == 0 && len(k.Markers) == 0:
+			errs = append(errs, fmt.Errorf("guard.keepFrom.%s keeps nothing; give paths, markers, or \"everything\": true", name))
+		case !c.Features.Guard:
+			errs = append(errs, fmt.Errorf("guard.keepFrom.%s is set but features.guard is off, so nothing would be kept from %s", name, name))
+		}
+		if _, err := guard.NewPolicy(k.Paths, k.Markers); err != nil {
+			errs = append(errs, fmt.Errorf("guard.keepFrom.%s: %v", name, err))
 		}
 	}
 	if lo := c.Guard.LocalOnly; lo.On() || lo.Action != "" || lo.Local != "" {

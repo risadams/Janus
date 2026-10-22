@@ -41,7 +41,7 @@ the defaults below and carries on.
 | `routing` | Optional. Rules that decide which requests go local; see [routing rules](#routing-rules). |
 | `features.route` | Switch on aliases and routing rules. Off by default. |
 | `features.guard` | Look for secrets in requests going upstream, and record them. See [the guard](GUARD.md). |
-| `guard` | Optional. Redaction, your own patterns, the allow list, the entropy search, and `localOnly`. See [the guard](GUARD.md). |
+| `guard` | Optional. Redaction, your own patterns, the allow list, the entropy search, `localOnly`, and `keepFrom`, content for one provider and not another. See [the guard](GUARD.md). |
 | `features.compress` | Digest large tool results before they go upstream. See [compression](#compression). |
 | `compress` | Optional. Settings for compression. |
 | `features.escalate` | Reserved. Janus refuses to start if it is true: local-first is a rule, not a switch. |

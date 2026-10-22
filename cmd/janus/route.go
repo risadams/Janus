@@ -90,6 +90,9 @@ func runRoute(args []string, stdout, stderr io.Writer) int {
 		upstream = backend.Nowhere{}
 	}
 	router := newRouter(cfg, upstream, backend.NewLocal(localURL, nil), oa)
+	if kf := newKeepFrom(cfg); kf != nil {
+		router.Barred = kf.Barred
+	}
 	plan, refusal, trace := router.Explain(context.Background(), header, req)
 	if plan.Release != nil {
 		plan.Release() // only explaining: nothing is sent

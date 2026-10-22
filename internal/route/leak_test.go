@@ -211,6 +211,8 @@ func TestNothingProtectedReachesTheUpstream(t *testing.T) {
 			rules: []Rule{{Name: "all", Fallback: []Provider{{Name: RouteUpstream}, {Name: RouteOpenAI}}}}}, upstream: 2,
 			// The second turn passes Claude over until its limit resets.
 			sent: 3},
+		{name: "rule: kept from OpenAI by guard.keepFrom, Claude answers", opts: siteOptions{openai: []openaitest.Reply{}, keepFromOpenAI: true,
+			rules: []Rule{{Name: "all", Fallback: []Provider{{Name: RouteOpenAI}, {Name: RouteUpstream}}}}}, upstream: 1},
 		{name: "rule: OpenAI refuses the translation, Claude answers", opts: siteOptions{openai: []openaitest.Reply{refused, refused},
 			rules: []Rule{{Name: "all", Fallback: []Provider{{Name: RouteOpenAI}, {Name: RouteUpstream}}}}}, upstream: 2},
 	}

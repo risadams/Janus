@@ -540,3 +540,40 @@ Be clear about these before relying on it.
   you. Turn captures off if that is not wanted.
 - **What Claude writes.** If Claude is asked to write a protected file, it
   composed the content, so Anthropic has seen it.
+
+## Content for one provider and not another
+
+An employer may approve Anthropic and not OpenAI, or the reverse.
+`guard.keepFrom` names content that must not reach one provider while it
+may still reach the other, read as the local-only policy is: paths and
+markers, or `everything`.
+
+```json
+"features": { "guard": true },
+"guard": {
+  "keepFrom": {
+    "openai": { "paths": ["vendor-x/**"], "markers": ["PROJECT ORION"] },
+    "upstream": { "markers": ["OPENAI ONLY"] }
+  }
+}
+```
+
+- **A rule's `fallback` list passes over a provider the request may not
+  reach**, and goes on to the next. The ledger's `tried` and `reason` say
+  which policy, and what in the request it matched, never the content.
+- **With no provider left, the request is refused**, with a `janus:`
+  message naming the policy, and sent nowhere.
+- **It is checked again just before sending**, on the request as it will
+  go to that provider, before it is translated for OpenAI, whatever
+  planned it: an override header, a rule without a list, or a fallback.
+  A request it bars is refused there too, so a route that forgot the
+  policy cannot send it.
+- **A line that only quotes a file it names counts.** The local-only
+  policy withholds such lines from what it sends; this policy keeps the
+  whole request from the provider instead.
+- **`guard.localOnly` still means no remote at all.** `keepFrom` only adds
+  to it.
+
+The leak tests include a route where the policy keeps everything from
+OpenAI and the request goes to Claude.
+
