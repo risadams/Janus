@@ -16,13 +16,15 @@ When something is wrong, these five things find most problems, and
 which link it is:
 
 1. **`janus doctor`.** It checks the config, the port, Anthropic, LM
-   Studio, the OpenAI key if the config has an `openai` section, and the
-   log folder, when the ledger last recorded a request,
-   and whether Claude Code is pointed at Janus, and says what to fix.
-   `janus doctor -json` gives the same results for a script or a status
-   line: `version`, `ok` (false if any check failed, when it also exits
-   1), and `checks`, each with a `name`, a `level` of `ok`, `warn`, or
-   `fail`, and a `detail`.
+   Studio, OpenAI if the config has an `openai` section (whether it
+   answers, asked without a key, and whether the key is found, never
+   printing it), which providers the routing rules send requests to, the
+   log folder, when the ledger last recorded a request, and whether
+   Claude Code is pointed at Janus, and says what to fix. `janus doctor
+   -json` gives the same results for a script or a status line:
+   `version`, `ok` (false if any check failed, when it also exits 1), and
+   `checks`, each with a `name` (`openai` and `providers` among them), a
+   `level` of `ok`, `warn`, or `fail`, and a `detail`.
 2. **The console.** Janus prints a line for every request. No lines at
    all means Claude Code is not using Janus. A `↳` note under a line says
    what happened to that request and why.
@@ -326,6 +328,19 @@ and stopped it. The message says why: the request could not be read, was
 too large to check (over 32 MB), or still held a secret or local-only
 content after replacement. `janus audit` lists these under "Stopped by
 the guard".
+
+**Janus won't start: `openai.key is "env:OPENAI_API_KEY", and
+OPENAI_API_KEY is not set`.** A routing rule's `fallback` names `openai`,
+and Janus reads the key once, when it starts. Export the variable in the
+shell or service that starts Janus, not only in the one running Claude
+Code. `janus doctor` says whether the key is found, and never prints it.
+
+**A `500` saying `janus: OpenAI refused the API key janus reads from the
+environment variable ...`.** The key is there but OpenAI rejects it:
+revoked, mistyped, or for another project. Put a current key in the
+variable and restart Janus. OpenAI's own message is left out, since it
+can quote part of the key. Until the restart, OpenAI is left out of every
+list (below).
 
 **The ledger's `reason` says `OpenAI is out until janus restarts`.**
 OpenAI refused the key, or the account ran out of credit or reached a

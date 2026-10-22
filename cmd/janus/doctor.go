@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -64,7 +65,10 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		)
 		findings = append(findings, checkLocal(client, cfg)...)
 		if cfg.OpenAI.On() {
-			findings = append(findings, checkOpenAI(cfg.OpenAI, os.LookupEnv))
+			findings = append(findings, checkOpenAI(client, cfg.OpenAI, os.LookupEnv, namesOpenAI(cfg)))
+		}
+		if f, ok := checkProviders(cfg); ok {
+			findings = append(findings, f)
 		}
 		ledgerCheck, seen := checkLedger(filepath.Join(cfg.Logging.Dir, "ledger"), time.Now(), elsewhere)
 		findings = append(findings, ledgerCheck, checkClaude(cfg.Listen, os.Getenv, claudeSettingsPath(os.Getenv), seen))
@@ -271,13 +275,63 @@ func isRefused(err error) bool {
 // found, never what it is (ADR-005). It sends nothing to OpenAI: there is
 // no account to test against yet (charter D7), and this version sends it
 // no requests. A missing key is a warning for the same reason.
-func checkOpenAI(o config.OpenAI, lookupEnv func(string) (string, bool)) finding {
-	_, err := openai.LoadKey(o, lookupEnv)
-	if err != nil {
-		return finding{"warn", "openai", err.Error()}
+//
+// It asks whether the API answers at all, sending no key, and reports
+// whether the key is where openai.key says, without its value. A missing
+// key fails when a rule sends requests to OpenAI, since janus then will
+// not start.
+func checkOpenAI(client *http.Client, o config.OpenAI, lookupEnv func(string) (string, bool), used bool) finding {
+	reach := ""
+	if b, err := openai.NewBackend(o, openai.Key{}, client); err != nil {
+		reach = err.Error()
+	} else if err := b.Health(context.Background()); err != nil {
+		reach = fmt.Sprintf("%s did not answer: %v", o.URL(), err)
+	}
+	_, keyErr := openai.LoadKey(o, lookupEnv)
+	switch {
+	case keyErr != nil && used:
+		return finding{"fail", "openai", keyErr.Error() + ". A routing rule names openai, so janus will not start without it."}
+	case keyErr != nil:
+		return finding{"warn", "openai", keyErr.Error()}
+	case reach != "":
+		return finding{"warn", "openai", reach}
 	}
 	_, name := o.KeySource()
-	return finding{"ok", "openai", fmt.Sprintf("%s, key found in %s", o.URL(), name)}
+	return finding{"ok", "openai", fmt.Sprintf("%s answers, key found in %s", o.URL(), name)}
+}
+
+// checkProviders says, with routing on, which providers the rules send
+// requests to, in each rule's order, so that a list that names no one
+// expected is seen before a session runs on it.
+func checkProviders(cfg config.Config) (finding, bool) {
+	if !cfg.Features.Route || len(cfg.Routing) == 0 {
+		return finding{}, false
+	}
+	var used []string
+	add := func(name string) {
+		if !slices.Contains(used, name) {
+			used = append(used, name)
+		}
+	}
+	for _, r := range cfg.Routing {
+		for _, name := range r.Fallback {
+			add(describeProvider(cfg, name))
+		}
+		if r.Route != "" {
+			add("upstream")
+		}
+		if r.Local != "" {
+			add(describeProvider(cfg, r.Local))
+		}
+	}
+	if !cfg.Upstream.Off {
+		add("upstream") // what no rule matches goes there
+	}
+	detail := "rules send requests to " + strings.Join(used, ", ")
+	if cfg.Upstream.Off {
+		detail += "; upstream is off, so nothing goes to Anthropic"
+	}
+	return finding{"ok", "providers", detail}, true
 }
 
 // checkLocal looks at LM Studio, at each model a request can be routed
