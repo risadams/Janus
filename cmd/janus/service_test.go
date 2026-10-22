@@ -199,3 +199,26 @@ func TestServiceUninstallRemovesAUnitThatWasNotLoaded(t *testing.T) {
 		}
 	}
 }
+
+// janus service install never copies a key into the unit, whatever the
+// environment it is run from holds (#405): a service reads the key from
+// the credential store, or not at all.
+func TestServiceInstallCopiesNoKeyIntoTheUnit(t *testing.T) {
+	key := strings.Join([]string{"sk-proj-", "unitLeakCheck", "0b9e"}, "")
+	t.Setenv("OPENAI_API_KEY", key)
+	for _, goos := range []string{"darwin", "linux"} {
+		host, _ := fakeHost(t, goos)
+		cfg := filepath.Join(t.TempDir(), "janus.config.json")
+		os.WriteFile(cfg, []byte(`{"openai":{"key":"env:OPENAI_API_KEY"},"logging":{"dir":"`+filepath.ToSlash(t.TempDir())+`"}}`), 0o600)
+		if out, code := runSvc(host, "install", "-config", cfg); code != 0 {
+			t.Fatalf("%s: exit %d:\n%s", goos, code, out)
+		}
+		unit, err := os.ReadFile(unitPath(host))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(unit), key) || strings.Contains(string(unit), "OPENAI") {
+			t.Errorf("%s: the unit names the key or its variable:\n%s", goos, unit)
+		}
+	}
+}

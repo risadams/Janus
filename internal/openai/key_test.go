@@ -9,6 +9,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -73,10 +75,72 @@ func TestKeyProblemsAreExplainedWithoutTheValue(t *testing.T) {
 	}
 }
 
-func TestKeychainSourceSaysItIsNotReadYet(t *testing.T) {
+// fakeTool stands in for the credential store's command: it answers out,
+// or fails with stderr when found is false.
+func fakeTool(t *testing.T, out string, found bool, stderr string) *[]string {
+	t.Helper()
+	var ran []string
+	saved := runTool
+	runTool = func(argv []string) ([]byte, string, error) {
+		ran = argv
+		if !found {
+			return []byte("partial-" + testKey), stderr, &exec.ExitError{}
+		}
+		return []byte(out), "", nil
+	}
+	t.Cleanup(func() { runTool = saved })
+	return &ran
+}
+
+func TestTheKeyIsReadFromTheCredentialStore(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows reads the Credential Manager directly; see keychain_windows.go")
+	}
+	ran := fakeTool(t, testKey+"\n", true, "")
+	key, err := LoadKey(config.OpenAI{Key: "keychain:janus-openai"}, env(nil))
+	if err != nil || key.secret != testKey {
+		t.Fatalf("key %v, err %v", key.Set(), err)
+	}
+	if want, _, _ := keychainTool(runtime.GOOS, "janus-openai"); strings.Join(*ran, " ") != strings.Join(want, " ") {
+		t.Errorf("ran %q, want %q", *ran, want)
+	}
+}
+
+// A missing entry is explained with the command that adds it, and nothing
+// the tool printed on its standard output is repeated.
+func TestAMissingCredentialSaysHowToAddIt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows reads the Credential Manager directly")
+	}
+	fakeTool(t, "", false, "The specified item could not be found in the keychain.")
 	_, err := LoadKey(config.OpenAI{Key: "keychain:janus-openai"}, env(nil))
-	if !errors.Is(err, ErrKeychainNotYet) {
-		t.Errorf("err = %v, want ErrKeychainNotYet", err)
+	_, add, _ := keychainTool(runtime.GOOS, "janus-openai")
+	if err == nil || !strings.Contains(err.Error(), "add it with: "+add) || !strings.Contains(err.Error(), "could not be found") {
+		t.Errorf("err = %v", err)
+	}
+	if err != nil && strings.Contains(err.Error(), testKey) {
+		t.Errorf("the error repeats what the tool printed: %v", err)
+	}
+}
+
+// Each platform's tool is run with a fixed argument list, the entry's name
+// one argument of it, whatever the name holds.
+func TestTheCredentialStoreIsReadWithAFixedCommand(t *testing.T) {
+	name := "janus; rm -rf ~"
+	for goos, want := range map[string][]string{
+		"darwin": {"security", "find-generic-password", "-s", name, "-w"},
+		"linux":  {"secret-tool", "lookup", "service", name},
+	} {
+		argv, add, ok := keychainTool(goos, name)
+		if !ok || strings.Join(argv, "\x00") != strings.Join(want, "\x00") || add == "" {
+			t.Errorf("%s: %q, add %q", goos, argv, add)
+		}
+	}
+	if _, add, ok := keychainTool("windows", name); !ok || !strings.HasPrefix(add, "cmdkey /generic:") {
+		t.Errorf("windows: add %q", add)
+	}
+	if _, _, ok := keychainTool("plan9", name); ok {
+		t.Error("a store on plan9")
 	}
 }
 

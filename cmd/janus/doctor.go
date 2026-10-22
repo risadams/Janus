@@ -296,8 +296,12 @@ func checkOpenAI(client *http.Client, o config.OpenAI, lookupEnv func(string) (s
 	case reach != "":
 		return finding{"warn", "openai", reach}
 	}
-	_, name := o.KeySource()
-	return finding{"ok", "openai", fmt.Sprintf("%s answers, key found in %s", o.URL(), name)}
+	kind, name := o.KeySource()
+	where := name
+	if kind == "keychain" {
+		where = "the credential store entry " + name
+	}
+	return finding{"ok", "openai", fmt.Sprintf("%s answers, key found in %s", o.URL(), where)}
 }
 
 // checkProviders says, with routing on, which providers the rules send
