@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Configuration | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/next/CONFIG"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Configuration | Janus"><meta data-rh="true" name="description" content="This is the reference: every setting, what it does, and why it works the"><meta data-rh="true" property="og:description" content="This is the reference: every setting, what it does, and why it works the"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/next/CONFIG"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/CONFIG" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/CONFIG" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Configuration","item":"https://risadams.github.io/Janus/docs/next/CONFIG"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.31295cc3.css">
-<script src="/Janus/assets/js/runtime~main.d40adcdc.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.15f0e3ab.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.ba9f6ce6.js" defer="defer"></script>
 </head>
 <body>
@@ -555,6 +555,16 @@ gets through. A refused OpenAI key and a used-up quota need you to act,
 so OpenAI is then left out of every list until Janus restarts, rather
 than asked again. Whatever moves on, the next provider is sent the
 request as Claude Code sent it.</p>
+<p><strong>Coming back.</strong> When a provider&#x27;s refusal says when its limit resets
+(Claude&#x27;s usage limit, or an OpenAI rate limit of a minute or more),
+every session moves down its list until then without asking that
+provider again, and goes back to it on the first turn after the reset.
+Janus keeps these reset times in <code>limits.json</code> under <code>logging.dir</code>, so a
+restart doesn&#x27;t send sessions back early. An outage has no reset time:
+the provider is left alone for 30 seconds, then asked again, the wait
+doubling, up to 10 minutes, while it keeps failing; its first answer
+ends it. The ledger&#x27;s <code>tried</code> says when a provider was passed over for
+either, and until when.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="no-anthropic-account">No Anthropic account<a href="#no-anthropic-account" class="hash-link" aria-label="Direct link to No Anthropic account" title="Direct link to No Anthropic account" translate="no">​</a></h3>
 <p>With <code>&quot;upstream&quot;: {&quot;off&quot;: true}</code>, Janus never contacts Anthropic, and
 Claude Code runs on OpenAI, a local model, or both:</p>
@@ -631,7 +641,9 @@ or even the latest turn too large), the client gets the last error
 exactly as it was sent.</li>
 <li class=""><strong>It costs nothing while Claude is healthy.</strong> The fallback is only worked
 out when it is needed; LM Studio is not contacted otherwise.</li>
-<li class="">The conversation can go back to Claude on the next turn.</li>
+<li class="">The conversation goes back to Claude on the first turn after its limit
+resets, or after an outage once Claude answers again (see
+<a href="#a-list-of-providers" class="">coming back</a>).</li>
 </ul>
 <h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="auto-mode-while-claude-is-out">Auto mode while Claude is out<a href="#auto-mode-while-claude-is-out" class="hash-link" aria-label="Direct link to Auto mode while Claude is out" title="Direct link to Auto mode while Claude is out" translate="no">​</a></h4>
 <p>In auto mode, Claude Code asks Claude whether each tool call is safe
