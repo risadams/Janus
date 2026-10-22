@@ -244,76 +244,97 @@ func headerDiff(a, b http.Header, ignore ...string) string {
 	return strings.Join(diffs, "; ")
 }
 
+// FidelityPlanners are planners the fidelity cases are run through as
+// well as none, by name: each must leave a request to Claude as it found
+// it. A test in package proxy_test registers the router configured with
+// OpenAI and not using it (#409), since this package cannot import the
+// router.
+var FidelityPlanners = map[string]func(upstream backend.Backend) Planner{}
+
 func TestFidelity(t *testing.T) {
-	for _, keepBodies := range []bool{false, true} {
-		for _, c := range fidelityCases(t) {
-			name := c.name
-			if keepBodies {
-				name += ", capture on"
-			}
-			t.Run(name, func(t *testing.T) {
-				requests := make(chan seen, 1)
-				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					body, _ := io.ReadAll(r.Body)
-					requests <- seen{r.Method, r.RequestURI, r.Host, r.Header.Clone(), body}
-					c.respond(w, r)
-				}))
-				defer upstream.Close()
-				u, _ := url.Parse(upstream.URL)
-				janus := httptest.NewServer(New(Options{Upstream: backend.NewUpstream(u, nil), Done: quiet, KeepBodies: keepBodies}))
-				defer janus.Close()
+	planners := map[string]func(backend.Backend) Planner{"": nil}
+	for name, p := range FidelityPlanners {
+		planners[name] = p
+	}
+	for plannerName, planner := range planners {
+		for _, keepBodies := range []bool{false, true} {
+			for _, c := range fidelityCases(t) {
+				name := c.name
+				if keepBodies {
+					name += ", capture on"
+				}
+				if plannerName != "" {
+					name += ", " + plannerName
+				}
+				t.Run(name, func(t *testing.T) {
+					requests := make(chan seen, 1)
+					upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						body, _ := io.ReadAll(r.Body)
+						requests <- seen{r.Method, r.RequestURI, r.Host, r.Header.Clone(), body}
+						c.respond(w, r)
+					}))
+					defer upstream.Close()
+					u, _ := url.Parse(upstream.URL)
+					up := backend.NewUpstream(u, nil)
+					var plan Planner
+					if planner != nil {
+						plan = planner(up)
+					}
+					janus := httptest.NewServer(New(Options{Upstream: up, Plan: plan, Done: quiet, KeepBodies: keepBodies}))
+					defer janus.Close()
 
-				directResp := perform(t, upstream.URL, c)
-				direct := <-requests
-				viaResp := perform(t, janus.URL, c)
-				via := <-requests
+					directResp := perform(t, upstream.URL, c)
+					direct := <-requests
+					viaResp := perform(t, janus.URL, c)
+					via := <-requests
 
-				// What the upstream saw.
-				if via.Method != direct.Method || via.URI != direct.URI || via.Host != direct.Host {
-					t.Errorf("request line: direct %s %s (Host %s), through janus %s %s (Host %s)",
-						direct.Method, direct.URI, direct.Host, via.Method, via.URI, via.Host)
-				}
-				if !bytes.Equal(via.Body, direct.Body) {
-					t.Errorf("request body differs: %d bytes direct, %d through janus", len(direct.Body), len(via.Body))
-				}
-				allowed := []string{}
-				if c.messages {
-					// The one sanctioned change (FR-1.2): checked exactly
-					// below rather than merely tolerated.
-					allowed = append(allowed, "Accept-Encoding")
-				}
-				if d := headerDiff(direct.Header, via.Header, allowed...); d != "" {
-					t.Errorf("request headers differ: %s", d)
-				}
-				if c.messages {
-					want := []string(nil)
-					if offered := direct.Header.Values("Accept-Encoding"); len(offered) > 0 {
-						want = []string{"identity"}
-						if strings.Contains(strings.Join(offered, ","), "gzip") {
-							want = []string{"gzip"}
+					// What the upstream saw.
+					if via.Method != direct.Method || via.URI != direct.URI || via.Host != direct.Host {
+						t.Errorf("request line: direct %s %s (Host %s), through janus %s %s (Host %s)",
+							direct.Method, direct.URI, direct.Host, via.Method, via.URI, via.Host)
+					}
+					if !bytes.Equal(via.Body, direct.Body) {
+						t.Errorf("request body differs: %d bytes direct, %d through janus", len(direct.Body), len(via.Body))
+					}
+					allowed := []string{}
+					if c.messages {
+						// The one sanctioned change (FR-1.2): checked exactly
+						// below rather than merely tolerated.
+						allowed = append(allowed, "Accept-Encoding")
+					}
+					if d := headerDiff(direct.Header, via.Header, allowed...); d != "" {
+						t.Errorf("request headers differ: %s", d)
+					}
+					if c.messages {
+						want := []string(nil)
+						if offered := direct.Header.Values("Accept-Encoding"); len(offered) > 0 {
+							want = []string{"identity"}
+							if strings.Contains(strings.Join(offered, ","), "gzip") {
+								want = []string{"gzip"}
+							}
+						}
+						if have := via.Header.Values("Accept-Encoding"); !reflect.DeepEqual(have, want) {
+							t.Errorf("Accept-Encoding through janus = %q, want %q", have, want)
 						}
 					}
-					if have := via.Header.Values("Accept-Encoding"); !reflect.DeepEqual(have, want) {
-						t.Errorf("Accept-Encoding through janus = %q, want %q", have, want)
-					}
-				}
 
-				// What the client got. Date is the upstream's clock at two
-				// different moments, so it alone may differ.
-				if viaResp.Status != directResp.Status {
-					t.Errorf("status: direct %d, through janus %d", directResp.Status, viaResp.Status)
-				}
-				if !bytes.Equal(viaResp.Body, directResp.Body) {
-					t.Errorf("response body differs: %d bytes direct, %d through janus", len(directResp.Body), len(viaResp.Body))
-				}
-				if d := headerDiff(directResp.Header, viaResp.Header, "Date"); d != "" {
-					t.Errorf("response headers differ: %s", d)
-				}
-				if viaResp.ContentLength != directResp.ContentLength || !reflect.DeepEqual(viaResp.TransferEncoding, directResp.TransferEncoding) {
-					t.Errorf("framing: direct length %d %v, through janus length %d %v",
-						directResp.ContentLength, directResp.TransferEncoding, viaResp.ContentLength, viaResp.TransferEncoding)
-				}
-			})
+					// What the client got. Date is the upstream's clock at two
+					// different moments, so it alone may differ.
+					if viaResp.Status != directResp.Status {
+						t.Errorf("status: direct %d, through janus %d", directResp.Status, viaResp.Status)
+					}
+					if !bytes.Equal(viaResp.Body, directResp.Body) {
+						t.Errorf("response body differs: %d bytes direct, %d through janus", len(directResp.Body), len(viaResp.Body))
+					}
+					if d := headerDiff(directResp.Header, viaResp.Header, "Date"); d != "" {
+						t.Errorf("response headers differ: %s", d)
+					}
+					if viaResp.ContentLength != directResp.ContentLength || !reflect.DeepEqual(viaResp.TransferEncoding, directResp.TransferEncoding) {
+						t.Errorf("framing: direct length %d %v, through janus length %d %v",
+							directResp.ContentLength, directResp.TransferEncoding, viaResp.ContentLength, viaResp.TransferEncoding)
+					}
+				})
+			}
 		}
 	}
 }

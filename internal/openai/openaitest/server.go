@@ -40,11 +40,15 @@ type Server struct {
 	OmitEventLines bool
 	// InputTokens is the count /v1/responses/input_tokens answers.
 	InputTokens int
+	// Forget keeps no request after answering it, for a long run, such
+	// as a soak, that would otherwise hold every body in memory.
+	Forget bool
 
 	t        testing.TB
 	mu       sync.Mutex
 	script   []Reply
 	requests []Request
+	seen     int
 }
 
 // A Request is one request the fake received.
@@ -106,8 +110,11 @@ func (s *Server) record(r *http.Request) (Request, int) {
 	req := Request{Method: r.Method, Path: r.URL.Path, Header: r.Header.Clone(), Body: body}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.requests = append(s.requests, req)
-	return req, len(s.requests)
+	s.seen++
+	if !s.Forget {
+		s.requests = append(s.requests, req)
+	}
+	return req, s.seen
 }
 
 // authorized answers OpenAI's 401 and returns false if Key is set and the

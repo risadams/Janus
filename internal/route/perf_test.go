@@ -1,8 +1,12 @@
 package route
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/risadams/janus/internal/anthropic"
+	"github.com/risadams/janus/internal/openai"
+	"github.com/risadams/janus/internal/openai/openaitest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -202,7 +206,14 @@ func TestSoak(t *testing.T) {
 		}
 	}()
 	policy, _ := guard.NewPolicy([]string{"secrets/**"}, []string{"COMPANY CONFIDENTIAL"})
-	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local, Aliases: qwen, Rules: []Rule{
+	// Every seventh turn moves to OpenAI and the next comes back (#409).
+	replies := make([]openaitest.Reply, total/7+1)
+	for i := range replies {
+		replies[i] = openaitest.Answer(openaitest.Text{Text: "Done."})
+	}
+	oa, fake := fakeOpenAI(t, replies...)
+	fake.Forget = true
+	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local, Aliases: qwen, OpenAI: oa, Rules: []Rule{
 		{Name: "every fifth", Model: "claude-haiku-5-5", Route: RouteEscalate, Local: qwen["janus-local"], TrialTimeout: time.Minute},
 		{Name: "rest", Route: RouteUpstream},
 	}}
@@ -233,6 +244,9 @@ func TestSoak(t *testing.T) {
 					b = strings.Replace(b, `"model":"claude-opus-5-5"`, `"model":"claude-haiku-5-5"`, 1)
 				}
 				req, _ := http.NewRequest("POST", janus.URL+"/v1/messages", strings.NewReader(b))
+				if i%7 == 0 {
+					req.Header.Set(backend.RouteHeader, RouteOpenAI)
+				}
 				resp, err := client.Do(req)
 				if err != nil {
 					failures <- err.Error()
@@ -249,7 +263,7 @@ func TestSoak(t *testing.T) {
 	}
 
 	start := time.Now()
-	fmt.Printf("\n%d requests of %d KB, %d at a time, everything on\n| after | heap in use | goroutines |\n|---|---|---|\n", total, len(body)>>10, workers)
+	fmt.Printf("\n%d requests of %d KB, %d at a time, everything on, one in seven to OpenAI and back\n| after | heap in use | goroutines |\n|---|---|---|\n", total, len(body)>>10, workers)
 	for i := 0; i < total; i++ {
 		if i%(total/8) == 0 && i > 0 {
 			heap, routines := snapshot()
@@ -269,4 +283,64 @@ func TestSoak(t *testing.T) {
 	if n := len(failures); n > 0 {
 		t.Errorf("%d requests failed; the first: %s", n, <-failures)
 	}
+}
+
+// TestMeasureTranslation prints what translating to and from OpenAI costs
+// (#409): a Messages request into a Responses one, at each size the
+// overhead measurement uses, and a Responses stream back into a Messages
+// one. It is a measurement, not a check, and runs only when asked:
+//
+//	JANUS_PERF=1 go test ./internal/route -run TestMeasureTranslation -v
+//
+// The results are written up in docs/research/performance.md.
+func TestMeasureTranslation(t *testing.T) {
+	if os.Getenv("JANUS_PERF") == "" {
+		t.Skip("set JANUS_PERF=1 to run the measurement")
+	}
+	const runs = 200
+	median := func(fn func()) time.Duration {
+		samples := make([]time.Duration, runs)
+		for i := range samples {
+			start := time.Now()
+			fn()
+			samples[i] = time.Since(start)
+		}
+		sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
+		return samples[runs/2]
+	}
+
+	fmt.Printf("\n| request | translate to OpenAI, p50 |\n|---|---|\n")
+	for _, size := range []int{32 << 10, 293 << 10, 3 << 20} {
+		body := conversationOf(size)
+		req, err := anthropic.ParseRequest(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		opts := openai.RequestOptions{Model: "gpt-6.1-sol", SessionID: "s1"}
+		d := median(func() {
+			if _, err := openai.TranslateRequest(req, opts); err != nil {
+				t.Fatal(err)
+			}
+		})
+		fmt.Printf("| %d KB | %s |\n", len(body)>>10, d.Round(time.Microsecond))
+	}
+
+	// A stream of a long answer: 2,000 deltas of text and a tool call.
+	srv := openaitest.New(t, openaitest.Answer(
+		openaitest.Text{Text: strings.Repeat("The build fails because of the import cycle. ", 400)},
+		openaitest.Call{CallID: "call_1", Name: "Read", Arguments: `{"file_path":"/app/main.go"}`}))
+	resp, err := http.Post(srv.URL+"/v1/responses", "application/json", strings.NewReader(`{"model":"gpt-6.1-sol","input":[],"stream":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	events := strings.Count(string(stream), "\n\n")
+	d := median(func() {
+		if _, err := openai.TranslateStream(io.Discard, bytes.NewReader(stream), openai.ResponseOptions{Model: "claude-opus-5-5"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	fmt.Printf("\n| stream | events | translate back, p50 | per event |\n|---|---|---|---|\n| %d KB | %d | %s | %s |\n",
+		len(stream)>>10, events, d.Round(time.Microsecond), (d / time.Duration(events)).Round(time.Nanosecond))
 }
