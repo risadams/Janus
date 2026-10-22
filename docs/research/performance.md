@@ -16,6 +16,13 @@ cost?
   request) and was fixed here: the detector now remembers what it has
   already scanned. It costs that once per conversation and about 9 ms
   after.
+- **Configuring OpenAI changes nothing that goes to Claude** (#409): the
+  fidelity test runs again with OpenAI configured and listed after
+  Claude, and every case matches a direct connection byte for byte.
+- **Translating to OpenAI costs about 3 ms on a 300 KB request**, and
+  about 29 ms at 3 MB, beside OpenAI's seconds; it is spent only on
+  requests that go to OpenAI. A long streamed answer costs about 1.3 µs
+  an event to translate back (2026-10-22, below).
 - **Both soaks are clean.** The synthetic one, and a working day of real
   Claude Code sessions through v0.9.0: memory, threads, and open files
   stayed flat, every request ended, and none failed.
@@ -131,6 +138,37 @@ the entropy search, and the local-only policy all on:
 59 seconds, 682 requests a second, none failed, no stuck streams. Memory
 and goroutines are flat while it runs and fall away when it stops.
 
+## Translation (#409)
+
+Measured 2026-10-22, same machine, Go 1.27.3, with
+`JANUS_PERF=1 go test ./internal/route -run TestMeasureTranslation -v`.
+The requests are the overhead measurement's, built the same way; the
+stream is the fake OpenAI's long answer, 2,265 events of text and a tool
+call.
+
+| Request | Translate to OpenAI, p50 |
+| --- | --- |
+| 32 KB | 0.11 ms |
+| 289 KB | 1.39 ms |
+| 3,071 KB | 14.4 ms |
+
+| Stream | Events | Translate back, p50 | Per event |
+| --- | --- | --- | --- |
+| 537 KB | 2,265 | 2.95 ms | 1.3 µs |
+
+A request is translated twice on its way to OpenAI: once when it is
+planned, to know it can be, and once just before sending, on the body as
+the guard leaves it. So the cost per request is about twice the first
+table: about 3 ms at 300 KB, 29 ms at 3 MB. Stream translation runs as
+the events arrive, so it adds about a microsecond and a half to each.
+
+The soak above, rerun with one turn in seven sent to OpenAI and the next
+back to Claude (40,000 requests, 8 at a time, everything on), stayed
+flat at 16 to 19 MB of heap and 62 to 65 goroutines, fell to 2.8 MB and
+25 when it ended, and had no failures: 67 s, 595 requests a second. A
+first run grew to 588 MB, which was the fake OpenAI keeping every request
+it was sent; it now has a setting to keep none.
+
 ## Soak with real sessions
 
 On 2026-10-19 the Janus in everyday use was sampled every five minutes
@@ -165,6 +203,9 @@ samples:
   at 18 to 20 and its open files at 17 to 19.
 
 ## What this does not show
+
+- **OpenAI's own latency.** Translation is measured against the fake; no
+  request has gone to OpenAI.
 
 - **Real latency.** Against the real API the network and the model
   dominate everything here.
