@@ -582,6 +582,34 @@ func TestClaudeTakingAConversationBackIsMarked(t *testing.T) {
 	}
 }
 
+// Passed over while its limit resets, Claude is still the one handed back
+// to, and the note names each provider that stood in (#378).
+func TestTheHandBackNamesEachProviderThatStoodIn(t *testing.T) {
+	c := NewConsole(io.Discard, false, ledger.DefaultPrices)
+	now := time.Date(2026, 10, 14, 9, 54, 0, 0, time.Local)
+	c.now = func() time.Time { return now }
+	header := http.Header{"X-Claude-Code-Session-Id": {"s1"}}
+	turn := func(backend string) (proxy.Exchange, ledger.Record) {
+		ex := proxy.Exchange{ID: "x", Start: now, Method: "POST", Path: "/v1/messages", Header: header, Backend: backend, Status: 200}
+		if backend != "upstream" {
+			ex.Tried = []proxy.Step{{Backend: "upstream", Why: "Claude is out: Claude's usage limit was reached; it resets at 12:00"}}
+		}
+		rec := ledger.FromExchange(ex)
+		rec.Class = "main"
+		return ex, rec
+	}
+	for _, b := range []string{"openai", "openai", "local"} {
+		ex, rec := turn(b)
+		autoModeNotes(ex, rec, c)
+	}
+	ex, rec := turn("upstream")
+	n := handBack(ex, &rec, c)
+	if n == nil || rec.Handback == nil || rec.Handback.OpenAITurns != 2 || rec.Handback.LocalTurns != 1 ||
+		!strings.Contains(n.text, "after 2 turns from OpenAI and 1 turns from the local model since 09:54") {
+		t.Errorf("note %+v, record %+v", n, rec.Handback)
+	}
+}
+
 func TestConsoleSaysOnceWhenAConversationHasGrownExpensive(t *testing.T) {
 	c := testConsole(io.Discard)
 	c.WarnAtContext(400_000)

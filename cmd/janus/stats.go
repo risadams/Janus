@@ -376,7 +376,7 @@ func printReport(w io.Writer, p painter, dir string, rep ledger.Report) {
 	printOutages(w, rep.Outages)
 	if rep.Handbacks > 0 {
 		fmt.Fprintf(w, "\nClaude took a conversation back %s times, after %s main-loop turns from the\n"+
-			"local model. Claude reads those turns as its own; search the ledger for\n"+
+			"local model or OpenAI. Claude reads those turns as its own; search the ledger for\n"+
 			"\"handback\" to find where each one ended.\n", commas(rep.Handbacks), commas(rep.HandedBackTurns))
 	}
 	if rep.Unread > 0 {

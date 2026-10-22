@@ -417,6 +417,17 @@ so OpenAI is then left out of every list until Janus restarts, rather
 than asked again. Whatever moves on, the next provider is sent the
 request as Claude Code sent it.
 
+**Coming back.** When a provider's refusal says when its limit resets
+(Claude's usage limit, or an OpenAI rate limit of a minute or more),
+every session moves down its list until then without asking that
+provider again, and goes back to it on the first turn after the reset.
+Janus keeps these reset times in `limits.json` under `logging.dir`, so a
+restart doesn't send sessions back early. An outage has no reset time:
+the provider is left alone for 30 seconds, then asked again, the wait
+doubling, up to 10 minutes, while it keeps failing; its first answer
+ends it. The ledger's `tried` says when a provider was passed over for
+either, and until when.
+
 ### No Anthropic account
 
 With `"upstream": {"off": true}`, Janus never contacts Anthropic, and
@@ -508,7 +519,9 @@ and the local model is not consulted.
   exactly as it was sent.
 - **It costs nothing while Claude is healthy.** The fallback is only worked
   out when it is needed; LM Studio is not contacted otherwise.
-- The conversation can go back to Claude on the next turn.
+- The conversation goes back to Claude on the first turn after its limit
+  resets, or after an outage once Claude answers again (see
+  [coming back](#a-list-of-providers)).
 
 #### Auto mode while Claude is out
 

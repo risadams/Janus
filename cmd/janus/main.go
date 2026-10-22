@@ -181,6 +181,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer lock.Release()
+	if router != nil {
+		// Under the lock: one janus per log folder keeps this file.
+		if err := router.Remember(filepath.Join(cfg.Logging.Dir, route.LimitsFile)); err != nil {
+			fmt.Fprintf(stderr, "janus: %v\n", err)
+			return 1
+		}
+	}
 
 	// The placeholder key is kept with the logs, so a secret keeps its
 	// placeholder across restarts and the prompt cache stays valid.
@@ -458,6 +465,20 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 	return rec
 }
 
+// stoodInForClaude reports whether another provider answered a request
+// because Claude could not: Claude was tried and failed, or passed over
+// while its limit resets (#378).
+func stoodInForClaude(ex proxy.Exchange) bool {
+	if ex.Backend != "local" && ex.Backend != "openai" {
+		return false
+	}
+	if len(ex.Tried) > 0 {
+		return ex.Tried[0].Backend == "upstream"
+	}
+	a := ex.Attempt
+	return a != nil && !a.Accepted && a.Backend == "upstream"
+}
+
 // autoModeNotes says what to do when auto mode's safety check cannot reach
 // Claude while the local model is carrying the conversation (#173). Auto
 // mode asks Claude whether each tool call is safe, and those checks stay
@@ -465,10 +486,10 @@ func record(ex proxy.Exchange, led *ledger.Ledger, captures *capture.Writer, det
 // "temporarily unavailable", and the way through is to approve them. It
 // also notes, for later requests, when the local model stood in.
 func autoModeNotes(ex proxy.Exchange, rec ledger.Record, console *Console) []note {
-	if a := ex.Attempt; a != nil && !a.Accepted && a.Backend == "upstream" && ex.Backend == "local" {
+	if stoodInForClaude(ex) {
 		console.StoodIn(rec.Session)
 		if rec.Class == string(route.Main) {
-			console.StoodInTurn(rec.Session)
+			console.StoodInTurn(rec.Session, ex.Backend)
 		}
 		return nil
 	}
@@ -488,13 +509,21 @@ func handBack(ex proxy.Exchange, rec *ledger.Record, console *Console) *note {
 		ex.Status <= 0 || ex.Status >= 400 || claudeCouldNotAnswer(ex) {
 		return nil
 	}
-	turns, since := console.HandBack(rec.Session)
-	if turns == 0 {
+	by, since := console.HandBack(rec.Session)
+	if len(by) == 0 {
 		return nil
 	}
-	rec.Handback = &ledger.Handback{LocalTurns: turns, Since: since.UTC()}
-	return &note{level: warn, text: fmt.Sprintf("Claude is answering again, after %d turns from the local model since %s; it reads them as its own, so check what they did",
-		turns, since.Local().Format("15:04"))}
+	rec.Handback = &ledger.Handback{LocalTurns: by["local"], OpenAITurns: by["openai"], Since: since.UTC()}
+	var from []string
+	for _, provider := range []string{"openai", "local"} {
+		if n := by[provider]; n > 0 {
+			from = append(from, fmt.Sprintf("%d turns from %s", n, provider))
+		}
+	}
+	text := strings.Join(from, " and ")
+	text = strings.Replace(strings.Replace(text, "from openai", "from OpenAI", 1), "from local", "from the local model", 1)
+	return &note{level: warn, text: fmt.Sprintf("Claude is answering again, after %s since %s; it reads them as its own, so check what they did",
+		text, since.Local().Format("15:04"))}
 }
 
 // claudeCouldNotAnswer reports whether Claude's response says it could not

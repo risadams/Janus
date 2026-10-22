@@ -143,8 +143,11 @@ func TestABriefFailureReachesClaudeCodeToRetry(t *testing.T) {
 		t.Errorf("third overload: client got %d (fallback %q), want the stand-in", status, fellBack)
 	}
 
-	// Claude answers: the outage is over, and the next overload is a
-	// first again.
+	// The outage's backoff passes, and Claude answers: the outage is
+	// over, and the next overload is a first again.
+	r.resets.mu.Lock()
+	r.resets.now = func() time.Time { return time.Now().Add(outageBackoff + time.Second) }
+	r.resets.mu.Unlock()
 	answer = func(w http.ResponseWriter) {
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{"type":"message","role":"assistant","content":[],"model":"claude-opus-5-5","stop_reason":"end_turn"}`)

@@ -292,6 +292,8 @@ func resetTime(at, now time.Time) string {
 // in Claude's place.
 type standIns struct {
 	turns int
+	// by counts the turns by provider: "local" or "openai".
+	by    map[string]int
 	since time.Time
 	last  time.Time
 }
@@ -300,9 +302,9 @@ type standIns struct {
 // Claude has not yet taken over from: longer than the five-hour limit.
 const keepStandInsFor = 24 * time.Hour
 
-// StoodInTurn counts a main-loop turn the local model gave because Claude
-// could not.
-func (c *Console) StoodInTurn(session string) {
+// StoodInTurn counts a main-loop turn provider ("local" or "openai") gave
+// because Claude could not.
+func (c *Console) StoodInTurn(session, provider string) {
 	if session == "" {
 		return
 	}
@@ -319,26 +321,27 @@ func (c *Console) StoodInTurn(session string) {
 	}
 	s := c.handback[session]
 	if s == nil {
-		s = &standIns{since: now}
+		s = &standIns{since: now, by: map[string]int{}}
 		c.handback[session] = s
 	}
 	s.turns++
+	s.by[provider]++
 	s.last = now
 }
 
 // HandBack is called when Claude answers a conversation's main loop. If
-// the local model stood in for it since Claude last did, it returns how
-// many turns and from when, and forgets them (#241).
-func (c *Console) HandBack(session string) (turns int, since time.Time) {
+// another provider stood in for it since Claude last did, it returns how
+// many turns each gave and from when, and forgets them (#241, #378).
+func (c *Console) HandBack(session string) (by map[string]int, since time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	s := c.handback[session]
 	if s == nil || c.now().Sub(s.last) > keepStandInsFor {
 		delete(c.handback, session)
-		return 0, time.Time{}
+		return nil, time.Time{}
 	}
 	delete(c.handback, session)
-	return s.turns, s.since
+	return s.by, s.since
 }
 
 // note is something about a request worth a line of its own.

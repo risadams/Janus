@@ -151,6 +151,7 @@ Under `logging.dir`:
 | --- | --- | --- |
 | Ledger | One line per request: sizes, tokens, timings, routes, guard counts, and the paths and markers that made content local-only. | Low. No content, no secrets. File names appear. |
 | Captures | Every request and response in full. | High. Your prompts and code, any secrets in them, and local-only content, **as Claude Code sent them, before redaction**. |
+| `limits.json`, with routing on | When each provider's usage or rate limit resets, and why it was reached. | Low. Times and provider names; no account identifiers. |
 | `redact.key`, with `guard.redact` on | The 32-byte key placeholders are made with. | Medium. With it, someone who already guesses a secret can check the guess against a placeholder. It reveals no secret by itself. |
 | Originals, with `features.compress` on | The full output of each tool result Janus digested, for `tool_output` to return. | High. Command output, which can hold secrets. Never content the local-only policy covers, since that is never digested. |
 

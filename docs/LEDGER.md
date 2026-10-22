@@ -135,7 +135,7 @@ used to; `janus stats` says how many, and `-json` has them as
 | `usage` | object | Messages responses only; see below |
 | `unread` | string | Why a Messages response has no `usage`, e.g. `content-encoding br`, or a gzip body larger than 256 MiB once decompressed |
 | `quota` | object | On a subscription: how much of each usage limit is used; see [`quota`](#quota) |
-| `handback` | object | On Claude's first answer to a conversation's main loop after the local model stood in for it: `local_turns`, how many main-loop turns the local model gave, and `since`, when the first of them was. `janus stats` counts them. |
+| `handback` | object | On Claude's first answer to a conversation's main loop after the local model or OpenAI stood in for it: `local_turns`, how many main-loop turns the local model gave, `openai_turns`, how many OpenAI gave (left out when none), and `since`, when the first of them was. `janus stats` counts them. |
 | `fault` | string | What went wrong getting the response from the backend: it could not be reached or did not answer in time, with no fallback (Janus then answered with an error of its own), or its response broke off part-way, e.g. a dropped connection. Absent for a response that arrived whole, and for one the client abandoned. |
 | `capture` | string | The capture's path under `captures/`, without extension |
 | `attempt` | object | Present when one backend was tried and another may have answered: `backend`, `model`, `verdict`, `why`, `cause`, `check`, `duration_ms`, and for a rejected attempt its `usage`. See below. |

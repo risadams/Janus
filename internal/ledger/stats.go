@@ -221,8 +221,8 @@ type Report struct {
 	// request used them.
 	Quota *QuotaSummary `json:"quota,omitempty"`
 	// Handbacks counts the times Claude took a conversation back after the
-	// local model stood in for it, and HandedBackTurns the stand-in turns
-	// before them.
+	// local model or OpenAI stood in for it, and HandedBackTurns the
+	// stand-in turns before them.
 	Handbacks       int `json:"handbacks,omitempty"`
 	HandedBackTurns int `json:"handed_back_turns,omitempty"`
 	// ByContext is the main conversation's turns to Claude by how large
@@ -344,7 +344,7 @@ func Summarise(records []Record, prices Prices) Report {
 		}
 		if h := rec.Handback; h != nil {
 			rep.Handbacks++
-			rep.HandedBackTurns += h.LocalTurns
+			rep.HandedBackTurns += h.LocalTurns + h.OpenAITurns
 		}
 		rep.Outcomes[rec.Outcome]++
 		if rec.Unread != "" {
