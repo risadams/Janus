@@ -12,6 +12,7 @@ import (
 
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/openai/openaitest"
+	"github.com/risadams/janus/internal/validate"
 )
 
 // ask sends a request to the fake and returns its answer.
@@ -282,5 +283,28 @@ func TestOpenAIErrorsAreExplainedInAnthropicsShape(t *testing.T) {
 				t.Errorf("body %s is not Anthropic's error shape", f.Body())
 			}
 		})
+	}
+}
+
+// The answer checks read a translated answer as they read Claude's or the
+// local model's (#408): a tool call that fits the request's tool passes,
+// so nothing is wrongly rejected for having come through translation.
+func TestTheAnswerChecksReadATranslatedAnswer(t *testing.T) {
+	req, err := anthropic.ParseRequest([]byte(`{"model":"claude-opus-5-5","max_tokens":100,"stream":true,` +
+		`"tools":[{"name":"Read","input_schema":{"type":"object","properties":{"file_path":{"type":"string"}},"required":["file_path"]}}],` +
+		`"messages":[{"role":"user","content":"Read the readme."}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, _, err := streamed(t, openaitest.Answer(openaitest.Call{CallID: "call_1", Name: "Read", Arguments: `{"file_path":"README.md"}`}),
+		ResponseOptions{Model: "claude-opus-5-5"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := anthropic.NewObserver("text/event-stream")
+	_, _ = o.Write([]byte(stream))
+	answer, readable := anthropic.Assemble([]byte(stream), "text/event-stream")
+	if check, why := validate.Check(req, o.Summary(), answer, readable, nil); why != "" {
+		t.Errorf("the %s check rejected a translated answer: %s", check, why)
 	}
 }

@@ -333,10 +333,11 @@ func TestValidate(t *testing.T) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
 			c.Routing = []Rule{{Route: "upstream", Fallback: []string{"janus-local", "upstream"}}}
 		}, `fallback must start with "upstream" when route is upstream`},
-		{"fallback on a route that is already local", func(c *Config) {
+		{"a local route escalating along a list", func(c *Config) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
-			c.Routing = []Rule{{Route: "local", Local: "janus-local", Fallback: []string{"upstream"}}}
-		}, "fallback only applies"},
+			c.OpenAI = OpenAI{Key: "env:OPENAI_API_KEY"}
+			c.Routing = []Rule{{Route: "local-then-escalate", Local: "janus-local", Fallback: []string{"openai", "upstream"}}}
+		}, ""},
 		{"local beside a list that is the route", func(c *Config) {
 			c.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
 			c.Routing = []Rule{{Local: "janus-local", Fallback: []string{"janus-local"}}}

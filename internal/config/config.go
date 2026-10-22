@@ -361,7 +361,9 @@ type Rule struct {
 	// tries all three. With route upstream or shadow, the list starts
 	// with "upstream" and the rest answer when Claude cannot: it is
 	// unreachable, rate limited, overloaded, or failing. Left out, the
-	// failure reaches the client. It replaces ifDown (config version 2).
+	// failure reaches the client. With route local or local-then-escalate,
+	// it is where the rule escalates to instead of Claude. It replaces
+	// ifDown (config version 2).
 	Fallback []string `json:"fallback,omitempty"`
 	// SkipChecks turns off named checks on the local answer, for the
 	// local-then-escalate route: empty, truncated, tools, schema, refusal.
@@ -394,8 +396,9 @@ func (c Config) checkUpstreamOff() []error {
 	}
 	for i, rule := range c.Routing {
 		where := fmt.Sprintf("routing[%d]", i)
-		if rule.Route != "" {
-			errs = append(errs, fmt.Errorf("%s.route is %s, but upstream.off is set, and every route but a fallback list falls back to Claude; leave route out and list where requests go as fallback", where, rule.Route))
+		escalates := (rule.Route == "local" || rule.Route == "local-then-escalate") && len(rule.Fallback) > 0
+		if rule.Route != "" && !escalates {
+			errs = append(errs, fmt.Errorf("%s.route is %s, but upstream.off is set, and it falls back to Claude; leave route out and list where requests go as fallback, or give a local route a fallback list to escalate along", where, rule.Route))
 		}
 		if slices.Contains(rule.Fallback, "upstream") {
 			errs = append(errs, fmt.Errorf("%s.fallback names upstream, but upstream.off is set", where))
@@ -429,8 +432,10 @@ func (c Config) checkFallback(where string, rule Rule) []error {
 		if rule.Fallback[0] != "upstream" {
 			errs = append(errs, fmt.Errorf("%s.fallback must start with \"upstream\" when route is %s, which sends the request upstream first; leave route out to start elsewhere", where, rule.Route))
 		}
+	case "local", "local-then-escalate":
+		// The list is where the rule escalates to, in place of Claude.
 	default:
-		errs = append(errs, fmt.Errorf("%s.fallback only applies when route is upstream or shadow, or left out; route %s already falls back to Claude", where, rule.Route))
+		errs = append(errs, fmt.Errorf("%s.fallback does not apply to route %s", where, rule.Route))
 	}
 	return errs
 }

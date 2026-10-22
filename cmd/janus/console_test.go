@@ -451,6 +451,19 @@ func TestASafetyCheckThatCannotReachClaudeSaysToLeaveAutoMode(t *testing.T) {
 		t.Errorf("an overloaded_error event after a stand-in:\n%s", got)
 	}
 
+	// A check following the safety rule's list to OpenAI, which fails.
+	standIn("s6")
+	out.Reset()
+	record(consoleExchange(func(ex *proxy.Exchange) {
+		ex.Header.Set("X-Claude-Code-Session-Id", "s6")
+		ex.Backend, ex.Status = "openai", 529
+		ex.RequestBody = []byte(check)
+		ex.Summary = &anthropic.Summary{Complete: true, Error: &anthropic.APIError{Type: "overloaded_error"}}
+	}), led, nil, nil, c)
+	if got := out.String(); !strings.Contains(got, "↳ auto mode's safety check could not reach OpenAI") {
+		t.Errorf("a check failing on OpenAI after a stand-in:\n%s", got)
+	}
+
 	// No stand-in in the conversation, as when the main turn was too large
 	// for any local model or ifDown is only on another rule: nothing local
 	// is answering, so leaving auto mode would not help.

@@ -15,6 +15,7 @@ import (
 	"github.com/risadams/janus/internal/openai"
 	"github.com/risadams/janus/internal/openai/openaitest"
 	"github.com/risadams/janus/internal/proxy"
+	"github.com/risadams/janus/internal/transform"
 )
 
 // A rule's fallback list names providers in order, and a request goes to
@@ -406,5 +407,57 @@ func TestARuleCanWaitForOpenAIsLimit(t *testing.T) {
 	}
 	if len(srv.Requests()) != 1 || len(sawLocal) != 1 {
 		t.Errorf("OpenAI asked %d times, LM Studio %d", len(srv.Requests()), len(sawLocal))
+	}
+}
+
+// Compression applies on the way to OpenAI as on the way to Claude,
+// before translation (#408).
+func TestTransformsRewriteWhatGoesToOpenAI(t *testing.T) {
+	oa, srv := fakeOpenAI(t, openaitest.Answer(openaitest.Text{Text: "ok"}))
+	up := httptest.NewServer(never(t))
+	defer up.Close()
+	j := listRouter(t, up, oa, "openai")
+	j.Transforms = transform.New(hush{})
+	res := j.send(t, longRequest)
+	if res.Exchange.Backend != "openai" || strings.Join(res.Exchange.Stages, ",") != "hush" {
+		t.Fatalf("went to %s with stages %v", res.Exchange.Backend, res.Exchange.Stages)
+	}
+	if sent := string(srv.Requests()[0].Body); !strings.Contains(sent, "(hushed)") || strings.Contains(sent, "please please") {
+		t.Errorf("OpenAI was sent %s", sent)
+	}
+}
+
+// local-then-escalate escalates along the rule's list, not always to
+// Claude (#408): a local answer that fails its checks is answered by
+// OpenAI here.
+func TestLocalThenEscalateEscalatesAlongTheList(t *testing.T) {
+	empty := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, strings.ReplaceAll(localStream, "Two lines.", ""))
+	}
+	local, _ := lmStudio(t, empty)
+	oa, srv := fakeOpenAI(t, openaitest.Answer(openaitest.Text{Text: "From OpenAI."}))
+	up := httptest.NewServer(never(t))
+	defer up.Close()
+	u, _ := url.Parse(up.URL)
+	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local, OpenAI: oa, Rules: []Rule{{
+		Name: "try", Route: RouteEscalate, Local: qwen["janus-local"], TrialTimeout: time.Minute,
+		Fallback: []Provider{{Name: RouteOpenAI}, {Name: RouteUpstream}},
+	}}}
+	reported := make(chan proxy.Exchange, 1)
+	janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: r.Upstream, Plan: r.Plan, Done: func(ex proxy.Exchange) { reported <- ex }}))
+	defer janus.Close()
+	resp, err := http.Post(janus.URL+"/v1/messages", "application/json", strings.NewReader(opusRequest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	ex := <-reported
+	if ex.Backend != "openai" || !strings.Contains(string(body), "From OpenAI.") || ex.Attempt == nil || ex.Attempt.Backend != "local" {
+		t.Errorf("escalated to %s, attempt %+v, body %s", ex.Backend, ex.Attempt, body)
+	}
+	if len(srv.Requests()) != 1 {
+		t.Errorf("OpenAI asked %d times", len(srv.Requests()))
 	}
 }
