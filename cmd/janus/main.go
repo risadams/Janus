@@ -83,6 +83,7 @@ func commands() []command {
 		{name: "claude", about: "run Claude Code through janus", run: func(args []string, stdout, stderr io.Writer) int {
 			return runClaude(args, os.Stdin, stdout, stderr)
 		}},
+		{name: "use", about: "move a session, or every session, to a provider by hand", run: runUse},
 		{name: "local", about: "run Claude Code on the local model only, through janus", run: func(args []string, stdout, stderr io.Writer) int {
 			return runLocal(args, os.Stdin, stdout, stderr)
 		}},
@@ -295,6 +296,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			}
 		},
 	})
+	handler = withControl(handler, router)
 	if !cfg.AllowRemote {
 		// Loopback keeps other machines out; this keeps out web pages in
 		// a browser on this one.
@@ -328,6 +330,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// withControl answers janus use (#379) on janus's own listener, at
+// route.ControlPath, and passes everything else to the proxy. With routing
+// off there is nothing to choose between, and it says so.
+func withControl(proxied http.Handler, router *route.Router) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != route.ControlPath {
+			proxied.ServeHTTP(w, r)
+			return
+		}
+		if router == nil {
+			http.Error(w, "janus: routing is off in janus's config, so there are no providers to choose between", http.StatusConflict)
+			return
+		}
+		router.Control().ServeHTTP(w, r)
+	})
 }
 
 // shutdownGrace is how long janus waits, once asked to stop, for the
@@ -572,6 +591,13 @@ func exchangeNotes(ex proxy.Exchange) []note {
 		// so each cause is said once per conversation.
 		text := "not sent to the local model (" + strings.ReplaceAll(ex.LocalCause, "_", " ") + ")" + nextStep(ex.LocalCause)
 		notes = append(notes, note{level: info, text: text, once: "local-cause " + ex.LocalCause})
+	}
+	if chosen, ok := strings.CutPrefix(ex.Reason, "janus use "); ok {
+		// Said once per conversation: every turn of it carries the choice.
+		chosen, _, _ = strings.Cut(chosen, ",")
+		chosen, _, _ = strings.Cut(chosen, ":")
+		text := fmt.Sprintf("janus use: this session goes to %s by hand, until janus use -clear or until it cannot answer", provider(chosen))
+		notes = append(notes, note{level: info, text: text, once: text})
 	}
 	if ex.Fault != "" {
 		notes = append(notes, note{level: bad, text: "fault: " + ex.Fault})

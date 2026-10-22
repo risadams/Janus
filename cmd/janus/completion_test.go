@@ -117,7 +117,7 @@ var completionCases = []struct {
 	want []string
 }{
 	{"janus st", []string{"stats"}},
-	{"janus ", []string{"version", "stats", "doctor", "route", "replay", "audit", "mcp", "claude", "local", "service", "update", "config", "completion"}},
+	{"janus ", []string{"version", "stats", "doctor", "route", "replay", "audit", "mcp", "claude", "use", "local", "service", "update", "config", "completion"}},
 	{"janus -", []string{"-config", "-listen", "-local", "-upstream"}},
 	{"janus stats -j", []string{"-json"}},
 	{"janus -config x.json st", []string{"stats"}},

@@ -575,6 +575,26 @@ Each session on one Janus can choose differently. Started another way,
 set `ANTHROPIC_CUSTOM_HEADERS="X-Janus-Route: local"` and the like
 yourself.
 
+**`janus use` moves a running session without restarting it.** It asks
+the running Janus, on its own listen address, and takes effect on the
+next turn:
+
+```bash
+janus use codex                 # every session to OpenAI first, from the next turn
+janus use local -session <id>   # one session, by the id the ledger records as "session"
+janus use -list                 # the choices in force
+janus use -clear                # back to the rules
+```
+
+A choice works as the header does, with two differences: a session's
+own header beats it, and it ends by itself when its provider cannot
+answer (OpenAI out, the local model unable to take the request), so the
+rules decide again rather than the request being refused. The ledger's
+`reason` starts `janus use` for every request it decided, and the console
+says so once per conversation. Janus answers it only for programs on this
+machine, never for a web page; choices are kept in memory, and a restart
+clears them.
+
 **Forcing local is a promise that the request does not go upstream.** If
 the local model cannot take it, the request is refused with an error
 saying why. It is never quietly sent to Claude instead.
