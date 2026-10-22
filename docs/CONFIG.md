@@ -428,6 +428,18 @@ doubling, up to 10 minutes, while it keeps failing; its first answer
 ends it. The ledger's `tried` says when a provider was passed over for
 either, and until when.
 
+### What each feature does on the OpenAI path
+
+| Feature | With OpenAI answering |
+| --- | --- |
+| Compression and digests | Applied before the request is translated, through the same record of what each conversation has sent, so a block goes in the same rewritten bytes whichever provider has the turn. The net-savings guard prices it at Claude's rates. |
+| `local-then-escalate` and `local` | Give the rule a `fallback` list and it escalates along it, in order, instead of always to Claude: `"fallback": ["openai", "upstream"]`. Without one, it escalates to Claude as before. |
+| The answer checks | Judge local answers only. An answer from OpenAI, like Claude's, is never judged; the checks read a translated answer as they read any other, should one be given them. |
+| Shadow runs and `janus replay` | Claude and the local model only, in v0.10.0. A shadow rule sends its request to Claude; replay sends captures to the local model. |
+| The MCP worker tools (`janus mcp`) | Unchanged. Their guidance is in the tools' own descriptions, which a Codex model reads as Claude does. |
+| Auto mode's safety checks | Follow the `safety` rule's list, or stay with Claude. When one fails on whichever provider it was on, while another model is carrying the conversation, the console says how to keep working, as it does for Claude. |
+| The guard | Covers OpenAI as it covers Claude; see [the guard](GUARD.md). |
+
 ### No Anthropic account
 
 With `"upstream": {"off": true}`, Janus never contacts Anthropic, and

@@ -585,8 +585,14 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		case RouteLocal, RouteEscalate:
 			// The client asked for a real model, so whatever goes wrong
 			// with the local one, the request goes to that model instead
-			// of failing.
-			if skip, failures, until := r.health.open(); skip {
+			// of failing; or, with a fallback list, along it (#408).
+			escalate := func(why string, cause string) (proxy.Plan, *proxy.Refusal, []string) {
+				step := proxy.Step{Backend: "local", Model: rule.Local.ID, Why: why, Cause: cause}
+				return fromList(rule, label, 0, []proxy.Step{step})
+			}
+			if skip, failures, until := r.health.open(); skip && len(rule.Fallback) > 0 {
+				return escalate(fmt.Sprintf("the local backend has failed %d times in a row and is being skipped until %s", failures, until.Format("15:04:05")), proxy.CauseSkipped)
+			} else if skip {
 				reason := fmt.Sprintf("%s: the local backend has failed %d times in a row and is being skipped until %s; sent upstream",
 					label, failures, until.Format("15:04:05"))
 				trace = append(trace, reason)
@@ -595,6 +601,9 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				return plan, nil, trace
 			}
 			release, ok := r.busy.take(rule.Local)
+			if !ok && len(rule.Fallback) > 0 {
+				return escalate(fmt.Sprintf("%s already has %d requests in flight, its limit", rule.Local.ID, rule.Local.MaxConcurrent), proxy.CauseBusy)
+			}
 			if !ok {
 				reason := fmt.Sprintf("%s: %s already has %d requests in flight, its limit; sent upstream",
 					label, rule.Local.ID, rule.Local.MaxConcurrent)
@@ -608,6 +617,9 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				release()
 				if problem.status == http.StatusBadGateway {
 					r.health.record(false) // LM Studio could not be reached
+				}
+				if len(rule.Fallback) > 0 {
+					return escalate(problem.message, problem.cause)
 				}
 				reason := fmt.Sprintf("%s: %s; sent upstream", label, problem.message)
 				trace = append(trace, reason)
@@ -628,6 +640,10 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 				}
 				fallback, _, _ := upstreamPlan(copy, label)
 				return fallback, true
+			}
+			if len(rule.Fallback) > 0 {
+				// The rule's list is where it escalates to, in order.
+				plan = r.fallBackAlong(plan, header, arrived, facts.Model, rule.Fallback, 0, label)
 			}
 			if rule.Route == RouteEscalate {
 				if rule.TrialTimeout > 0 && (plan.Timeout == 0 || rule.TrialTimeout < plan.Timeout) {
@@ -771,8 +787,19 @@ func (r *Router) provider(ctx context.Context, header http.Header, req *anthropi
 		if err != nil {
 			return proxy.Plan{}, &problem{http.StatusBadRequest, "invalid_request_error", "the request cannot be translated for OpenAI: " + err.Error(), ""}
 		}
+		// Compression and digests rewrite the request before it is
+		// translated, through the same memo as for Claude, so a block is
+		// sent in the same rewritten bytes whichever provider has the turn
+		// (#408). The net-savings guard prices by Claude's rates, the only
+		// ones it knows the request by.
+		var body []byte
+		effects := r.Transforms.Apply(header, req)
+		stages := transform.Stages(effects)
+		if len(stages) > 0 {
+			body = req.Bytes()
+		}
 		return proxy.Plan{
-			Backend: r.OpenAI, Route: RouteOpenAI, Reason: reason,
+			Backend: r.OpenAI, Route: RouteOpenAI, Reason: reason, Body: body, Stages: stages, Transforms: effects,
 			BackendModel: tr.Choice.Model, ResponseModel: model, Translate: tr.Translate, Report: tr.Report,
 			FallBackOn: func(status int, header http.Header) bool { return r.leaveOpenAI(tr.Failure(), status, header) },
 		}, nil

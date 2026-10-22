@@ -506,6 +506,17 @@ func stoodInForClaude(ex proxy.Exchange) bool {
 	return a != nil && !a.Accepted && a.Backend == "upstream"
 }
 
+// checkedBy names the provider a safety check was meant for.
+func checkedBy(ex proxy.Exchange) string {
+	switch {
+	case ex.Backend == "none" && len(ex.Tried) > 0:
+		return provider(ex.Tried[len(ex.Tried)-1].Backend)
+	case ex.Backend == "none":
+		return "any provider"
+	}
+	return provider(ex.Backend)
+}
+
 // autoModeNotes says what to do when auto mode's safety check cannot reach
 // Claude while the local model is carrying the conversation (#173). Auto
 // mode asks Claude whether each tool call is safe, and those checks stay
@@ -520,10 +531,14 @@ func autoModeNotes(ex proxy.Exchange, rec ledger.Record, console *Console) []not
 		}
 		return nil
 	}
-	if rec.Class != string(route.Safety) || ex.Backend != "upstream" || !claudeCouldNotAnswer(ex) || !console.StandingIn(rec.Session) {
+	// The check follows the safety rule's list, or stays with Claude; it
+	// fails here whichever provider it was on, or when janus refused it
+	// for want of one (#408).
+	failed := ex.Backend == "none" || (ex.Backend != "local" && claudeCouldNotAnswer(ex))
+	if rec.Class != string(route.Safety) || !failed || !console.StandingIn(rec.Session) {
 		return nil
 	}
-	text := "auto mode's safety check could not reach Claude, so Claude Code will refuse tool calls; press Shift+Tab to leave auto mode and approve them yourself while the local model stands in"
+	text := fmt.Sprintf("auto mode's safety check could not reach %s, so Claude Code will refuse tool calls; press Shift+Tab to leave auto mode and approve them yourself while Claude is out", checkedBy(ex))
 	return []note{{level: warn, text: text, once: text}}
 }
 
