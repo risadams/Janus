@@ -141,6 +141,10 @@ func (t *Translation) Report() proxy.Translation {
 	return r
 }
 
+// ModelFor is the model a request would be sent to, as Translation
+// chooses it.
+func (b *Backend) ModelFor(req *anthropic.Request) string { return Choose(b.config, req).Model }
+
 // Window is the context window of the model a translation chose, or zero
 // when it is not known.
 func (t *Translation) Window() int { return Window(t.b.config, t.Choice.Model) }

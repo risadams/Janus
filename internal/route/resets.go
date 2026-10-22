@@ -191,3 +191,25 @@ func openaiWait(h http.Header) time.Duration {
 	}
 	return max(wait, 0)
 }
+
+// openaiKey is what resets and outages for one OpenAI model are kept
+// under (#451).
+func openaiKey(model string) string { return RouteOpenAI + "/" + model }
+
+// outages are one outage count for each of OpenAI's models.
+type outages struct {
+	mu sync.Mutex
+	by map[string]*outage
+}
+
+func (o *outages) of(model string) *outage {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.by == nil {
+		o.by = map[string]*outage{}
+	}
+	if o.by[model] == nil {
+		o.by[model] = &outage{}
+	}
+	return o.by[model]
+}

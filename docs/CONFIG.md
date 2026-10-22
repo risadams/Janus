@@ -289,7 +289,7 @@ Outcome.
 | `skipChecks` | For `local-then-escalate`: checks to leave out. See below. |
 | `maxSeconds` | For `local-then-escalate`: how long the local model gets before Claude is asked. Default 120. |
 | `fallback` | Where the request may go, in order: `upstream`, `openai`, or entries of `local.models`. With `route` left out the list is the route; with `upstream` or `shadow` it starts with `upstream`, and the rest answer when Claude cannot. See below. |
-| `ifUsageAbove` | Match only once a subscription usage limit is used past a share, as Claude last reported: `{"5h": 0.8}` for the five-hour limit, `"7d"` for the weekly one, `"openai.requests"` and `"openai.tokens"` for OpenAI's per-minute limits; any one past its share is enough. Until the provider has answered, and after a limit's reset, it does not match. Not for `upstream`. See [the pacing recipe](recipes/pace.md). |
+| `ifUsageAbove` | Match only once a subscription usage limit is used past a share, as Claude last reported: `{"5h": 0.8}` for the five-hour limit, `"7d"` for the weekly one, `"openai.gpt-6.1-sol.tokens"` or `"openai.gpt-6.1-sol.requests"` for one OpenAI model's per-minute limits (any model's name), `"openai.tokens"` and `"openai.requests"` for the fullest of any model's; any one past its share is enough. Until the provider has answered, and after a limit's reset, it does not match. Not for `upstream`. See [the pacing recipe](recipes/pace.md). |
 
 The classes:
 
@@ -439,7 +439,11 @@ request as Claude Code sent it.
 (Claude's usage limit, or an OpenAI rate limit of a minute or more),
 every session moves down its list until then without asking that
 provider again, and goes back to it on the first turn after the reset.
-Janus keeps these reset times in `limits.json` under `logging.dir`, so a
+OpenAI's limits vary by model, so its rate limits, resets and outage
+backoffs are kept for the model a request would go to: a limit on the
+model Haiku requests go to leaves the one Opus requests go to answering.
+A refused key and a used-up quota are the account's, and take OpenAI out
+whole. Janus keeps these reset times in `limits.json` under `logging.dir`, so a
 restart doesn't send sessions back early. An outage has no reset time:
 the provider is left alone for 30 seconds, then asked again, the wait
 doubling, up to 10 minutes, while it keeps failing; its first answer

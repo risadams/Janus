@@ -300,6 +300,21 @@ keeps OpenAI's own numbers and prices them with OpenAI's rates; the costs
 Claude Code shows for those turns will be wrong, since it prices them as
 Claude.
 
+### Limits are per model (#451)
+
+OpenAI's rate limits "vary by the model being used", are set per
+organization and project, and some model families share one
+([rate limits][ratelimits]). Janus therefore keeps a rate limit's reset
+time, an outage's backoff, and the limits it records per OpenAI model; a
+refused key and a used-up quota are the account's and are not.
+
+What this does not show: which limit the `x-ratelimit-*` headers describe
+for a model in a shared family. The page does not say, and Janus assumes
+the headers on an answer describe the model that answered. With an
+account (#399), check it by sending to two models of one family and
+comparing the headers; if they share a limit, two models' names should
+map to one.
+
 ### Errors
 
 An HTTP error's body is `{"error": {"type", "code", "message", "param"}}`.
