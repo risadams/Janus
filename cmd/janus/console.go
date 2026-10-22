@@ -227,8 +227,26 @@ func (c *Console) ContextNotes(rec ledger.Record) []note {
 const quotaNear = 0.8
 
 // limitNames are the API's names for its windows, as a person says them.
-var limitNames = map[string]string{"5h": "five-hour", "7d": "weekly",
-	openai.QuotaRequests: "OpenAI per-minute request", openai.QuotaTokens: "OpenAI per-minute token"}
+var limitNames = map[string]string{"5h": "five-hour", "7d": "weekly"}
+
+// limitLabel is a limit's name as a person says it: Claude's by the table
+// above, and OpenAI's per-minute limits by their model, as in "OpenAI
+// gpt-6.1-sol per-minute token" (#451).
+func limitLabel(window string) string {
+	if name := limitNames[window]; name != "" {
+		return name
+	}
+	kind := openai.QuotaKind(window)
+	if kind == "" {
+		return window
+	}
+	what := map[string]string{openai.QuotaRequests: "request", openai.QuotaTokens: "token"}[kind]
+	if window == kind {
+		return "OpenAI per-minute " + what // any model's
+	}
+	model := strings.TrimSuffix(strings.TrimPrefix(window, "openai."), strings.TrimPrefix(kind, "openai"))
+	return "OpenAI " + model + " per-minute " + what
+}
 
 // QuotaNotes says how much of the subscription's limits is used, each
 // time a limit's use crosses another tenth, and when one resets (#239).
@@ -263,10 +281,7 @@ func (c *Console) QuotaNotes(q *anthropic.Quota) []note {
 			// only one nearly used up is worth a line.
 			continue
 		}
-		name := limitNames[w]
-		if name == "" {
-			name = w
-		}
+		name := limitLabel(w)
 		text := fmt.Sprintf("%s limit %.0f%% used", name, win.Utilization*100)
 		if !win.Resets.IsZero() {
 			text += ", resets " + resetTime(win.Resets, c.now())

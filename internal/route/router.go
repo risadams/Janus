@@ -184,9 +184,10 @@ type Router struct {
 	// down decides when Claude has been down long enough to move down a
 	// fallback list (#150).
 	down outage
-	// openaiDown is the same for OpenAI: one per router, since OpenAI is
-	// one service.
-	openaiDown outage
+	// openaiDown is the same for OpenAI, one for each model: OpenAI's
+	// limits vary by model (#451), so a model failing does not take the
+	// others out.
+	openaiDown outages
 	// resets is when each provider can be asked again, after a limit or
 	// an outage (#378).
 	resets resets
@@ -340,8 +341,8 @@ func (r *Router) Report(ex proxy.Exchange) {
 		r.endManual(ex.Header.Get("X-Claude-Code-Session-Id"), ex.Reason, ex.Backend, tried, ex.Status == 0 || UpstreamDown(ex.Status))
 	}
 	if ex.Backend == RouteOpenAI && ex.Status > 0 && ex.Status < 400 {
-		r.openaiDown.recovered()
-		r.resets.answered(RouteOpenAI)
+		r.openaiDown.of(ex.BackendModel).recovered()
+		r.resets.answered(openaiKey(ex.BackendModel))
 	}
 	switch {
 	case ex.Backend == "upstream":
@@ -351,9 +352,9 @@ func (r *Router) Report(ex proxy.Exchange) {
 	}
 	switch {
 	case ex.Backend == RouteOpenAI:
-		r.limits.observe(RouteOpenAI, openai.QuotaFrom(ex.ResponseHeader, time.Now()))
+		r.limits.observe(RouteOpenAI, openai.QuotaFrom(ex.ResponseHeader, time.Now(), ex.BackendModel))
 	case ex.Attempt != nil && ex.Attempt.Backend == RouteOpenAI:
-		r.limits.observe(RouteOpenAI, openai.QuotaFrom(ex.Attempt.ResponseHeader, time.Now()))
+		r.limits.observe(RouteOpenAI, openai.QuotaFrom(ex.Attempt.ResponseHeader, time.Now(), ex.Attempt.Model))
 	}
 	switch {
 	case ex.Attempt != nil && ex.Attempt.Backend == "local":
@@ -824,7 +825,9 @@ func (r *Router) provider(ctx context.Context, header http.Header, req *anthropi
 		return proxy.Plan{
 			Backend: r.OpenAI, Route: RouteOpenAI, Reason: reason, Body: body, Stages: stages, Transforms: effects,
 			BackendModel: tr.Choice.Model, ResponseModel: model, Translate: tr.Translate, Report: tr.Report,
-			FallBackOn: func(status int, header http.Header) bool { return r.leaveOpenAI(tr.Failure(), status, header) },
+			FallBackOn: func(status int, header http.Header) bool {
+				return r.leaveOpenAI(tr.Choice.Model, tr.Failure(), status, header)
+			},
 		}, nil
 	case p.Local != nil:
 		local := *p.Local
@@ -873,19 +876,23 @@ func (r *Router) provider(ctx context.Context, header http.Header, req *anthropi
 // failures are (#150): at once if Retry-After says a minute or more,
 // otherwise on the third within two minutes, Claude Code retrying the
 // ones before.
-func (r *Router) leaveOpenAI(f *openai.Failure, status int, header http.Header) bool {
+//
+// A rate limit and an outage are the model's (#451): OpenAI's limits vary
+// by model, and so only that model is passed over. A refused key and a
+// used-up quota are the account's, and take OpenAI out whole.
+func (r *Router) leaveOpenAI(model string, f *openai.Failure, status int, header http.Header) bool {
 	if f != nil {
 		switch f.Kind {
 		case openai.TooLong, openai.BadRequest, openai.KeyRefused, openai.QuotaExhausted:
 			return true
 		}
 	}
-	down := r.openaiDown.standIn(status, header)
+	down := r.openaiDown.of(model).standIn(status, header)
 	switch wait := openaiWait(header); {
 	case status == http.StatusTooManyRequests && wait >= longWait:
-		r.resets.limit(RouteOpenAI, r.resets.clock().Add(wait), "OpenAI's rate limit was reached")
+		r.resets.limit(openaiKey(model), r.resets.clock().Add(wait), fmt.Sprintf("OpenAI's rate limit for %s was reached", model))
 	case down:
-		r.resets.outage(RouteOpenAI)
+		r.resets.outage(openaiKey(model))
 	}
 	return down
 }
@@ -912,8 +919,18 @@ func (r *Router) leaveClaude(status int, header http.Header) bool {
 // It also passes over a provider waiting for a limit to reset, or out for
 // an outage's backoff (#378).
 func (r *Router) barred(p Provider, req *anthropic.Request) *problem {
-	if why := r.resets.out(p.Name); why != "" {
-		return &problem{http.StatusTooManyRequests, "rate_limit_error", providerName(p) + " is out: " + why, ""}
+	who := providerName(p)
+	why := r.resets.out(p.Name)
+	if p.Name == RouteOpenAI && r.OpenAI != nil {
+		// Only the model this request would go to: the others may answer.
+		model := r.OpenAI.ModelFor(req)
+		who += " (" + model + ")"
+		if w := r.resets.out(openaiKey(model)); w != "" {
+			why = w
+		}
+	}
+	if why != "" {
+		return &problem{http.StatusTooManyRequests, "rate_limit_error", who + " is out: " + why, ""}
 	}
 	if r.Barred == nil {
 		return nil

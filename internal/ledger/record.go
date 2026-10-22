@@ -381,7 +381,7 @@ func FromExchange(ex proxy.Exchange) Record {
 	case "upstream":
 		rec.Quota = anthropic.QuotaFrom(ex.ResponseHeader)
 	case "openai":
-		rec.Quota = openai.QuotaFrom(ex.ResponseHeader, ex.Start.Add(ex.Duration))
+		rec.Quota = openai.QuotaFrom(ex.ResponseHeader, ex.Start.Add(ex.Duration), ex.BackendModel)
 	}
 	for _, e := range ex.Transforms {
 		rec.Transforms = append(rec.Transforms, Transform{

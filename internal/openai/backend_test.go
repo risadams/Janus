@@ -286,8 +286,8 @@ func TestOpenAIsLimitsAreReadAsShareUsedAndResetTime(t *testing.T) {
 		"X-Ratelimit-Limit-Tokens": {"150000"}, "X-Ratelimit-Remaining-Tokens": {"0"}, "X-Ratelimit-Reset-Tokens": {"6m0s"},
 		"Openai-Organization": {"org-made-up"},
 	}
-	q := QuotaFrom(h, now)
-	req, tok := q.Windows[QuotaRequests], q.Windows[QuotaTokens]
+	q := QuotaFrom(h, now, "gpt-6.1-sol")
+	req, tok := q.Windows["openai.gpt-6.1-sol.requests"], q.Windows["openai.gpt-6.1-sol.tokens"]
 	if req.Utilization != 0.75 || !req.Resets.Equal(now.Add(time.Second)) || req.Status != "" {
 		t.Errorf("requests = %+v", req)
 	}
@@ -297,7 +297,7 @@ func TestOpenAIsLimitsAreReadAsShareUsedAndResetTime(t *testing.T) {
 	if b, _ := json.Marshal(q); strings.Contains(string(b), "org-") {
 		t.Errorf("the quota names the account: %s", b)
 	}
-	if QuotaFrom(http.Header{}, now) != nil {
+	if QuotaFrom(http.Header{}, now, "gpt-6.1-sol") != nil {
 		t.Error("a quota from no headers")
 	}
 }

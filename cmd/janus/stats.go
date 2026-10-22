@@ -195,10 +195,7 @@ func printToday(w io.Writer, p painter, rep ledger.Report, now time.Time, live b
 		var parts []string
 		for _, name := range names {
 			win := q.Latest.Windows[name]
-			label := limitNames[name]
-			if label == "" {
-				label = name
-			}
+			label := limitLabel(name)
 			part := fmt.Sprintf("%s %.0f%% used", label, win.Utilization*100)
 			if !win.Resets.IsZero() && win.Resets.After(now) {
 				part += ", resets " + resetTime(win.Resets, now)
@@ -481,10 +478,7 @@ func printQuota(w io.Writer, p painter, q *ledger.QuotaSummary, now time.Time) {
 	width := 0
 	for name := range q.Latest.Windows {
 		windows = append(windows, name)
-		label := limitNames[name]
-		if label == "" {
-			label = name
-		}
+		label := limitLabel(name)
 		labels[name] = label
 		width = max(width, len([]rune(label)))
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/openai/openaitest"
 )
 
@@ -112,5 +113,54 @@ func TestOpenAIsWaitIsTheResetOfTheLimitUsedUp(t *testing.T) {
 	h.Set("X-Ratelimit-Remaining-Tokens", "500")
 	if got := openaiWait(h); got != 0 {
 		t.Errorf("wait = %s with nothing used up", got)
+	}
+}
+
+// OpenAI's limits vary by model (#451): a rate limit on the model Haiku
+// requests go to leaves the model Opus requests go to answering, and a
+// used-up quota, which is the account's, takes both out.
+func TestAnOpenAIRateLimitIsOnlyItsModels(t *testing.T) {
+	c := &clock{t: time.Now()}
+	long := openaitest.RateLimited("rate_limit_exceeded", "3600")
+	ok := openaitest.Answer(openaitest.Text{Text: "ok"})
+	oa, srv := fakeOpenAI(t, long, ok, openaitest.RateLimited("insufficient_quota", ""), ok)
+	var sent []string
+	up := httptest.NewServer(claudeAnswers(&sent))
+	defer up.Close()
+	j := listRouter(t, up, oa, "openai", "upstream")
+	j.resets.now = c.now
+	haiku := strings.Replace(opusRequest, "claude-opus-5-5", "claude-haiku-5-5", 1)
+
+	// Haiku's model reaches its limit: that turn moves on to Claude.
+	if res := j.send(t, haiku); res.Exchange.Backend != "upstream" {
+		t.Fatalf("at the limit: answered by %s", res.Exchange.Backend)
+	}
+	// Until the reset, Haiku's model is passed over without being asked...
+	res := j.send(t, haiku)
+	if res.Exchange.Backend != "upstream" || len(srv.Requests()) != 1 || !strings.Contains(res.Exchange.Reason, "OpenAI (gpt-6-luna) is out: OpenAI's rate limit for gpt-6-luna was reached") {
+		t.Errorf("Haiku before the reset: %s, OpenAI asked %d times, reason %q", res.Exchange.Backend, len(srv.Requests()), res.Exchange.Reason)
+	}
+	// ...and Opus's model is still asked.
+	if res := j.send(t, opusRequest); res.Exchange.Backend != "openai" {
+		t.Errorf("Opus's model was taken out by Haiku's limit: answered by %s", res.Exchange.Backend)
+	}
+	// The account's quota runs out on Opus's model: both are out.
+	j.send(t, opusRequest)
+	res = j.send(t, opusRequest)
+	if res.Exchange.Backend != "upstream" || !strings.Contains(res.Exchange.Reason, "OpenAI is out until janus restarts") {
+		t.Errorf("after the quota: %s, reason %q", res.Exchange.Backend, res.Exchange.Reason)
+	}
+}
+
+// ifUsageAbove names one model's limit, or "openai.tokens" for any
+// model's: the fullest of them.
+func TestARuleCanNameOneOpenAIModelsLimitOrAnys(t *testing.T) {
+	var h headroom
+	now := time.Now()
+	h.observe(RouteOpenAI, &anthropic.Quota{Windows: map[string]anthropic.QuotaWindow{"openai.gpt-6.1-sol.tokens": {Utilization: 0.2}}})
+	h.observe(RouteOpenAI, &anthropic.Quota{Windows: map[string]anthropic.QuotaWindow{"openai.gpt-6-luna.tokens": {Utilization: 0.9}}})
+	used := h.used(now)
+	if used["openai.gpt-6.1-sol.tokens"] != 0.2 || used["openai.gpt-6-luna.tokens"] != 0.9 || used["openai.tokens"] != 0.9 {
+		t.Errorf("used = %v", used)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
+	"github.com/risadams/janus/internal/openai"
 )
 
 // headroom keeps Claude's latest word on the subscription's usage limits,
@@ -31,6 +32,18 @@ func (h *headroom) observe(provider string, q *anthropic.Quota) {
 	if h.latest == nil {
 		h.latest = map[string]*anthropic.Quota{}
 	}
+	if old := h.latest[provider]; old != nil && provider == RouteOpenAI {
+		// Each OpenAI answer reports one model's limits; another model's
+		// stay as they last were (#451).
+		merged := &anthropic.Quota{Windows: map[string]anthropic.QuotaWindow{}}
+		for name, w := range old.Windows {
+			merged.Windows[name] = w
+		}
+		for name, w := range q.Windows {
+			merged.Windows[name] = w
+		}
+		q = merged
+	}
 	h.latest[provider] = q
 }
 
@@ -50,6 +63,10 @@ func (h *headroom) used(now time.Time) map[string]float64 {
 				continue
 			}
 			out[name] = w.Utilization
+			// "openai.tokens" is any OpenAI model's: the fullest of them.
+			if kind := openai.QuotaKind(name); kind != "" && name != kind {
+				out[kind] = max(out[kind], w.Utilization)
+			}
 		}
 	}
 	return out

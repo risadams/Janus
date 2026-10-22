@@ -3,26 +3,51 @@ package openai
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
 )
 
-// QuotaWindows are the names OpenAI's limits are recorded under, beside
-// Claude's "5h" and "7d" (#382): per-minute limits on requests and on
-// tokens, from its x-ratelimit-* headers. The prefix keeps them apart
-// from Claude's in the ledger and in a rule's ifUsageAbove.
+// OpenAI's limits are recorded under names beside Claude's "5h" and "7d"
+// (#382): per-minute limits on requests and on tokens, from its
+// x-ratelimit-* headers. OpenAI's limits vary by model, and some families
+// share one (#451), so each is named for the model it came from:
+// "openai.gpt-6.1-sol.tokens". A rule's ifUsageAbove names one of those,
+// or "openai.tokens" for any OpenAI model's. The prefix keeps them apart
+// from Claude's in the ledger.
 const (
 	QuotaRequests = "openai.requests"
 	QuotaTokens   = "openai.tokens"
 )
+
+// QuotaName is the name of model's limit, kind QuotaRequests or
+// QuotaTokens: "openai.<model>.requests".
+func QuotaName(model, kind string) string {
+	if model == "" {
+		return kind
+	}
+	return "openai." + model + strings.TrimPrefix(kind, "openai")
+}
+
+// QuotaKind is which of the two limits name is, whatever model it names:
+// QuotaRequests, QuotaTokens, or "" for a name that is neither.
+func QuotaKind(name string) string {
+	switch {
+	case name == QuotaRequests || strings.HasSuffix(name, ".requests") && strings.HasPrefix(name, "openai."):
+		return QuotaRequests
+	case name == QuotaTokens || strings.HasSuffix(name, ".tokens") && strings.HasPrefix(name, "openai."):
+		return QuotaTokens
+	}
+	return ""
+}
 
 // QuotaFrom reads OpenAI's rate limits from a response's headers, as now:
 // each limit's share used and when it resets. The resets are durations
 // from the answer, such as "6m0s" (docs/research/openai.md, Errors). It is
 // nil when there are none. It reads only the x-ratelimit-* headers, none
 // of which names the account.
-func QuotaFrom(h http.Header, now time.Time) *anthropic.Quota {
+func QuotaFrom(h http.Header, now time.Time, model string) *anthropic.Quota {
 	var q *anthropic.Quota
 	for window, limit := range map[string]string{QuotaRequests: "Requests", QuotaTokens: "Tokens"} {
 		total, err1 := strconv.ParseFloat(h.Get("X-Ratelimit-Limit-"+limit), 64)
@@ -40,7 +65,7 @@ func QuotaFrom(h http.Header, now time.Time) *anthropic.Quota {
 		if q == nil {
 			q = &anthropic.Quota{Windows: map[string]anthropic.QuotaWindow{}}
 		}
-		q.Windows[window] = w
+		q.Windows[QuotaName(model, window)] = w
 	}
 	return q
 }

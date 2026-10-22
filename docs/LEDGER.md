@@ -170,7 +170,8 @@ in, it is what Claude's refusal said.
 
 On a response from OpenAI it is OpenAI's per-minute limits, read from
 its `x-ratelimit-*` headers alone, none of which names the account: the
-windows `openai.requests` and `openai.tokens`, each with `utilization`
+windows `openai.<model>.requests` and `openai.<model>.tokens` for the
+model that answered, such as `openai.gpt-6.1-sol.tokens`, each with `utilization`
 (the share used), `status` `rejected` when none is left, and `resets`
 (the answer's time plus the reset OpenAI gave). `janus stats` shows the
 latest of each provider's limits together.
