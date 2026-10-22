@@ -45,6 +45,8 @@ Start Claude Code through janus:
   ...
 ```
 
+`janus use codex` (or `claude`, `local`) moves every running session,
+or one with `-session`, from its next turn, until `janus use -clear`.
 `janus claude -provider openai` starts a session with OpenAI first, and
 `janus local` one on the local model only, through the same Janus; other
 sessions keep following the rules

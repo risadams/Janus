@@ -190,6 +190,8 @@ type Router struct {
 	// resets is when each provider can be asked again, after a limit or
 	// an outage (#378).
 	resets resets
+	// manual is the providers chosen by hand with janus use (#379).
+	manual manual
 	// limits is Claude's latest word on the usage limits, for rules with
 	// IfUsageAbove (#240).
 	limits headroom
@@ -327,6 +329,13 @@ func (r *Router) Report(ex proxy.Exchange) {
 		r.down.recovered() // Claude answered
 		r.resets.answered(RouteUpstream)
 	}
+	if ex.Path == "/v1/messages" {
+		tried := make([]string, len(ex.Tried))
+		for i, t := range ex.Tried {
+			tried[i] = t.Backend
+		}
+		r.endManual(ex.Header.Get("X-Claude-Code-Session-Id"), ex.Reason, ex.Backend, tried, ex.Status == 0 || UpstreamDown(ex.Status))
+	}
 	if ex.Backend == RouteOpenAI && ex.Status > 0 && ex.Status < 400 {
 		r.openaiDown.recovered()
 		r.resets.answered(RouteOpenAI)
@@ -394,9 +403,21 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	// A client can choose the route itself with a header, which beats the
 	// rules. Forcing local is a promise that the request will not go
 	// upstream, so if local cannot take it the request is refused.
+	//
+	// A choice made with janus use (#379) works as the header does, until
+	// it is cleared or its provider cannot answer; then the request goes
+	// by the rules, as if no choice had been made.
 	openaiFirst := false
-	if choice := strings.TrimSpace(header.Get(backend.RouteHeader)); choice != "" && choice != RouteOpenAI {
-		reason := "override " + choice
+	choice, how := strings.TrimSpace(header.Get(backend.RouteHeader)), "override"
+	session := header.Get("X-Claude-Code-Session-Id")
+	if choice == "" {
+		if chosen := r.manual.get(session); chosen != "" {
+			choice, how = chosen, "janus use"
+		}
+	}
+	manual := how == "janus use"
+	if choice != "" && choice != RouteOpenAI {
+		reason := how + " " + choice
 		refuse := func(status int, kind, message string) (proxy.Plan, *proxy.Refusal, []string) {
 			trace = append(trace, fmt.Sprintf("%s: refused: %s", reason, message))
 			return proxy.Plan{}, &proxy.Refusal{Status: status, Type: kind, Message: "janus: " + message, Route: RouteLocal, Reason: reason + ": " + message}, trace
@@ -404,6 +425,11 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		where, name, _ := strings.Cut(choice, "=")
 		switch where {
 		case RouteUpstream:
+			if r.NoUpstream && manual {
+				r.manual.clear(session)
+				trace = append(trace, reason+": ended, since upstream is off")
+				break
+			}
 			if r.NoUpstream {
 				return refuse(http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("%s: upstream: upstream is off in janus's config, so there is no Claude to send it to", backend.RouteHeader))
 			}
@@ -411,10 +437,22 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			return upstream(reason), nil, trace
 		case RouteLocal:
 			local, problem := r.named(name)
+			if problem != "" && manual {
+				r.manual.clear(session)
+				trace = append(trace, fmt.Sprintf("%s: ended: %s", reason, problem))
+				break
+			}
 			if problem != "" {
 				return refuse(http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("%s: %s: %s", backend.RouteHeader, choice, problem))
 			}
 			plan, _, failure := r.local(ctx, req, local, facts.Model, reason, false)
+			if failure != nil && manual {
+				// The local model cannot answer: the choice holds no
+				// longer, and the rules decide.
+				r.manual.clear(session)
+				trace = append(trace, fmt.Sprintf("%s: ended: %s", reason, failure.message))
+				break
+			}
 			if failure != nil {
 				return refuse(failure.status, failure.kind, failure.message)
 			}
@@ -503,7 +541,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		return proxy.Plan{Backend: backend.Nowhere{}, Route: "janus", Reason: "quota check: answered by janus, since upstream is off"}, nil, trace
 	}
 
-	if strings.TrimSpace(header.Get(backend.RouteHeader)) == RouteOpenAI {
+	if choice == RouteOpenAI {
 		openaiFirst = true
 	}
 	if openaiFirst && r.OpenAI != nil {
@@ -511,12 +549,12 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 		// openai): OpenAI, then the rest of the list of the rule that
 		// would have decided, so the chain still covers OpenAI failing.
 		list := []Provider{{Name: RouteOpenAI}}
-		label := "override openai"
+		label := how + " openai"
 		for i, rule := range r.Rules {
 			if rule.mismatch(facts, r.NoUpstream) != "" {
 				continue
 			}
-			label = "override openai, then " + rule.label(i)
+			label = how + " openai, then " + rule.label(i)
 			for _, p := range rule.Fallback {
 				if p.Name != RouteOpenAI {
 					list = append(list, p)
