@@ -158,6 +158,9 @@ How it behaves:
 - **A secret is removed everywhere once it has been seen.** If Claude
   repeats a password in a later message, with nothing around it to mark
   it as one, it is still replaced.
+- **On the way to OpenAI, secrets are replaced before the request is
+  translated, and put back after the answer is translated back,** so a
+  placeholder OpenAI repeats is restored in the answer Claude Code reads.
 - **Placeholders cut across pieces of a streamed answer are handled.**
   The test suite cuts one at every possible position.
 - **Requests to the local model are not redacted.** They do not go to
@@ -168,7 +171,9 @@ It fails closed, in two places:
 
 - **A request that cannot be checked is not sent.** If Janus cannot read
   a request to look for secrets, or finds one it cannot remove, the client
-  gets an error and nothing goes upstream.
+  gets an error and nothing goes upstream. This holds for OpenAI as for
+  Anthropic, and for any provider Janus does not know, which it takes to
+  be off the machine: only LM Studio is not checked.
 - **A tool call that cannot be restored is stopped.** If Claude calls a
   tool with a placeholder Janus did not issue, or a damaged one, the turn
   ends with an error rather than handing your machine a command with a
