@@ -102,6 +102,7 @@ v0.10.0.
 | `openai.key` | Where the API key is kept: `env:NAME`, the environment variable `NAME`, or `keychain:NAME`, the entry `NAME` in your operating system's credential store. Required. |
 | `openai.baseUrl` | The OpenAI API, or a gateway in front of it, without `/v1`. Default `https://api.openai.com`. |
 | `openai.models` | Optional. Which OpenAI model answers when Claude Code asks for a Claude model: a model's full name, a family (`fable`, `opus`, `sonnet`, `haiku`), or `default` for any other, mapped to an OpenAI model id. A full name is looked up first, then the family, then `default`. Your entries replace the defaults one by one. |
+| `openai.contextTokens` | Optional. A model's context window, by its OpenAI name, for one Janus does not know or whose window has changed: `{"gpt-5.3-codex": 400000}`. Janus knows the windows in [the research note](research/openai.md#models). |
 
 The default models are `gpt-6.1-sol` for `fable`, `opus`, `sonnet`, and
 `default`, and the smaller `gpt-6-luna` for `haiku`
@@ -427,6 +428,18 @@ the provider is left alone for 30 seconds, then asked again, the wait
 doubling, up to 10 minutes, while it keeps failing; its first answer
 ends it. The ledger's `tried` says when a provider was passed over for
 either, and until when.
+
+**A conversation larger than the OpenAI model's window** has older turns
+left out for that model, as for a local stand-in: Janus keeps the system
+prompt, the tools, the first message, and the latest turns that fit,
+leaving room for the answer, and tells the model how many were left out.
+The cut stays where it is from turn to turn, so OpenAI's prompt cache
+holds, and moves on, far enough to stay put again for a while, only when
+the conversation no longer fits. If even the first and latest turns
+don't fit, the next provider on the list gets the request, and the
+ledger's `reason` says why. Claude's copy is never cut. The windows of
+the default models are a million tokens, so this matters mainly for
+`gpt-5.3-codex`, at 400,000.
 
 ### What each feature does on the OpenAI path
 

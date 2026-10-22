@@ -96,6 +96,25 @@ func requestedEffort(req *anthropic.Request) string {
 	}
 }
 
+// contextWindows is each model's context window, in tokens, from its model
+// page (docs/research/openai.md, Models).
+var contextWindows = map[string]int{
+	"gpt-6-astra":   1_050_000,
+	"gpt-6.1-sol":   1_050_000,
+	"gpt-6-luna":    1_050_000,
+	"gpt-5.6-sol":   1_050_000,
+	"gpt-5.3-codex": 400_000,
+}
+
+// Window is model's context window: openai.contextTokens' entry for it,
+// else the one janus knows, else zero for not known.
+func Window(o config.OpenAI, model string) int {
+	if n := o.ContextTokens[model]; n > 0 {
+		return n
+	}
+	return contextWindows[model]
+}
+
 // efforts is reasoning.effort's scale, lowest first.
 var efforts = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 
