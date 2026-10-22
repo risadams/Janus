@@ -15,6 +15,7 @@ import (
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/guard"
 	"github.com/risadams/janus/internal/ledger"
+	"github.com/risadams/janus/internal/openai"
 	"github.com/risadams/janus/internal/proxy"
 	"github.com/risadams/janus/internal/transform"
 )
@@ -684,5 +685,30 @@ func TestTheConsoleSaysWhichProviderAnsweredAndWhyNotTheOnesBefore(t *testing.T)
 	if len(notes) != 1 || notes[0].level != info || notes[0].once == "" ||
 		notes[0].text != "OpenAI was passed over (the request cannot be translated for OpenAI: tools[0]); the local model was passed over (qwen/qwen3.8-27b had 1 requests in flight, its limit, for 0s), so it went to Claude; next: "+proxy.CauseHint(proxy.CauseBusy) {
 		t.Errorf("notes = %+v", notes)
+	}
+}
+
+// OpenAI's per-minute limits are said only when one is nearly used up, and
+// then as OpenAI's, beside Claude's (#382).
+func TestOpenAIsLimitsAreNotedOnlyWhenNearlyUsedUp(t *testing.T) {
+	c := testConsole(io.Discard)
+	texts := func(notes []note) (out []string) {
+		for _, n := range notes {
+			out = append(out, n.text)
+		}
+		return out
+	}
+	q := func(used float64) *anthropic.Quota {
+		return &anthropic.Quota{Windows: map[string]anthropic.QuotaWindow{openai.QuotaTokens: {Utilization: used}}}
+	}
+	if got := texts(c.QuotaNotes(q(0.3))); len(got) != 0 {
+		t.Errorf("notes at 30%%: %q", got)
+	}
+	if got := texts(c.QuotaNotes(q(0.5))); len(got) != 0 {
+		t.Errorf("notes at 50%%: %q", got)
+	}
+	got := texts(c.QuotaNotes(&anthropic.Quota{Windows: map[string]anthropic.QuotaWindow{openai.QuotaTokens: {Utilization: 1, Status: "rejected"}}}))
+	if len(got) != 1 || got[0] != "OpenAI per-minute token limit 100% used; OpenAI is refusing requests until then" {
+		t.Errorf("notes at the limit: %q", got)
 	}
 }

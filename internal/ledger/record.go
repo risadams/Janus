@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
+	"github.com/risadams/janus/internal/openai"
 	"github.com/risadams/janus/internal/proxy"
 	"github.com/risadams/janus/internal/route"
 )
@@ -372,8 +373,11 @@ func FromExchange(ex proxy.Exchange) Record {
 	if route.UpstreamDown(ex.Status) {
 		rec.Limits = Limits(ex.ResponseHeader)
 	}
-	if ex.Backend == "upstream" {
+	switch ex.Backend {
+	case "upstream":
 		rec.Quota = anthropic.QuotaFrom(ex.ResponseHeader)
+	case "openai":
+		rec.Quota = openai.QuotaFrom(ex.ResponseHeader, ex.Start.Add(ex.Duration))
 	}
 	for _, e := range ex.Transforms {
 		rec.Transforms = append(rec.Transforms, Transform{

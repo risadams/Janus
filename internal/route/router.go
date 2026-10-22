@@ -333,9 +333,15 @@ func (r *Router) Report(ex proxy.Exchange) {
 	}
 	switch {
 	case ex.Backend == "upstream":
-		r.limits.observe(anthropic.QuotaFrom(ex.ResponseHeader))
+		r.limits.observe(RouteUpstream, anthropic.QuotaFrom(ex.ResponseHeader))
 	case ex.Attempt != nil && ex.Attempt.Backend == "upstream":
-		r.limits.observe(anthropic.QuotaFrom(ex.Attempt.ResponseHeader))
+		r.limits.observe(RouteUpstream, anthropic.QuotaFrom(ex.Attempt.ResponseHeader))
+	}
+	switch {
+	case ex.Backend == RouteOpenAI:
+		r.limits.observe(RouteOpenAI, openai.QuotaFrom(ex.ResponseHeader, time.Now()))
+	case ex.Attempt != nil && ex.Attempt.Backend == RouteOpenAI:
+		r.limits.observe(RouteOpenAI, openai.QuotaFrom(ex.Attempt.ResponseHeader, time.Now()))
 	}
 	switch {
 	case ex.Attempt != nil && ex.Attempt.Backend == "local":

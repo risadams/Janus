@@ -13,18 +13,25 @@ import (
 // headroom keeps Claude's latest word on the subscription's usage limits,
 // from the headers of each answer, so that a rule can send work local
 // before a limit is reached rather than after (#240).
+//
+// It keeps each provider's latest apart, Claude's and OpenAI's (#382), so
+// a rule can name either: OpenAI's windows are "openai.requests" and
+// "openai.tokens".
 type headroom struct {
 	mu     sync.Mutex
-	latest *anthropic.Quota
+	latest map[string]*anthropic.Quota
 }
 
-func (h *headroom) observe(q *anthropic.Quota) {
+func (h *headroom) observe(provider string, q *anthropic.Quota) {
 	if q == nil {
 		return
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.latest = q
+	if h.latest == nil {
+		h.latest = map[string]*anthropic.Quota{}
+	}
+	h.latest[provider] = q
 }
 
 // used is each limit's utilization as last reported, leaving out any
@@ -37,11 +44,13 @@ func (h *headroom) used(now time.Time) map[string]float64 {
 		return nil
 	}
 	out := map[string]float64{}
-	for name, w := range h.latest.Windows {
-		if !w.Resets.IsZero() && !now.Before(w.Resets) {
-			continue
+	for _, q := range h.latest {
+		for name, w := range q.Windows {
+			if !w.Resets.IsZero() && !now.Before(w.Resets) {
+				continue
+			}
+			out[name] = w.Utilization
 		}
-		out[name] = w.Utilization
 	}
 	return out
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/ledger"
+	"github.com/risadams/janus/internal/openai"
 	"github.com/risadams/janus/internal/proxy"
 )
 
@@ -226,7 +227,8 @@ func (c *Console) ContextNotes(rec ledger.Record) []note {
 const quotaNear = 0.8
 
 // limitNames are the API's names for its windows, as a person says them.
-var limitNames = map[string]string{"5h": "five-hour", "7d": "weekly"}
+var limitNames = map[string]string{"5h": "five-hour", "7d": "weekly",
+	openai.QuotaRequests: "OpenAI per-minute request", openai.QuotaTokens: "OpenAI per-minute token"}
 
 // QuotaNotes says how much of the subscription's limits is used, each
 // time a limit's use crosses another tenth, and when one resets (#239).
@@ -256,6 +258,11 @@ func (c *Console) QuotaNotes(q *anthropic.Quota) []note {
 			continue
 		}
 		c.quotaStep[w] = step
+		if strings.HasPrefix(w, "openai.") && win.Utilization < quotaNear {
+			// A per-minute limit rises and falls with every request;
+			// only one nearly used up is worth a line.
+			continue
+		}
 		name := limitNames[w]
 		if name == "" {
 			name = w
@@ -267,7 +274,11 @@ func (c *Console) QuotaNotes(q *anthropic.Quota) []note {
 		lvl := info
 		switch {
 		case win.Utilization >= 1 || win.Status == "rejected":
-			lvl, text = bad, text+"; Claude is refusing requests until then"
+			who := "Claude"
+			if strings.HasPrefix(w, "openai.") {
+				who = "OpenAI"
+			}
+			lvl, text = bad, text+"; "+who+" is refusing requests until then"
 		case win.Utilization >= quotaNear:
 			lvl = warn
 		case seen && step < last:
