@@ -369,3 +369,42 @@ func TestEachSessionCanAskForItsOwnProvider(t *testing.T) {
 		}
 	}
 }
+
+// A rule's ifUsageAbove can name OpenAI's limits as well as Claude's
+// (#382): once OpenAI reports its per-minute tokens nearly used, the rule
+// sends work elsewhere before OpenAI refuses it.
+func TestARuleCanWaitForOpenAIsLimit(t *testing.T) {
+	nearly := openaitest.Answer(openaitest.Text{Text: "1"})
+	nearly.Header = http.Header{"X-Ratelimit-Limit-Tokens": {"1000"}, "X-Ratelimit-Remaining-Tokens": {"50"}, "X-Ratelimit-Reset-Tokens": {"40s"}}
+	oa, srv := fakeOpenAI(t, nearly)
+	local, sawLocal := lmStudio(t, nil)
+	up := httptest.NewServer(never(t))
+	defer up.Close()
+	u, _ := url.Parse(up.URL)
+	model := qwen["janus-local"]
+	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local, OpenAI: oa, Rules: []Rule{
+		{Name: "pace", IfUsageAbove: map[string]float64{openai.QuotaTokens: 0.8}, Fallback: []Provider{{Name: "janus-local", Local: &model}}},
+		{Name: "all", Fallback: []Provider{{Name: RouteOpenAI}}},
+	}}
+	reported := make(chan proxy.Exchange, 1)
+	janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: r.Upstream, Plan: r.Plan, Done: func(ex proxy.Exchange) { r.Report(ex); reported <- ex }}))
+	defer janus.Close()
+	send := func() proxy.Exchange {
+		resp, err := http.Post(janus.URL+"/v1/messages", "application/json", strings.NewReader(opusRequest))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return <-reported
+	}
+	if ex := send(); ex.Backend != "openai" {
+		t.Fatalf("first request went to %s", ex.Backend)
+	}
+	if ex := send(); ex.Backend != "local" || !strings.Contains(ex.Reason, "rule pace (openai.tokens limit 95% used, over 80%)") {
+		t.Errorf("with OpenAI's tokens 95%% used: went to %s, reason %q", ex.Backend, ex.Reason)
+	}
+	if len(srv.Requests()) != 1 || len(sawLocal) != 1 {
+		t.Errorf("OpenAI asked %d times, LM Studio %d", len(srv.Requests()), len(sawLocal))
+	}
+}

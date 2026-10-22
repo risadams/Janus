@@ -33,6 +33,27 @@ type QuotaShare struct {
 // that has run out in practice.
 const quotaWindow = "5h"
 
+// merged is the latest word on every provider's limits: q's windows over
+// those of before, and the account's status from Claude's alone. Claude's
+// and OpenAI's windows have different names (openai.QuotaFrom), so one
+// provider's answer leaves the other's limits as they were (#382).
+func merged(before, q *anthropic.Quota) *anthropic.Quota {
+	if before == nil {
+		return q
+	}
+	out := &anthropic.Quota{Windows: map[string]anthropic.QuotaWindow{}, Status: before.Status, Binding: before.Binding}
+	for name, w := range before.Windows {
+		out.Windows[name] = w
+	}
+	for name, w := range q.Windows {
+		out.Windows[name] = w
+	}
+	if q.Status != "" || q.Binding != "" {
+		out.Status, out.Binding = q.Status, q.Binding
+	}
+	return out
+}
+
 // summariseQuota works out the limits' summary from records in time
 // order. Each rise in five-hour utilization is put down to the request
 // whose response reported it. The API reports utilization in hundredths
@@ -51,7 +72,7 @@ func summariseQuota(records []Record) *QuotaSummary {
 		if sum == nil {
 			sum = &QuotaSummary{}
 		}
-		sum.At, sum.Latest = rec.Time, rec.Quota
+		sum.At, sum.Latest = rec.Time, merged(sum.Latest, rec.Quota)
 		w, ok := rec.Quota.Windows[quotaWindow]
 		if !ok {
 			continue

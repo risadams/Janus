@@ -271,7 +271,7 @@ Outcome.
 | `skipChecks` | For `local-then-escalate`: checks to leave out. See below. |
 | `maxSeconds` | For `local-then-escalate`: how long the local model gets before Claude is asked. Default 120. |
 | `fallback` | Where the request may go, in order: `upstream`, `openai`, or entries of `local.models`. With `route` left out the list is the route; with `upstream` or `shadow` it starts with `upstream`, and the rest answer when Claude cannot. See below. |
-| `ifUsageAbove` | Match only once a subscription usage limit is used past a share, as Claude last reported: `{"5h": 0.8}` for the five-hour limit, `"7d"` for the weekly one; any one past its share is enough. Until Claude has answered, and after a limit's reset, it does not match. Not for `upstream`. See [the pacing recipe](recipes/pace.md). |
+| `ifUsageAbove` | Match only once a subscription usage limit is used past a share, as Claude last reported: `{"5h": 0.8}` for the five-hour limit, `"7d"` for the weekly one, `"openai.requests"` and `"openai.tokens"` for OpenAI's per-minute limits; any one past its share is enough. Until the provider has answered, and after a limit's reset, it does not match. Not for `upstream`. See [the pacing recipe](recipes/pace.md). |
 
 The classes:
 

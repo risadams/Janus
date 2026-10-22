@@ -3,6 +3,7 @@ package ledger
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
 )
@@ -33,5 +34,20 @@ func TestQuotaIsSharedOutByTheClassThatRaisedIt(t *testing.T) {
 	}
 	if summariseQuota([]Record{rec("x", at(10, 1), "main", nil)}) != nil {
 		t.Error("a summary from records with no quota")
+	}
+}
+
+// The latest word on each provider's limits is kept: an answer from
+// OpenAI leaves Claude's limits as they were, and the other way about.
+func TestTheQuotaSummaryKeepsEachProvidersLatest(t *testing.T) {
+	at := time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC)
+	claude := &anthropic.Quota{Status: "allowed", Windows: map[string]anthropic.QuotaWindow{"5h": {Utilization: 0.4}}}
+	gpt := &anthropic.Quota{Windows: map[string]anthropic.QuotaWindow{"openai.tokens": {Utilization: 0.2}}}
+	sum := summariseQuota([]Record{
+		{Time: at, Backend: "upstream", Quota: claude},
+		{Time: at.Add(time.Minute), Backend: "openai", Quota: gpt},
+	})
+	if sum == nil || sum.Latest.Windows["5h"].Utilization != 0.4 || sum.Latest.Windows["openai.tokens"].Utilization != 0.2 || sum.Latest.Status != "allowed" {
+		t.Errorf("latest = %+v", sum.Latest)
 	}
 }

@@ -168,6 +168,13 @@ Present on a response from Claude through a subscription, read from the
 Absent with an API key, and on local answers. When the local model stood
 in, it is what Claude's refusal said.
 
+On a response from OpenAI it is OpenAI's per-minute limits, read from
+its `x-ratelimit-*` headers alone, none of which names the account: the
+windows `openai.requests` and `openai.tokens`, each with `utilization`
+(the share used), `status` `rejected` when none is left, and `resets`
+(the answer's time plus the reset OpenAI gave). `janus stats` shows the
+latest of each provider's limits together.
+
 | Field | Meaning |
 | --- | --- |
 | `windows` | Each limit by the API's name for its window (`5h`, `7d`), with `utilization` (the share used, from 0; above 1 is over), `status`, and `resets` (when it starts again) |

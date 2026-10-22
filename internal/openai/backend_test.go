@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -275,5 +276,28 @@ func TestARequestTheGuardCannotCheckIsNotSentToOpenAI(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(got), "The request was not sent to openai") || ex.Guard == nil || ex.Guard.Blocked == "" {
 		t.Errorf("status %d, body %s, guard %+v", resp.StatusCode, got, ex.Guard)
+	}
+}
+
+func TestOpenAIsLimitsAreReadAsShareUsedAndResetTime(t *testing.T) {
+	now := time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC)
+	h := http.Header{
+		"X-Ratelimit-Limit-Requests": {"60"}, "X-Ratelimit-Remaining-Requests": {"15"}, "X-Ratelimit-Reset-Requests": {"1s"},
+		"X-Ratelimit-Limit-Tokens": {"150000"}, "X-Ratelimit-Remaining-Tokens": {"0"}, "X-Ratelimit-Reset-Tokens": {"6m0s"},
+		"Openai-Organization": {"org-made-up"},
+	}
+	q := QuotaFrom(h, now)
+	req, tok := q.Windows[QuotaRequests], q.Windows[QuotaTokens]
+	if req.Utilization != 0.75 || !req.Resets.Equal(now.Add(time.Second)) || req.Status != "" {
+		t.Errorf("requests = %+v", req)
+	}
+	if tok.Utilization != 1 || tok.Status != "rejected" || !tok.Resets.Equal(now.Add(6*time.Minute)) {
+		t.Errorf("tokens = %+v", tok)
+	}
+	if b, _ := json.Marshal(q); strings.Contains(string(b), "org-") {
+		t.Errorf("the quota names the account: %s", b)
+	}
+	if QuotaFrom(http.Header{}, now) != nil {
+		t.Error("a quota from no headers")
 	}
 }
