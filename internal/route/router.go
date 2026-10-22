@@ -693,7 +693,7 @@ func (r *Router) provider(ctx context.Context, header http.Header, req *anthropi
 		}
 		return proxy.Plan{
 			Backend: r.OpenAI, Route: RouteOpenAI, Reason: reason,
-			BackendModel: tr.Choice.Model, ResponseModel: model, Translate: tr.Translate,
+			BackendModel: tr.Choice.Model, ResponseModel: model, Translate: tr.Translate, Report: tr.Report,
 			FallBackOn: func(status int, header http.Header) bool { return r.leaveOpenAI(tr.Failure(), status, header) },
 		}, nil
 	case p.Local != nil:

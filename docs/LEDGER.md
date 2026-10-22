@@ -130,7 +130,7 @@ used to; `janus stats` says how many, and `-json` has them as
 | `limits` | object | For a `429` or a `5xx`: the response's `retry-after`, `x-should-retry`, and `anthropic-ratelimit-*` headers, by lower-case name. What the API said about when it would answer again. |
 | `ttfb_ms` | int | Time until the first byte of the response body |
 | `duration_ms` | int | Time until the response ended |
-| `request` | object | Messages requests only: `model`, `stream`, `bytes`, `messages`, `tools`, `cache_breakpoints` |
+| `request` | object | Messages requests only: `model`, `stream`, `bytes`, `messages`, `tools`, `cache_breakpoints`, and for one OpenAI answered, `dropped`: what it asked for that OpenAI has no way to take (`stop_sequences`, `temperature`, `top_p`, `top_k`) |
 | `response` | object | Messages responses only: `model` (the model that answered, by its backend's own name, which for a local answer differs from `request.model`), `stop_reason`, `blocks` (content block types in order), `tools` (names of the tools called, in order) |
 | `usage` | object | Messages responses only; see below |
 | `unread` | string | Why a Messages response has no `usage`, e.g. `content-encoding br`, or a gzip body larger than 256 MiB once decompressed |
@@ -301,7 +301,7 @@ Token counts, split the way they are priced.
 | `cache_read` | Input tokens read from the prompt cache |
 | `cache_write` | Input tokens written to the prompt cache, in total |
 | `cache_write_5m`, `cache_write_1h` | The same, split by cache lifetime |
-| `thinking` | The part of `output` spent on thinking |
+| `thinking` | The part of `output` spent on thinking; for an OpenAI answer, the reasoning tokens OpenAI reports |
 | `speed` | `fast` for a fast-mode request; left out otherwise |
 
 Only `input` and `output` are always present. A field the server did not
@@ -309,6 +309,11 @@ report is left out, and that is not the same as zero: LM Studio, for
 example, reports no cache writes at all.
 
 Total input for a request is `input + cache_read + cache_write`.
+
+For an OpenAI answer the counts are OpenAI's, split the same way: OpenAI's
+input total is divided into `input`, `cache_read`, and `cache_write`, and
+a 30-minute cache write, which is what every Claude cache mark becomes on
+OpenAI, is filed under `cache_write_5m`.
 
 LM Studio counts tokens read from its own prompt cache inside its input
 figure. Janus takes them out, so `input` means uncached input whichever
@@ -461,9 +466,17 @@ Not priced, and reported as such:
 
 Requests answered by the local backend count as zero upstream cost.
 
-Prices change. The shipped table carries the date it was last checked,
-printed in every report, and any entry can be corrected or added under
-`pricing` in the [config file](CONFIG.md).
+An OpenAI answer is priced at OpenAI's standard-tier list prices
+([the OpenAI research note](research/openai.md#models)), by the model
+OpenAI says answered (`response.model`), with OpenAI's cache rates: a
+30-minute write at 1.25 times input (in the `cacheWrite5m` slot), a
+12-hour write at 2.5 times (in `cacheWrite1h`). A prompt over 272,000
+tokens costs twice the input and cache rates and 1.5 times output, as
+OpenAI prices it. `backend` splits `janus stats` by provider.
+
+Prices change. The shipped table carries the dates it was last checked,
+Anthropic's and OpenAI's, printed in every report, and any entry can be
+corrected or added under `pricing` in the [config file](CONFIG.md).
 
 ## Captures
 

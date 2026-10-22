@@ -70,7 +70,7 @@ func TestFromExchange(t *testing.T) {
 		t.Errorf("status=%d outcome=%q ttfb=%d duration=%d", rec.Status, rec.Outcome, rec.TTFBMs, rec.DurationMs)
 	}
 	want := Request{Model: "claude-opus-5-5", Stream: true, Bytes: len(exchange().RequestBody), Messages: 1, Tools: 2, CacheBreakpoints: 1}
-	if rec.Request == nil || *rec.Request != want {
+	if rec.Request == nil || !reflect.DeepEqual(*rec.Request, want) {
 		t.Errorf("request = %+v, want %+v", rec.Request, want)
 	}
 	if rec.Response == nil || rec.Response.StopReason != "tool_use" || strings.Join(rec.Response.Blocks, ",") != "thinking,tool_use" {

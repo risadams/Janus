@@ -69,6 +69,9 @@ type Exchange struct {
 	// that answered, in order: tried and failed, or passed over without
 	// being tried. Empty when the first answered.
 	Tried []Step
+	// Translation is set when the answer came from a backend the request
+	// was translated for: what the translation reports (Plan.Report).
+	Translation *Translation
 	// BackendFault is true when the backend that was meant to answer could
 	// not be reached or timed out, and there was no fallback.
 	BackendFault bool
@@ -137,6 +140,16 @@ type Guard struct {
 	// be made safe to send, or the response referred to a secret in a form
 	// that could not be restored.
 	Blocked string
+}
+
+// Translation is what a translating backend reports of one request.
+type Translation struct {
+	// Dropped names what the request asked for that the backend could not
+	// be sent, such as stop_sequences.
+	Dropped []string
+	// Reasoning is the part of the answer's output spent reasoning, when
+	// the backend says.
+	Reasoning *int
 }
 
 // Step is one provider on a rule's list that did not answer.
@@ -307,6 +320,9 @@ type Plan struct {
 	// before anything else reads it. An error means the request is not
 	// sent.
 	Translate func(body []byte) (sent []byte, back func(*http.Response) error, err error)
+	// Report, with Translate, says what the translation came to, once the
+	// answer has been read, for the ledger.
+	Report func() Translation
 	// PassedOver are the providers on a rule's list, before this plan's,
 	// that could not take the request and were not sent it.
 	PassedOver []Step
@@ -933,6 +949,10 @@ func New(opts Options) http.Handler {
 				NoFallback:     state.noFallback,
 				LocalCause:     firstOf(state.plan.LocalCause, state.noFallbackCause),
 				ResponseHeader: state.responseHeader,
+			}
+			if report := state.plan.Report; report != nil && state.back != nil {
+				t := report()
+				ex.Translation = &t
 			}
 			if g := state.guard; g != nil {
 				if rs := state.restorer; rs != nil {

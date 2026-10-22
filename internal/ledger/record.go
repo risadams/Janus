@@ -283,6 +283,9 @@ type Request struct {
 	Messages         int    `json:"messages"`
 	Tools            int    `json:"tools"`
 	CacheBreakpoints int    `json:"cache_breakpoints"`
+	// Dropped names what the request asked for that the provider that
+	// answered could not be sent, such as stop_sequences for OpenAI.
+	Dropped []string `json:"dropped,omitempty"`
 }
 
 // Response is what a Messages response contained, by shape only.
@@ -422,6 +425,9 @@ func FromExchange(ex proxy.Exchange) Record {
 				Tools:            len(req.Tools()),
 				CacheBreakpoints: req.CacheBreakpoints(),
 			}
+			if t := ex.Translation; t != nil {
+				rec.Request.Dropped = t.Dropped
+			}
 			if ex.Path == "/v1/messages" {
 				rec.Class = string(route.ClassifyRequest(ex.Header, req))
 			}
@@ -440,7 +446,7 @@ func FromExchange(ex proxy.Exchange) Record {
 			Input: u.Input, Output: u.Output,
 			CacheRead: u.CacheRead, CacheWrite: u.CacheWrite,
 			CacheWrite5m: u.CacheWrite5m, CacheWrite1h: u.CacheWrite1h,
-			Thinking: u.Thinking,
+			Thinking: firstInt(u.Thinking, reasoning(ex)),
 		}
 		if u.Speed != "" && u.Speed != "standard" {
 			rec.Usage.Speed = u.Speed
@@ -469,4 +475,22 @@ func FromExchange(ex proxy.Exchange) Record {
 		rec.Outcome = OutcomeOK
 	}
 	return rec
+}
+
+// reasoning is what a translating backend said its answer spent
+// reasoning, which OpenAI reports and Anthropic's usage has no field for.
+func reasoning(ex proxy.Exchange) *int {
+	if t := ex.Translation; t != nil {
+		return t.Reasoning
+	}
+	return nil
+}
+
+func firstInt(values ...*int) *int {
+	for _, v := range values {
+		if v != nil {
+			return v
+		}
+	}
+	return nil
 }

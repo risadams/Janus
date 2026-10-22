@@ -299,8 +299,18 @@ func printReport(w io.Writer, p painter, dir string, rep ledger.Report) {
 		fmt.Fprintf(w, "\nOutcomes: %s\n", strings.Join(outcomes, ", "))
 	}
 
-	fmt.Fprintf(w, "\nCosts are estimates at Anthropic's list prices as of %s. A subscription\n"+
-		"is not billed per token, so read them as a measure of usage, not a bill.\n", rep.PricesChecked)
+	openaiUsed := false
+	for _, row := range rep.ByBackend {
+		openaiUsed = openaiUsed || row.Key == "openai"
+	}
+	if openaiUsed {
+		fmt.Fprintf(w, "\nCosts are estimates at list prices: Anthropic's as of %s, OpenAI's as of\n"+
+			"%s. A subscription is not billed per token, so read Claude's as a measure of\n"+
+			"usage, not a bill.\n", rep.PricesChecked, ledger.OpenAIPricesChecked)
+	} else {
+		fmt.Fprintf(w, "\nCosts are estimates at Anthropic's list prices as of %s. A subscription\n"+
+			"is not billed per token, so read them as a measure of usage, not a bill.\n", rep.PricesChecked)
+	}
 	if rep.Total.Unpriced > 0 {
 		reasons := make([]string, 0, len(rep.Unpriced))
 		for reason, count := range rep.Unpriced {

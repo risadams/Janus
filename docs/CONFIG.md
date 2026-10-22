@@ -747,7 +747,7 @@ upstream, and only the digest applies.
 
 ## Pricing
 
-`janus stats` ships with Anthropic's list prices. To correct one, or to
+`janus stats` ships with Anthropic's and OpenAI's list prices. To correct one, or to
 price a model it does not know, add it under `pricing`, in US dollars per
 million tokens:
 

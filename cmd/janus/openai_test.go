@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -114,5 +115,45 @@ func TestTheOpenAIKeyIsFoundInNoCaptureLedgerRecordOrLogLine(t *testing.T) {
 	})
 	if files < 5 {
 		t.Errorf("found %d files; want a ledger and four captures to search", files)
+	}
+}
+
+// What the ledger keeps of a translation: the fields OpenAI could not be
+// sent, and the reasoning tokens OpenAI reports (#381).
+func TestTheLedgerRecordsWhatWasDroppedAndWhatWasSpentReasoning(t *testing.T) {
+	for _, stream := range []bool{true, false} {
+		srv := openaitest.New(t, openaitest.Reply{Output: []openaitest.Item{openaitest.Text{Text: "Hi."}},
+			Usage: openaitest.Usage{Input: 100, Output: 40, Reasoning: 30}})
+		cfg := config.Default()
+		cfg.OpenAI = config.OpenAI{BaseURL: srv.URL, Key: "env:OPENAI_API_KEY"}
+		cfg.Features.Route = true
+		cfg.Routing = []config.Rule{{Fallback: []string{"openai"}}}
+		key, _ := openai.LoadKey(cfg.OpenAI, func(string) (string, bool) { return "janus-test-key", true })
+		oa, err := openai.NewBackend(cfg.OpenAI, key, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		unused, _ := url.Parse("http://127.0.0.1:1")
+		router := newRouter(cfg, backend.NewUpstream(unused, nil), backend.NewLocal(unused, nil), oa)
+		reported := make(chan proxy.Exchange, 1)
+		janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: router.Upstream, Plan: router.Plan, Done: func(ex proxy.Exchange) { reported <- ex }}))
+		body := fmt.Sprintf(`{"model":"claude-sonnet-5-5","max_tokens":1000,"stream":%v,"stop_sequences":["END"],"temperature":0.2,"messages":[{"role":"user","content":"Say hi."}]}`, stream)
+		resp, err := http.Post(janus.URL+"/v1/messages", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		rec := ledger.FromExchange(<-reported)
+		janus.Close()
+		if rec.Backend != "openai" || rec.Request == nil || strings.Join(rec.Request.Dropped, ",") != "stop_sequences,temperature" {
+			t.Errorf("stream=%v: backend %s, request %+v", stream, rec.Backend, rec.Request)
+		}
+		if rec.Usage == nil || rec.Usage.Thinking == nil || *rec.Usage.Thinking != 30 || rec.Usage.Output != 40 {
+			t.Errorf("stream=%v: usage %+v", stream, rec.Usage)
+		}
+		if usd, unpriced := ledger.DefaultPrices.Cost(rec.Response.Model, *rec.Usage); unpriced != "" || usd <= 0 {
+			t.Errorf("stream=%v: the answer from %s is unpriced: %q", stream, rec.Response.Model, unpriced)
+		}
 	}
 }
