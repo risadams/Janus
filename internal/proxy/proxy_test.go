@@ -815,3 +815,39 @@ func TestARequestThatCannotBeTranslatedIsNotSent(t *testing.T) {
 		t.Errorf("the exchange records fault %q, guard %+v; want the translation's fault, and nothing of the guard", ex.Fault, ex.Guard)
 	}
 }
+
+// Barred is the guard's last word: whatever the plan, a request it keeps
+// from a backend is not sent there, and the client is told why (#406).
+func TestARequestKeptFromABackendIsNeverSentThere(t *testing.T) {
+	var hits atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1) }))
+	defer target.Close()
+	u, _ := url.Parse(target.URL)
+	reported := make(chan Exchange, 1)
+	front := httptest.NewServer(New(Options{
+		Upstream: backend.NewUpstream(u, nil),
+		Barred: func(name string, req *anthropic.Request) string {
+			if name == "upstream" {
+				return "guard.keepFrom.upstream keeps every request from it"
+			}
+			return ""
+		},
+		Done: func(ex Exchange) { reported <- ex },
+	}))
+	defer front.Close()
+
+	resp, err := plainClient.Post(front.URL+"/v1/messages", "application/json", strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	ex := <-reported
+	if hits.Load() != 0 {
+		t.Error("the request was sent")
+	}
+	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(body), "janus: guard.keepFrom.upstream keeps every request from it. The request was not sent upstream.") ||
+		ex.Guard == nil || ex.Guard.Blocked == "" {
+		t.Errorf("status %d, body %s, guard %+v", resp.StatusCode, body, ex.Guard)
+	}
+}

@@ -239,6 +239,11 @@ type Options struct {
 	// and the like itself, and refuses the rest. body is the request's,
 	// read whole. Nil refuses every such request.
 	Itself func(r *http.Request, body []byte, plan Plan) Reply
+	// Barred, when set, says why a request may not be sent to a remote
+	// backend, by its name ("upstream", "openai"), or "" if it may
+	// (guard.keepFrom, #406). It is the guard's last word, whatever the
+	// plan: a request it bars is not sent, and the client is told why.
+	Barred func(backend string, req *anthropic.Request) string
 }
 
 // Reply is an answer janus gives itself, with no backend asked.
@@ -757,6 +762,15 @@ func New(opts Options) http.Handler {
 			state.redaction, state.sent, state.back = nil, plan.Body, nil
 			if !remote(plan.Backend) {
 				return body, nil
+			}
+			if opts.Barred != nil {
+				req, err := anthropic.ParseRequest(body)
+				if err != nil {
+					return nil, fmt.Errorf("the request could not be read to check where it may go: %w", err)
+				}
+				if why := opts.Barred(plan.Backend.Name(), req); why != "" {
+					return nil, errors.New(why)
+				}
 			}
 			if state.withhold {
 				// The body is checked again as it stands now, since

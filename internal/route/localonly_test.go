@@ -71,6 +71,8 @@ type siteOptions struct {
 	noGuard  bool // no policy and no redactor: janus as a plain proxy
 	// openai, if set, is how a fake OpenAI answers, in turn.
 	openai []openaitest.Reply
+	// keepFromOpenAI keeps every request from OpenAI (guard.keepFrom).
+	keepFromOpenAI bool
 }
 
 func newSite(t *testing.T, o siteOptions) *site {
@@ -109,8 +111,13 @@ func newSite(t *testing.T, o siteOptions) *site {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if o.keepFromOpenAI {
+		kf := guard.NewKeepFrom()
+		_ = kf.Add("openai", nil, nil, true) // nothing to compile
+		r.Barred = kf.Barred
+	}
 	opts := proxy.Options{
-		Upstream: r.Upstream, Plan: r.Plan, KeepBodies: true,
+		Upstream: r.Upstream, Plan: r.Plan, KeepBodies: true, Barred: r.Barred,
 		Policy: policy, PolicyAction: o.action, LocalOnly: r.LocalOnly(""),
 		Done: func(ex proxy.Exchange) { r.Report(ex); s.report <- ex },
 	}

@@ -264,6 +264,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		router.Transforms = newPipeline(cfg, local, policy, logger)
 	}
 
+	var barred func(string, *anthropic.Request) string
+	if kf := newKeepFrom(cfg); kf != nil {
+		barred = kf.Barred
+		if router != nil {
+			router.Barred = barred // a rule's list passes over what it bars
+		}
+	}
 	var itself func(*http.Request, []byte, proxy.Plan) proxy.Reply
 	if cfg.Upstream.Off {
 		itself = router.Itself // Validate requires routing with upstream off
@@ -277,6 +284,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		LocalOnly:    keepLocal,
 		KeepBodies:   captures != nil,
 		Itself:       itself,
+		Barred:       barred,
 		Done: func(ex proxy.Exchange) {
 			rec := record(ex, led, captures, detector, console)
 			if router != nil {
@@ -700,6 +708,19 @@ func newPolicy(cfg config.Config) *guard.Policy {
 	}
 	policy, _ := guard.NewPolicy(lo.Paths, lo.Markers)
 	return policy
+}
+
+// newKeepFrom builds guard.keepFrom's check, or nil if it keeps nothing.
+// Validate has already established that the paths and markers compile.
+func newKeepFrom(cfg config.Config) *guard.KeepFrom {
+	if !cfg.Features.Guard || len(cfg.Guard.KeepFrom) == 0 {
+		return nil
+	}
+	kf := guard.NewKeepFrom()
+	for name, k := range cfg.Guard.KeepFrom {
+		_ = kf.Add(name, k.Paths, k.Markers, k.Everything) // compiled once already, by Validate
+	}
+	return kf
 }
 
 // newDetector builds the detector from the config. Validate has already
