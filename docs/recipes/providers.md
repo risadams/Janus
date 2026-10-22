@@ -83,6 +83,57 @@ The order is yours. `["openai", "upstream"]` puts OpenAI first.
 `["upstream", "janus-local", "openai"]` tries the free local model before
 the paid one.
 
+![A rule's list of providers: a request goes to Claude first; if Claude cannot answer it moves to OpenAI, and if OpenAI cannot either, to the local model, each one passed over without being asked if the request may not go there or it is waiting for a limit to reset](../diagrams/provider-chain.svg#gh-light-mode-only)
+![A rule's list of providers: a request goes to Claude first; if Claude cannot answer it moves to OpenAI, and if OpenAI cannot either, to the local model, each one passed over without being asked if the request may not go there or it is waiting for a limit to reset](../diagrams/provider-chain-dark.svg#gh-dark-mode-only)
+
+## Moving and coming back
+
+When Claude's usage limit is reached, its refusal says when the limit
+resets. Every session then starts its list below Claude, without asking
+it again, and goes back to Claude on the first turn after the reset.
+Janus keeps the reset time in `limits.json` in its log folder, so a
+restart doesn't send sessions back early. An OpenAI rate limit of a
+minute or more is treated the same way. An outage has no reset time:
+the provider is left alone for 30 seconds, then asked again, the wait
+doubling up to 10 minutes while it keeps failing.
+
+![Moving and coming back: Claude answers until its usage limit is reached; the 429 says when it resets; until then each turn goes to OpenAI without asking Claude; the first turn after the reset goes back to Claude, which is told how many turns OpenAI answered](../diagrams/move-and-return.svg#gh-light-mode-only)
+![Moving and coming back: Claude answers until its usage limit is reached; the 429 says when it resets; until then each turn goes to OpenAI without asking Claude; the first turn after the reset goes back to Claude, which is told how many turns OpenAI answered](../diagrams/move-and-return-dark.svg#gh-dark-mode-only)
+
+When Claude takes a conversation back, the console says how many turns
+the others gave, since Claude reads them as its own.
+
+## Choosing by hand
+
+To start one session on another provider, through the same Janus:
+
+```bash
+janus claude -provider openai   # OpenAI first, then the rule's list ("codex" works too)
+janus local                     # the local model only
+```
+
+To move sessions that are already running, from their next turn:
+
+```bash
+janus use codex                  # every session
+janus use local -session <id>    # one, by the ledger's "session"
+janus use -clear                 # back to the rules
+```
+
+A choice made with `janus use` ends by itself when its provider can't
+answer.
+
+## Keeping content from one provider
+
+If your employer approves one provider and not the other, keep named
+content from it, and a list goes on to the next provider for those
+requests ([the guard](../GUARD.md#content-for-one-provider-and-not-another)):
+
+```json
+"features": { "guard": true },
+"guard": { "keepFrom": { "openai": { "paths": ["clients/**"], "markers": ["CLIENT CONFIDENTIAL"] } } }
+```
+
 ## Seeing what happened
 
 When a request did not go to the first provider on its list, the console
@@ -101,3 +152,8 @@ A conversation keeps its history as it moves: what each provider said
 stays in it, and goes back to Claude in the same bytes Claude was sent
 before, so Claude's prompt cache is rebuilt once per move rather than on
 every turn.
+
+What Janus changes when it sends a request to OpenAI, and what it drops,
+is in [what Janus changes](../WHAT-JANUS-CHANGES.md#when-a-request-goes-to-openai).
+`janus doctor` says which providers your rules use and whether OpenAI
+answers.

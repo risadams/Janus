@@ -298,3 +298,30 @@ from it again, then export both.
 
 Draw new diagrams the same way, not in Mermaid, so that every picture in
 the docs is in the same style.
+
+## A rule's list of providers
+
+![A rule's list of providers](provider-chain.svg#gh-light-mode-only)
+![A rule's list of providers](provider-chain-dark.svg#gh-dark-mode-only)
+
+A request goes to the first provider on a rule's `fallback` list that can
+take it, and down the list when one cannot answer; a provider the request
+may not reach, or one waiting for a limit to reset, is passed over
+without being asked.
+
+Shown in [the providers recipe](../recipes/providers.md). Source:
+[provider-chain.html](provider-chain.html),
+[provider-chain-dark.html](provider-chain-dark.html).
+
+## Moving and coming back
+
+![Moving and coming back](move-and-return.svg#gh-light-mode-only)
+![Moving and coming back](move-and-return-dark.svg#gh-dark-mode-only)
+
+One session's turns across a usage limit: Claude refuses at turn 4, the
+next turns go to OpenAI without Claude being asked, and the first turn
+after the reset goes back to Claude.
+
+Shown in [the providers recipe](../recipes/providers.md). Source:
+[move-and-return.html](move-and-return.html),
+[move-and-return-dark.html](move-and-return-dark.html).

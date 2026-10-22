@@ -207,6 +207,29 @@ other way is not recognised; and under the `local` action the local
 model's answer is ordinary text that can outlive the tool call that made
 the conversation local.
 
+## The connection to OpenAI
+
+With an `openai` section and a rule, launcher, or `janus use` choice that
+sends requests there, Janus has a second destination off the machine:
+`openai.baseUrl`, by default `https://api.openai.com`, over TLS with the
+standard library's certificate checks.
+
+- **What goes**: the conversation, translated, after the guard has
+  checked it, as it would go to Anthropic. Your OpenAI key goes with it;
+  nothing of Claude Code's headers does. `guard.keepFrom.openai` keeps
+  named content from going there while it may still go to Anthropic.
+- **What OpenAI keeps**: every request is sent with `store: false`. What
+  OpenAI retains beyond that is its own policy, not something Janus can
+  see or change.
+- **Who decides it goes**: whoever writes the config, as for Anthropic. A
+  rule that names `openai` sends requests there without asking each time;
+  the ledger records every one with `backend: openai`, and `janus audit`
+  counts them.
+- **`janus doctor`** asks OpenAI whether it answers without sending the
+  key.
+
+Accepted: OpenAI is a destination you chose, like Anthropic.
+
 ## The local model's connection
 
 Requests to LM Studio go over plain HTTP to `local.baseUrl`. Its default,
@@ -267,8 +290,9 @@ right or safe.
 
 Janus changes a request only in ways it records: the model name for a
 local route, repairs for a mixed history, placeholders, withheld content,
-and digests of large tool results. Each is named in the ledger, and
-`janus audit` shows them. It narrows `Accept-Encoding` to gzip on
+and digests of large tool results; for OpenAI, a translation of the whole
+request ([what Janus changes](WHAT-JANUS-CHANGES.md#when-a-request-goes-to-openai)).
+Each is named in the ledger, and `janus audit` shows them. It narrows `Accept-Encoding` to gzip on
 Messages requests so that it can read the response. It adds no identifying header to what it sends upstream.
 
 ## Supply chain

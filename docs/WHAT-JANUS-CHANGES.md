@@ -71,11 +71,62 @@ Also:
   so that Claude Code accepts it. This means Claude Code cannot tell a
   local answer from Claude's. Janus's console and ledger can.
 
+## When a request goes to OpenAI
+
+Only a routing rule's `fallback` list, `janus claude -provider openai`,
+`janus use codex`, or `X-Janus-Route: openai` sends a request to OpenAI.
+There it is not adapted but **translated**: OpenAI is sent a Responses
+API request built from Claude Code's Messages request, and Claude Code is
+sent a Messages answer built from OpenAI's. That is the largest change
+Janus makes. The whole of it is in [the OpenAI research
+note](research/openai.md); in short:
+
+| What | Becomes | Why |
+| --- | --- | --- |
+| Claude Code's headers, its Anthropic credential among them | None of them. The request carries your OpenAI key and a content type, nothing else | OpenAI has no use for them, and your Anthropic credential must not reach it |
+| `model` | The OpenAI model chosen for it, by `openai.models` | OpenAI has no Claude models |
+| `thinking`, an effort setting, or a thinking budget | `reasoning.effort`, fitted to what the model accepts | The nearest thing OpenAI has |
+| The system prompt | A developer message. The billing line Claude Code puts first is left out | The Responses API's form for it |
+| Messages, tool calls, and tool results | Input items in OpenAI's form, in the same order | |
+| Tool names OpenAI would refuse (dots, slashes, more than 64 characters) | A name of letters, digits, and `_`, made the same way every time, and named back to Claude Code as it was | OpenAI's name pattern |
+| Claude's thinking blocks | Left out | Claude's signed thinking means nothing to OpenAI |
+| Tools Claude Code marks to load later | Left out until loaded; a tool search's result becomes text saying which tools it found | OpenAI has no deferred tools |
+| `cache_control` marks | OpenAI's prompt-cache breakpoints on the same blocks, with a cache key made from a hash of the session id | So OpenAI's cache holds as Claude's does |
+| `stop_sequences`, `temperature`, `top_p`, `top_k` | Dropped, and named in the ledger's `request.dropped` | OpenAI's reasoning models take none of them |
+| A conversation larger than the model's window | Older turns left out, with a note, at a place that holds from turn to turn; stage `leave_out_messages` | So it fits, without breaking the cache every turn |
+
+Every request is sent with `store: false`, so OpenAI keeps nothing of it
+between requests, and with truncation off, so OpenAI never drops the
+start of a conversation by itself. The same history always becomes the
+same bytes.
+
+On the way back:
+
+- OpenAI's answer, streamed or whole, becomes the Messages answer it
+  stands for. Claude Code is told the model it asked for answered; the
+  ledger's `response.model` is OpenAI's own.
+- OpenAI's reasoning becomes a thinking block with no signature, which
+  Janus leaves out when the conversation next goes to Claude (below).
+- A tool-call id Claude would refuse is replaced, the same way every
+  time.
+- OpenAI's errors become Anthropic's, with messages that start `janus:`.
+  A refused key is explained without OpenAI's own message, which can
+  quote part of the key, and your key is removed from anything OpenAI
+  sends back before Janus or Claude Code reads it.
+
+A request that cannot be translated is not sent to OpenAI: a rule's list
+passes over OpenAI, saying why, and otherwise the client gets an error.
+Anthropic's server tools (web search, web fetch, code execution) and
+Files API ids have no OpenAI form, so a request using them never goes.
+
+The guard checks the request before it is translated, so OpenAI is sent
+what the guard checked.
+
 ## When a conversation has had local turns and goes upstream
 
 | Stage | What changes | Why |
 | --- | --- | --- |
-| `drop_unsigned_thinking` | Thinking blocks written by the local model are removed from the history | Anthropic signs its own thinking and rejects a request carrying any without a valid signature |
+| `drop_unsigned_thinking` | Thinking blocks written by the local model, or translated from OpenAI's reasoning, are removed from the history | Anthropic signs its own thinking and rejects a request carrying any without a valid signature |
 
 Thinking that Anthropic signed is never touched.
 
@@ -116,10 +167,14 @@ message starting `janus:`, when:
   answer;
 - a request came from a web page rather than a program on this machine.
 
+With `upstream.off`, Janus also answers Claude Code's connectivity checks,
+its start-up quota check, and its token counts itself, with nothing sent
+anywhere ([no Anthropic account](CONFIG.md#no-anthropic-account)).
+
 ## The override header
 
 `X-Janus-Route`, if you send it, is read by Janus and removed. It reaches
-neither backend.
+no backend. The launchers' `-provider` and `janus local` set it.
 
 ## Checking
 
