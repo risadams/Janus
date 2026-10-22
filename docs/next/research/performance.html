@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Performance | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/next/research/performance"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Performance | Janus"><meta data-rh="true" name="description" content="Measured 2026-10-11 on an 18-core Apple silicon Mac, Go 1.27.2. Question:"><meta data-rh="true" property="og:description" content="Measured 2026-10-11 on an 18-core Apple silicon Mac, Go 1.27.2. Question:"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/next/research/performance"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/research/performance" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/research/performance" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"What each feature costs in speed","item":"https://risadams.github.io/Janus/docs/next/research/performance"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.31295cc3.css">
-<script src="/Janus/assets/js/runtime~main.c23ac968.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.6154f6ca.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.ba9f6ce6.js" defer="defer"></script>
 </head>
 <body>
@@ -28,6 +28,13 @@ seconds.</li>
 request) and was fixed here: the detector now remembers what it has
 already scanned. It costs that once per conversation and about 9 ms
 after.</li>
+<li class=""><strong>Configuring OpenAI changes nothing that goes to Claude</strong> (#409): the
+fidelity test runs again with OpenAI configured and listed after
+Claude, and every case matches a direct connection byte for byte.</li>
+<li class=""><strong>Translating to OpenAI costs about 3 ms on a 300 KB request</strong>, and
+about 29 ms at 3 MB, beside OpenAI&#x27;s seconds; it is spent only on
+requests that go to OpenAI. A long streamed answer costs about 1.3 µs
+an event to translate back (2026-10-22, below).</li>
 <li class=""><strong>Both soaks are clean.</strong> The synthetic one, and a working day of real
 Claude Code sessions through v0.9.0: memory, threads, and open files
 stayed flat, every request ended, and none failed.</li>
@@ -299,6 +306,63 @@ the entropy search, and the local-only policy all on:</p>
 <table><thead><tr><th>After</th><th>Heap in use</th><th>Goroutines</th></tr></thead><tbody><tr><td>5,000</td><td>14.7 MB</td><td>62</td></tr><tr><td>10,000</td><td>16.3 MB</td><td>62</td></tr><tr><td>15,000</td><td>16.8 MB</td><td>62</td></tr><tr><td>20,000</td><td>14.5 MB</td><td>62</td></tr><tr><td>25,000</td><td>15.8 MB</td><td>62</td></tr><tr><td>30,000</td><td>17.8 MB</td><td>62</td></tr><tr><td>35,000</td><td>16.3 MB</td><td>62</td></tr><tr><td>Done, connections closed</td><td>1.9 MB</td><td>24</td></tr></tbody></table>
 <p>59 seconds, 682 requests a second, none failed, no stuck streams. Memory
 and goroutines are flat while it runs and fall away when it stops.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="translation-409">Translation (#409)<a href="#translation-409" class="hash-link" aria-label="Direct link to Translation (#409)" title="Direct link to Translation (#409)" translate="no">​</a></h2>
+<p>Measured 2026-10-22, same machine, Go 1.27.3, with
+<code>JANUS_PERF=1 go test ./internal/route -run TestMeasureTranslation -v</code>.
+The requests are the overhead measurement&#x27;s, built the same way; the
+stream is the fake OpenAI&#x27;s long answer, 2,265 events of text and a tool
+call.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Request</th><th>Translate to OpenAI, p50</th></tr></thead><tbody><tr><td>32 KB</td><td>0.11 ms</td></tr><tr><td>289 KB</td><td>1.39 ms</td></tr><tr><td>3,071 KB</td><td>14.4 ms</td></tr></tbody></table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Stream</th><th>Events</th><th>Translate back, p50</th><th>Per event</th></tr></thead><tbody><tr><td>537 KB</td><td>2,265</td><td>2.95 ms</td><td>1.3 µs</td></tr></tbody></table>
+<p>A request is translated twice on its way to OpenAI: once when it is
+planned, to know it can be, and once just before sending, on the body as
+the guard leaves it. So the cost per request is about twice the first
+table: about 3 ms at 300 KB, 29 ms at 3 MB. Stream translation runs as
+the events arrive, so it adds about a microsecond and a half to each.</p>
+<p>The soak above, rerun with one turn in seven sent to OpenAI and the next
+back to Claude (40,000 requests, 8 at a time, everything on), stayed
+flat at 16 to 19 MB of heap and 62 to 65 goroutines, fell to 2.8 MB and
+25 when it ended, and had no failures: 67 s, 595 requests a second. A
+first run grew to 588 MB, which was the fake OpenAI keeping every request
+it was sent; it now has a setting to keep none.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="soak-with-real-sessions">Soak with real sessions<a href="#soak-with-real-sessions" class="hash-link" aria-label="Direct link to Soak with real sessions" title="Direct link to Soak with real sessions" translate="no">​</a></h2>
 <p>On 2026-10-19 the Janus in everyday use was sampled every five minutes
 (<code>ps</code> and <code>lsof</code>, with the day&#x27;s ledger) while Claude Code worked through
@@ -393,20 +457,32 @@ at 18 to 20 and its open files at 17 to 19.</li>
 </ul>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-this-does-not-show">What this does not show<a href="#what-this-does-not-show" class="hash-link" aria-label="Direct link to What this does not show" title="Direct link to What this does not show" translate="no">​</a></h2>
 <ul>
-<li class=""><strong>Real latency.</strong> Against the real API the network and the model
-dominate everything here.</li>
-<li class=""><strong>A heavy day.</strong> The real soak served 139 requests in its 7 h 47 m,
+<li class="">
+<p><strong>OpenAI&#x27;s own latency.</strong> Translation is measured against the fake; no
+request has gone to OpenAI.</p>
+</li>
+<li class="">
+<p><strong>Real latency.</strong> Against the real API the network and the model
+dominate everything here.</p>
+</li>
+<li class="">
+<p><strong>A heavy day.</strong> The real soak served 139 requests in its 7 h 47 m,
 most of them in the first three and a half hours; the busiest day of the
 baseline week (<a class="" href="/Janus/docs/next/research/baseline">baseline.md</a>) had about a thousand. Every
 request went to Claude, so the local model, escalation, and cancelled
 requests were not exercised. The synthetic soak covers volume and
-escalation, but not a real LM Studio.</li>
-<li class=""><strong>Other machines.</strong> One fast machine. Pattern matching and JSON scale
-with a single core&#x27;s speed.</li>
-<li class=""><strong>The local model.</strong> How long LM Studio takes is in the
+escalation, but not a real LM Studio.</p>
+</li>
+<li class="">
+<p><strong>Other machines.</strong> One fast machine. Pattern matching and JSON scale
+with a single core&#x27;s speed.</p>
+</li>
+<li class="">
+<p><strong>The local model.</strong> How long LM Studio takes is in the
 <a class="" href="/Janus/docs/next/research/lmstudio">LM Studio notes</a> and the
-<a class="" href="/Janus/docs/next/research/delegation">delegation measurements</a>, and it is seconds to minutes.</li>
-</ul></div><footer class="theme-doc-footer docusaurus-mt-lg"><div class="row margin-top--sm theme-doc-footer-edit-meta-row"><div class="col noPrint_WFHX"><a href="https://github.com/risadams/Janus/edit/main/docs/research/performance.md" target="_blank" rel="noopener noreferrer" class="theme-edit-this-page"><svg fill="currentColor" height="20" width="20" viewBox="0 0 40 40" class="iconEdit_Z9Sw" aria-hidden="true"><g><path d="m34.5 11.7l-3 3.1-6.3-6.3 3.1-3q0.5-0.5 1.2-0.5t1.1 0.5l3.9 3.9q0.5 0.4 0.5 1.1t-0.5 1.2z m-29.5 17.1l18.4-18.5 6.3 6.3-18.4 18.4h-6.3v-6.2z"></path></g></svg>Edit this page</a></div><div class="col lastUpdated_JAkA"></div></div></footer></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/Janus/docs/next/research/codex-cli"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">What the Codex CLI sends</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/Janus/docs/next/research/loopback-stall"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Large bodies stalling in CI</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#decision" class="table-of-contents__link toc-highlight">Decision</a></li><li><a href="#method" class="table-of-contents__link toc-highlight">Method</a></li><li><a href="#what-each-feature-adds" class="table-of-contents__link toc-highlight">What each feature adds</a><ul><li><a href="#32-kb" class="table-of-contents__link toc-highlight">32 KB</a></li><li><a href="#293-kb" class="table-of-contents__link toc-highlight">293 KB</a></li><li><a href="#3-mb" class="table-of-contents__link toc-highlight">3 MB</a></li></ul></li><li><a href="#reading-the-numbers" class="table-of-contents__link toc-highlight">Reading the numbers</a></li><li><a href="#soak" class="table-of-contents__link toc-highlight">Soak</a></li><li><a href="#soak-with-real-sessions" class="table-of-contents__link toc-highlight">Soak with real sessions</a></li><li><a href="#what-this-does-not-show" class="table-of-contents__link toc-highlight">What this does not show</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">
+<a class="" href="/Janus/docs/next/research/delegation">delegation measurements</a>, and it is seconds to minutes.</p>
+</li>
+</ul></div><footer class="theme-doc-footer docusaurus-mt-lg"><div class="row margin-top--sm theme-doc-footer-edit-meta-row"><div class="col noPrint_WFHX"><a href="https://github.com/risadams/Janus/edit/main/docs/research/performance.md" target="_blank" rel="noopener noreferrer" class="theme-edit-this-page"><svg fill="currentColor" height="20" width="20" viewBox="0 0 40 40" class="iconEdit_Z9Sw" aria-hidden="true"><g><path d="m34.5 11.7l-3 3.1-6.3-6.3 3.1-3q0.5-0.5 1.2-0.5t1.1 0.5l3.9 3.9q0.5 0.4 0.5 1.1t-0.5 1.2z m-29.5 17.1l18.4-18.5 6.3 6.3-18.4 18.4h-6.3v-6.2z"></path></g></svg>Edit this page</a></div><div class="col lastUpdated_JAkA"></div></div></footer></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/Janus/docs/next/research/codex-cli"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">What the Codex CLI sends</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/Janus/docs/next/research/loopback-stall"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Large bodies stalling in CI</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#decision" class="table-of-contents__link toc-highlight">Decision</a></li><li><a href="#method" class="table-of-contents__link toc-highlight">Method</a></li><li><a href="#what-each-feature-adds" class="table-of-contents__link toc-highlight">What each feature adds</a><ul><li><a href="#32-kb" class="table-of-contents__link toc-highlight">32 KB</a></li><li><a href="#293-kb" class="table-of-contents__link toc-highlight">293 KB</a></li><li><a href="#3-mb" class="table-of-contents__link toc-highlight">3 MB</a></li></ul></li><li><a href="#reading-the-numbers" class="table-of-contents__link toc-highlight">Reading the numbers</a></li><li><a href="#soak" class="table-of-contents__link toc-highlight">Soak</a></li><li><a href="#translation-409" class="table-of-contents__link toc-highlight">Translation (#409)</a></li><li><a href="#soak-with-real-sessions" class="table-of-contents__link toc-highlight">Soak with real sessions</a></li><li><a href="#what-this-does-not-show" class="table-of-contents__link toc-highlight">What this does not show</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">
           <div class="footer-bar">
             <div class="footer-bar__brand">
               <svg viewBox="10 16 180 168" width="20" height="20" aria-hidden="true">
