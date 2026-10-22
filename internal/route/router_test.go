@@ -1235,7 +1235,7 @@ func TestOverrideRefusals(t *testing.T) {
 		wantStatus int
 		wantIn     string
 	}{
-		"not a route":                          {router(local, qwen), "sideways", 400, `"sideways" is not upstream, local, or local=`},
+		"not a route":                          {router(local, qwen), "sideways", 400, `"sideways" is not upstream, openai, local, or local=`},
 		"a local model that is not configured": {router(local, qwen), "local=other", 400, `"other" is not an entry of local.models`},
 		"several models and none named":        {router(local, two), "local", 400, "several local models are configured"},
 		"no local model at all":                {router(local, nil), "local", 400, "no local model is configured"},

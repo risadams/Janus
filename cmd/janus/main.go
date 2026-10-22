@@ -83,6 +83,9 @@ func commands() []command {
 		{name: "claude", about: "run Claude Code through janus", run: func(args []string, stdout, stderr io.Writer) int {
 			return runClaude(args, os.Stdin, stdout, stderr)
 		}},
+		{name: "local", about: "run Claude Code on the local model only, through janus", run: func(args []string, stdout, stderr io.Writer) int {
+			return runLocal(args, os.Stdin, stdout, stderr)
+		}},
 		{name: "service", about: "run janus when you log in", verbs: serviceVerbs, run: runService},
 		{name: "update", about: "replace this janus with the latest release", run: runUpdate},
 		{name: "config", about: "rewrite an old config in this version's form", verbs: configVerbs, run: runConfig},
