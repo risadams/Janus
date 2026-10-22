@@ -179,9 +179,10 @@ func TestNothingProtectedReachesTheUpstream(t *testing.T) {
 		path   string
 		header []string
 		// upstream is how many requests the route sends off the
-		// machine, to Anthropic and OpenAI, when nothing makes the
-		// request local-only.
-		upstream int
+		// machine, to Anthropic and OpenAI, each turn, when nothing
+		// makes the request local-only; sent, when set, is the total for
+		// both turns instead.
+		upstream, sent int
 	}{
 		{name: "no routing at all", upstream: 1},
 		{name: "token count", path: "/v1/messages/count_tokens", upstream: 1},
@@ -207,7 +208,9 @@ func TestNothingProtectedReachesTheUpstream(t *testing.T) {
 		{name: "rule: OpenAI only", opts: siteOptions{openai: []openaitest.Reply{done, done},
 			rules: []Rule{{Name: "all", Fallback: []Provider{{Name: RouteOpenAI}}}}}, upstream: 1},
 		{name: "rule: Claude out of usage, OpenAI answers", opts: siteOptions{upstream: limitReached, openai: []openaitest.Reply{done, done},
-			rules: []Rule{{Name: "all", Fallback: []Provider{{Name: RouteUpstream}, {Name: RouteOpenAI}}}}}, upstream: 2},
+			rules: []Rule{{Name: "all", Fallback: []Provider{{Name: RouteUpstream}, {Name: RouteOpenAI}}}}}, upstream: 2,
+			// The second turn passes Claude over until its limit resets.
+			sent: 3},
 		{name: "rule: OpenAI refuses the translation, Claude answers", opts: siteOptions{openai: []openaitest.Reply{refused, refused},
 			rules: []Rule{{Name: "all", Fallback: []Provider{{Name: RouteOpenAI}, {Name: RouteUpstream}}}}}, upstream: 2},
 	}
@@ -250,6 +253,9 @@ func TestNothingProtectedReachesTheUpstream(t *testing.T) {
 					// goes nowhere off the machine, except to Anthropic
 					// to be counted.
 					want := 2 * route.upstream
+					if route.sent > 0 {
+						want = route.sent
+					}
 					if action == "local" && path == "/v1/messages" {
 						want = 0
 					}

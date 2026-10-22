@@ -332,11 +332,14 @@ func Limits(h http.Header) map[string]string {
 	return out
 }
 
-// Handback says how many main-loop turns the local model gave in Claude's
-// place, from when, before Claude answered the conversation again.
+// Handback says how many main-loop turns the local model, and OpenAI,
+// gave in Claude's place, from when, before Claude answered the
+// conversation again.
 type Handback struct {
-	LocalTurns int       `json:"local_turns"`
-	Since      time.Time `json:"since"`
+	LocalTurns int `json:"local_turns"`
+	// OpenAITurns are the main-loop turns OpenAI gave meanwhile (#378).
+	OpenAITurns int       `json:"openai_turns,omitempty"`
+	Since       time.Time `json:"since"`
 }
 
 // FromExchange builds the record for one proxied request.

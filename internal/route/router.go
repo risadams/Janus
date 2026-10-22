@@ -187,6 +187,9 @@ type Router struct {
 	// openaiDown is the same for OpenAI: one per router, since OpenAI is
 	// one service.
 	openaiDown outage
+	// resets is when each provider can be asked again, after a limit or
+	// an outage (#378).
+	resets resets
 	// limits is Claude's latest word on the usage limits, for rules with
 	// IfUsageAbove (#240).
 	limits headroom
@@ -322,9 +325,11 @@ func (b *breaker) record(ok bool) {
 func (r *Router) Report(ex proxy.Exchange) {
 	if ex.Backend == "upstream" && ex.Status > 0 && ex.Status < 400 {
 		r.down.recovered() // Claude answered
+		r.resets.answered(RouteUpstream)
 	}
 	if ex.Backend == RouteOpenAI && ex.Status > 0 && ex.Status < 400 {
 		r.openaiDown.recovered()
+		r.resets.answered(RouteOpenAI)
 	}
 	switch {
 	case ex.Backend == "upstream":
@@ -662,7 +667,7 @@ func (r *Router) fallBackAlong(plan proxy.Plan, header http.Header, arrived []by
 		return plan
 	}
 	if plan.Route == RouteUpstream {
-		plan.FallBackOn = r.down.standIn
+		plan.FallBackOn = r.leaveClaude
 	}
 	plan.Fallback = func(ctx context.Context) (proxy.Plan, bool) {
 		var notes []string
@@ -781,13 +786,41 @@ func (r *Router) leaveOpenAI(f *openai.Failure, status int, header http.Header) 
 			return true
 		}
 	}
-	return r.openaiDown.standIn(status, header)
+	down := r.openaiDown.standIn(status, header)
+	switch wait := openaiWait(header); {
+	case status == http.StatusTooManyRequests && wait >= longWait:
+		r.resets.limit(RouteOpenAI, r.resets.clock().Add(wait), "OpenAI's rate limit was reached")
+	case down:
+		r.resets.outage(RouteOpenAI)
+	}
+	return down
+}
+
+// leaveClaude is an upstream plan's FallBackOn: the #150 rules, which
+// also note when Claude can be asked again. A usage limit's reset time is
+// kept, so that until then the list starts below Claude; an outage starts
+// a backoff instead.
+func (r *Router) leaveClaude(status int, header http.Header) bool {
+	down := r.down.standIn(status, header)
+	switch wait := retryWait(header, r.resets.clock()); {
+	case status == http.StatusTooManyRequests && wait >= longWait:
+		r.resets.limit(RouteUpstream, r.resets.clock().Add(wait), "Claude's usage limit was reached")
+	case down:
+		r.resets.outage(RouteUpstream)
+	}
+	return down
 }
 
 // barred says why p may not have req, or nil if it may: the check through
 // which content can be allowed to reach some providers and not others
 // (#406). Nil Barred allows every provider.
+//
+// It also passes over a provider waiting for a limit to reset, or out for
+// an outage's backoff (#378).
 func (r *Router) barred(p Provider, req *anthropic.Request) *problem {
+	if why := r.resets.out(p.Name); why != "" {
+		return &problem{http.StatusTooManyRequests, "rate_limit_error", providerName(p) + " is out: " + why, ""}
+	}
 	if r.Barred == nil {
 		return nil
 	}
@@ -795,6 +828,17 @@ func (r *Router) barred(p Provider, req *anthropic.Request) *problem {
 		return &problem{http.StatusForbidden, "permission_error", why, ""}
 	}
 	return nil
+}
+
+// providerName names p in a reason.
+func providerName(p Provider) string {
+	switch p.Name {
+	case RouteUpstream:
+		return "Claude"
+	case RouteOpenAI:
+		return "OpenAI"
+	}
+	return p.describe()
 }
 
 // thenNote says, for the trace, what comes after list[from-1]. from is at
