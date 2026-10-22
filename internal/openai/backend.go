@@ -14,6 +14,7 @@ import (
 
 	"github.com/risadams/janus/internal/anthropic"
 	"github.com/risadams/janus/internal/config"
+	"github.com/risadams/janus/internal/proxy"
 )
 
 // Backend is the OpenAI API as a backend the proxy can send a Messages
@@ -89,6 +90,8 @@ type Translation struct {
 	b       *Backend
 	opts    RequestOptions
 	failure *Failure
+	dropped []string
+	result  *Result
 }
 
 // Translation chooses the model and effort for req and checks that req can
@@ -116,6 +119,7 @@ func (t *Translation) Translate(body []byte) ([]byte, func(*http.Response) error
 	if err != nil {
 		return nil, nil, err
 	}
+	t.dropped = tr.Dropped
 	return tr.Body, t.b.back(t, ResponseOptions{Tools: tr.Tools, Summary: tr.Summary, scrub: t.b.key.scrub}), nil
 }
 
@@ -123,6 +127,19 @@ func (t *Translation) Translate(body []byte) ([]byte, func(*http.Response) error
 // what a fallback list decides on (#428). Nil before then, and when OpenAI
 // answered. It is read on the goroutine that reads the response.
 func (t *Translation) Failure() *Failure { return t.failure }
+
+// Report is what the ledger keeps of the translation (#381): what Claude
+// Code asked for that OpenAI could not be sent, and the part of the answer
+// OpenAI spent reasoning, which Anthropic's usage has no field for. Call
+// it once the answer has been read.
+func (t *Translation) Report() proxy.Translation {
+	r := proxy.Translation{Dropped: t.dropped}
+	if t.result != nil {
+		reasoning := t.result.Usage.Reasoning
+		r.Reasoning = &reasoning
+	}
+	return r
+}
 
 // Out says why OpenAI is out until janus is restarted, or "" if it is not:
 // it refused the key, or the account has run out (Kind). Both need the
@@ -164,8 +181,13 @@ func (b *Backend) back(t *Translation, opts ResponseOptions) func(*http.Response
 			src := resp.Body
 			pr, pw := io.Pipe()
 			go func() {
-				_, err := TranslateStream(pw, src, opts)
+				res, err := TranslateStream(pw, src, opts)
 				_ = src.Close() // the stream has been read as far as it will be
+				if err == nil {
+					// Before the pipe closes, so that whoever reads it to
+					// the end sees this.
+					t.result = &res
+				}
 				// ErrBrokenStream reaches the proxy as a broken body,
 				// and Claude Code as a broken stream, as from Anthropic.
 				pw.CloseWithError(err)
@@ -186,6 +208,7 @@ func (b *Backend) back(t *Translation, opts ResponseOptions) func(*http.Response
 			t.failure = res.Err
 			replace(resp, res.Err.Status, res.Err.Body())
 		default:
+			t.result = &res
 			replace(resp, http.StatusOK, out)
 		}
 		return nil

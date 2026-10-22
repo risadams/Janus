@@ -23,6 +23,10 @@ type Price struct {
 	// to. A larger request is priced on a different schedule that this
 	// table does not hold, so its cost is reported as unknown.
 	MaxPromptTokens int
+	// LongPromptTokens, when set, is the prompt past which the whole
+	// request costs twice the input and cache rates and 1.5 times the
+	// output rate, as OpenAI prices a long prompt.
+	LongPromptTokens int
 }
 
 // standard builds a price from the three published rates. Cache writes are
@@ -40,7 +44,7 @@ func standard(input, output, cacheRead float64) Price {
 type Prices map[string]Price
 
 // DefaultPrices are Anthropic's first-party list prices as of
-// PricesChecked. They are estimates of cost at list price: a subscription
+// PricesChecked, and OpenAI's as of OpenAIPricesChecked. They are estimates of cost at list price: a subscription
 // is not billed per token, and other platforms set their own rates.
 var DefaultPrices = Prices{
 	"claude-fable-5-1":  standard(10, 50, 0.25),
@@ -60,6 +64,36 @@ var DefaultPrices = Prices{
 		MaxPromptTokens: 100_000,
 	},
 	"claude-haiku-4-5": standard(1, 5, 0.10),
+
+	// OpenAI's standard-tier list prices, from each model's page as read on
+	// OpenAIPricesChecked (docs/research/openai.md, Models). A cache write
+	// lasting 30 minutes, which is what every Claude cache mark becomes,
+	// is filed as the 5-minute write and costs 1.25 times input; a 12-hour
+	// one as the 1-hour write, at 2.5 times. A prompt over 272K input
+	// tokens costs twice the input and cache rates and 1.5 times output.
+	"gpt-6-astra": openaiPrice(10, 50, 1),
+	"gpt-6.1-sol": openaiPrice(2, 10, 0.10),
+	"gpt-6-luna":  openaiPrice(0.10, 0.50, 0.01),
+	// Promotional, until at least 2026-11-21.
+	"gpt-5.6-sol": openaiPrice(4, 20, 0.40),
+	// It caches only implicitly, writing at no extra cost.
+	"gpt-5.3-codex": {Input: 1.75, Output: 14, CacheRead: 0.175, CacheWrite5m: 1.75, CacheWrite1h: 1.75, LongPromptTokens: openaiLongPrompt},
+}
+
+// OpenAIPricesChecked is when the OpenAI entries of DefaultPrices were
+// last checked against OpenAI's model pages.
+const OpenAIPricesChecked = "2026-10-21"
+
+// openaiLongPrompt is the prompt past which OpenAI prices the whole
+// request at twice the input and cache rates and 1.5 times output.
+const openaiLongPrompt = 272_000
+
+func openaiPrice(input, output, cacheRead float64) Price {
+	return Price{
+		Input: input, Output: output, CacheRead: cacheRead,
+		CacheWrite5m: input * 1.25, CacheWrite1h: input * 2.5,
+		LongPromptTokens: openaiLongPrompt,
+	}
 }
 
 // With returns a copy of the table with overrides added or replaced.
@@ -117,12 +151,16 @@ func (p Prices) Cost(model string, u Usage) (usd float64, unpriced string) {
 		write5m, write1h = deref(u.CacheWrite5m), deref(u.CacheWrite1h)
 	}
 
+	in, out := 1.0, 1.0
+	if price.LongPromptTokens > 0 && u.Input+read+write > price.LongPromptTokens {
+		in, out = 2, 1.5
+	}
 	const perToken = 1e-6
-	return perToken * (float64(u.Input)*price.Input +
-		float64(u.Output)*price.Output +
-		float64(read)*price.CacheRead +
-		float64(write5m)*price.CacheWrite5m +
-		float64(write1h)*price.CacheWrite1h), ""
+	return perToken * (in*(float64(u.Input)*price.Input+
+		float64(read)*price.CacheRead+
+		float64(write5m)*price.CacheWrite5m+
+		float64(write1h)*price.CacheWrite1h) +
+		out*float64(u.Output)*price.Output), ""
 }
 
 func deref(p *int) int {

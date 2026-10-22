@@ -43,6 +43,9 @@ func TestCacheReadDiscountDiffersByModel(t *testing.T) {
 
 func TestCacheWritesAreMultiplesOfInput(t *testing.T) {
 	for model, p := range DefaultPrices {
+		if !strings.HasPrefix(model, "claude-") {
+			continue // OpenAI's are its own; see TestOpenAIAnswersArePricedAtOpenAIsRates
+		}
 		if !near(p.CacheWrite5m, p.Input*1.25) || !near(p.CacheWrite1h, p.Input*2) {
 			t.Errorf("%s: cache writes $%.4f / $%.4f are not 1.25x and 2x the input price $%.4f", model, p.CacheWrite5m, p.CacheWrite1h, p.Input)
 		}
@@ -122,5 +125,24 @@ func TestWithOverridesWithoutChangingTheDefaults(t *testing.T) {
 	}
 	if _, ok := DefaultPrices["my-gateway-model"]; ok {
 		t.Error("With added to the shipped table")
+	}
+}
+
+func TestOpenAIAnswersArePricedAtOpenAIsRates(t *testing.T) {
+	read, write := 90_000, 1_000
+	u := Usage{Input: 9_000, Output: 2_000, CacheRead: &read, CacheWrite: &write, CacheWrite5m: &write}
+	// OpenAI reports a dated model; the ledger keeps its name.
+	usd, unpriced := DefaultPrices.Cost("gpt-6.1-sol-2026-08-01", u)
+	want := (9_000*2 + 90_000*0.10 + 1_000*2.5 + 2_000*10) / 1e6
+	if unpriced != "" || math.Abs(usd-want) > 1e-9 {
+		t.Errorf("cost = %v (%q), want %v", usd, unpriced, want)
+	}
+
+	long := 300_000
+	u = Usage{Input: 1_000, Output: 1_000, CacheRead: &long}
+	usd, _ = DefaultPrices.Cost("gpt-6.1-sol", u)
+	want = (2*(1_000*2+300_000*0.10) + 1.5*1_000*10) / 1e6
+	if math.Abs(usd-want) > 1e-9 {
+		t.Errorf("a prompt over 272K costs %v, want %v at the long-prompt rates", usd, want)
 	}
 }
