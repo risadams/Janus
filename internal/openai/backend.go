@@ -141,6 +141,10 @@ func (t *Translation) Report() proxy.Translation {
 	return r
 }
 
+// Window is the context window of the model a translation chose, or zero
+// when it is not known.
+func (t *Translation) Window() int { return Window(t.b.config, t.Choice.Model) }
+
 // Out says why OpenAI is out until janus is restarted, or "" if it is not:
 // it refused the key, or the account has run out (Kind). Both need the
 // owner, so asking again would only be refused again.

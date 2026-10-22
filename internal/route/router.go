@@ -192,6 +192,9 @@ type Router struct {
 	resets resets
 	// manual is the providers chosen by hand with janus use (#379).
 	manual manual
+	// cuts is where each conversation was last cut to fit an OpenAI
+	// model's window, so that the cut holds from turn to turn (#407).
+	cuts cuts
 	// limits is Claude's latest word on the usage limits, for rules with
 	// IfUsageAbove (#240).
 	limits headroom
@@ -795,6 +798,26 @@ func (r *Router) provider(ctx context.Context, header http.Header, req *anthropi
 		var body []byte
 		effects := r.Transforms.Apply(header, req)
 		stages := transform.Stages(effects)
+		// A conversation larger than the model's window has older turns
+		// left out, at a place that holds from turn to turn (#407).
+		if window := tr.Window(); window > 0 {
+			answer := min(max(req.MaxTokens(), 1), openai.MaxOutputTokens)
+			budget := window - answer
+			estimate := EstimateTokens(req.Bytes())
+			session := header.Get("X-Claude-Code-Session-Id")
+			if estimate > budget || r.cuts.get(session) > 0 {
+				start, ok := fitStably(req, budget, r.cuts.get(session), openaiLeftOutNote)
+				if !ok {
+					return proxy.Plan{}, &problem{http.StatusBadRequest, "invalid_request_error",
+						fmt.Sprintf("this conversation is about %d tokens, and even its first and latest turns are more than the %d tokens %s has room for", estimate, budget, tr.Choice.Model), proxy.CauseTooLarge}
+				}
+				r.cuts.set(session, start)
+				if start > 0 {
+					stages = append(stages, StageLeaveOut)
+					reason = fmt.Sprintf("%s; %d earlier messages left out to fit %s's window", reason, start-1, tr.Choice.Model)
+				}
+			}
+		}
 		if len(stages) > 0 {
 			body = req.Bytes()
 		}

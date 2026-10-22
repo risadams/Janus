@@ -235,6 +235,11 @@ type OpenAI struct {
 	// or "default" for any other. Entries here replace those in
 	// DefaultOpenAIModels.
 	Models map[string]string `json:"models,omitempty"`
+	// ContextTokens sets an OpenAI model's context window, by its name,
+	// for a model janus does not know or one whose window has changed. A
+	// conversation larger than the window has older turns left out for
+	// that model (#407).
+	ContextTokens map[string]int `json:"contextTokens,omitempty"`
 }
 
 // DefaultOpenAIURL is the OpenAI API.
@@ -253,7 +258,9 @@ var DefaultOpenAIModels = map[string]string{
 }
 
 // On reports whether the config has an openai section at all.
-func (o OpenAI) On() bool { return o.BaseURL != "" || o.Key != "" || len(o.Models) > 0 }
+func (o OpenAI) On() bool {
+	return o.BaseURL != "" || o.Key != "" || len(o.Models) > 0 || len(o.ContextTokens) > 0
+}
 
 // URL is the API's address, with the default filled in.
 func (o OpenAI) URL() string {
@@ -648,6 +655,11 @@ func (c Config) Validate() error {
 	if c.OpenAI.On() {
 		errs = append(errs, checkURL("openai.baseUrl", c.OpenAI.URL(), DefaultOpenAIURL))
 		errs = append(errs, checkOpenAIKey(c.OpenAI.Key))
+		for model, n := range c.OpenAI.ContextTokens {
+			if n < 1024 {
+				errs = append(errs, fmt.Errorf("openai.contextTokens.%s is %d; give the model's context window in tokens, such as 400000", model, n))
+			}
+		}
 		for from, to := range c.OpenAI.Models {
 			if strings.TrimSpace(from) == "" || strings.TrimSpace(to) == "" {
 				errs = append(errs, fmt.Errorf(`openai.models has an entry %q: %q; both sides must name a model, as in "sonnet": "gpt-6.1-sol"`, from, to))
