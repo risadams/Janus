@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Troubleshooting | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/next/TROUBLESHOOTING"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Troubleshooting | Janus"><meta data-rh="true" name="description" content="Janus sits in the middle, between Claude Code on one side and Anthropic"><meta data-rh="true" property="og:description" content="Janus sits in the middle, between Claude Code on one side and Anthropic"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/next/TROUBLESHOOTING"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/TROUBLESHOOTING" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/TROUBLESHOOTING" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"User guide","item":"https://risadams.github.io/Janus/docs/next/guide/"},{"@type":"ListItem","position":2,"name":"Troubleshooting","item":"https://risadams.github.io/Janus/docs/next/TROUBLESHOOTING"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.31295cc3.css">
-<script src="/Janus/assets/js/runtime~main.9f43ddd3.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.d40adcdc.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.ba9f6ce6.js" defer="defer"></script>
 </head>
 <body>
@@ -26,13 +26,14 @@ nothing for an Anthropic outage.</p>
 which link it is:</p>
 <ol>
 <li class=""><strong><code>janus doctor</code>.</strong> It checks the config, the port, Anthropic, LM
-Studio, the OpenAI key if the config has an <code>openai</code> section, and the
-log folder, when the ledger last recorded a request,
-and whether Claude Code is pointed at Janus, and says what to fix.
-<code>janus doctor -json</code> gives the same results for a script or a status
-line: <code>version</code>, <code>ok</code> (false if any check failed, when it also exits
-1), and <code>checks</code>, each with a <code>name</code>, a <code>level</code> of <code>ok</code>, <code>warn</code>, or
-<code>fail</code>, and a <code>detail</code>.</li>
+Studio, OpenAI if the config has an <code>openai</code> section (whether it
+answers, asked without a key, and whether the key is found, never
+printing it), which providers the routing rules send requests to, the
+log folder, when the ledger last recorded a request, and whether
+Claude Code is pointed at Janus, and says what to fix. <code>janus doctor -json</code> gives the same results for a script or a status line:
+<code>version</code>, <code>ok</code> (false if any check failed, when it also exits 1), and
+<code>checks</code>, each with a <code>name</code> (<code>openai</code> and <code>providers</code> among them), a
+<code>level</code> of <code>ok</code>, <code>warn</code>, or <code>fail</code>, and a <code>detail</code>.</li>
 <li class=""><strong>The console.</strong> Janus prints a line for every request. No lines at
 all means Claude Code is not using Janus. A <code>↳</code> note under a line says
 what happened to that request and why.</li>
@@ -321,6 +322,15 @@ and stopped it. The message says why: the request could not be read, was
 too large to check (over 32 MB), or still held a secret or local-only
 content after replacement. <code>janus audit</code> lists these under &quot;Stopped by
 the guard&quot;.</p>
+<p><strong>Janus won&#x27;t start: <code>openai.key is &quot;env:OPENAI_API_KEY&quot;, and OPENAI_API_KEY is not set</code>.</strong> A routing rule&#x27;s <code>fallback</code> names <code>openai</code>,
+and Janus reads the key once, when it starts. Export the variable in the
+shell or service that starts Janus, not only in the one running Claude
+Code. <code>janus doctor</code> says whether the key is found, and never prints it.</p>
+<p><strong>A <code>500</code> saying <code>janus: OpenAI refused the API key janus reads from the environment variable ...</code>.</strong> The key is there but OpenAI rejects it:
+revoked, mistyped, or for another project. Put a current key in the
+variable and restart Janus. OpenAI&#x27;s own message is left out, since it
+can quote part of the key. Until the restart, OpenAI is left out of every
+list (below).</p>
 <p><strong>The ledger&#x27;s <code>reason</code> says <code>OpenAI is out until janus restarts</code>.</strong>
 OpenAI refused the key, or the account ran out of credit or reached a
 spend limit, and the reason after it says which. Janus stops asking until
