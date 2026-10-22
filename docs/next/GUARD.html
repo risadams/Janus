@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">The guard | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/next/GUARD"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="The guard | Janus"><meta data-rh="true" name="description" content="The guard looks for secrets in requests on their way to Anthropic, and"><meta data-rh="true" property="og:description" content="The guard looks for secrets in requests on their way to Anthropic, and"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/next/GUARD"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/GUARD" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/GUARD" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"The guard","item":"https://risadams.github.io/Janus/docs/next/GUARD"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.31295cc3.css">
-<script src="/Janus/assets/js/runtime~main.5e54e9f4.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.2ca379c3.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.ba9f6ce6.js" defer="defer"></script>
 </head>
 <body>
@@ -184,6 +184,9 @@ secret is written to the cache again on its next turn.</li>
 <li class=""><strong>A secret is removed everywhere once it has been seen.</strong> If Claude
 repeats a password in a later message, with nothing around it to mark
 it as one, it is still replaced.</li>
+<li class=""><strong>On the way to OpenAI, secrets are replaced before the request is
+translated, and put back after the answer is translated back,</strong> so a
+placeholder OpenAI repeats is restored in the answer Claude Code reads.</li>
 <li class=""><strong>Placeholders cut across pieces of a streamed answer are handled.</strong>
 The test suite cuts one at every possible position.</li>
 <li class=""><strong>Requests to the local model are not redacted.</strong> They do not go to
@@ -195,7 +198,9 @@ Anthropic, and the local model needs the real values.</li>
 <li class="">
 <p><strong>A request that cannot be checked is not sent.</strong> If Janus cannot read
 a request to look for secrets, or finds one it cannot remove, the client
-gets an error and nothing goes upstream.</p>
+gets an error and nothing goes upstream. This holds for OpenAI as for
+Anthropic, and for any provider Janus does not know, which it takes to
+be off the machine: only LM Studio is not checked.</p>
 </li>
 <li class="">
 <p><strong>A tool call that cannot be restored is stopped.</strong> If Claude calls a
