@@ -28,8 +28,10 @@ Claude, and a failure reaches Claude Code as Claude sent it.
 "features": { "route": true }
 ```
 
-Put the key in `OPENAI_API_KEY` before starting Janus. Janus reads it once,
-at startup, and won't start without it. Janus picks an OpenAI model for
+Put the key in `OPENAI_API_KEY` before starting Janus, or, if Janus runs
+as a service, in your system's credential store with `"key":
+"keychain:janus-openai"` ([the OpenAI key](../CONFIG.md#openai)). Janus
+reads it once, at startup, and won't start without it. Janus picks an OpenAI model for
 each Claude model Claude Code asks for (`openai.models` in
 [CONFIG.md](../CONFIG.md) changes them), and Claude Code is told the model
 it asked for answered.

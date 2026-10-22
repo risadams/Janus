@@ -54,10 +54,6 @@ func (Key) MarshalText() ([]byte, error) { return []byte(redacted), nil }
 // Set reports whether the key was found.
 func (k Key) Set() bool { return k.secret != "" }
 
-// ErrKeychainNotYet is LoadKey's answer for a keychain: source, which this
-// version does not read yet (#405).
-var ErrKeychainNotYet = errors.New(`openai.key names the credential store, which this version of janus cannot read yet; use "env:OPENAI_API_KEY" for now`)
-
 // LoadKey reads the key from where openai.key says it is kept. lookupEnv
 // is os.LookupEnv, or a fake in tests. The errors name the source and say
 // what to do, and never include the value found.
@@ -71,7 +67,11 @@ func LoadKey(o config.OpenAI, lookupEnv func(string) (string, bool)) (Key, error
 		}
 		return parseKey(o.Key, name, value)
 	case "keychain":
-		return Key{}, ErrKeychainNotYet
+		value, err := readKeychain(name)
+		if err != nil {
+			return Key{}, fmt.Errorf("openai.key is %q, but the key could not be read: %w", o.Key, err)
+		}
+		return parseKey(o.Key, name, value)
 	default:
 		// Validate refuses anything else, so this is a config that was not
 		// validated.

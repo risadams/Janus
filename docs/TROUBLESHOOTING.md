@@ -335,6 +335,11 @@ and Janus reads the key once, when it starts. Export the variable in the
 shell or service that starts Janus, not only in the one running Claude
 Code. `janus doctor` says whether the key is found, and never prints it.
 
+**Janus won't start: `openai.key is "keychain:NAME", but the key could not
+be read`.** The credential store has no entry by that name, or its tool
+is missing (`secret-tool` comes with libsecret on Linux). The message ends
+with the command that adds the entry; run it, then start Janus again.
+
 **A `500` saying `janus: OpenAI refused the API key janus reads from the
 environment variable ...`.** The key is there but OpenAI rejects it:
 revoked, mistyped, or for another project. Put a current key in the
