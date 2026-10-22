@@ -3,6 +3,7 @@ package route
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/risadams/janus/internal/anthropic"
 )
@@ -109,48 +110,74 @@ func fitAt(req *anthropic.Request, start, budget int, note string) bool {
 // budget, so that it can stay put again for many turns. It returns where
 // it cut (0 for not at all) and false if even the first and latest turns
 // do not fit.
+//
+// A conversation that fits whole is sent whole, whatever was remembered:
+// it has been compacted since, or prev belongs to another (#450). A
+// remembered cut the conversation no longer reaches is looked for afresh.
 func fitStably(req *anthropic.Request, budget, prev int, note string) (start int, ok bool) {
-	if EstimateTokens(req.Bytes()) <= budget && prev == 0 {
+	if EstimateTokens(req.Bytes()) <= budget {
 		return 0, true
 	}
 	if prev > 0 && fitAt(req, prev, budget, note) {
 		return prev, true
 	}
 	messages := req.Messages()
-	for _, target := range []int{budget / 2, budget} {
-		for s := max(prev+1, 2); s < len(messages); s++ {
-			if fitAt(req, s, target, note) {
-				// Within the half it was cut for, which is within budget.
-				return s, true
+	// Forward from the old cut, so a growing conversation's cut only
+	// moves on; then from the start, for one that no longer reaches it.
+	froms := []int{2}
+	if prev+1 > 2 && prev+1 < len(messages) {
+		froms = []int{prev + 1, 2}
+	}
+	for _, from := range froms {
+		for _, target := range []int{budget / 2, budget} {
+			for s := from; s < len(messages); s++ {
+				if fitAt(req, s, target, note) {
+					// Within the half it was cut for, which is within budget.
+					return s, true
+				}
 			}
 		}
 	}
 	return 0, false
 }
 
-// cuts remembers, by session, the message a conversation was last cut at.
+// cuts remembers, by conversation (transform.Conversation: a session and
+// its agent, so a subagent is apart from its main loop), the message the
+// conversation was last cut at. A conversation not seen for forgetCutsAfter
+// is forgotten, so a long-running janus does not grow without end.
 type cuts struct {
 	mu sync.Mutex
-	at map[string]int
+	at map[string]cut
 }
 
-func (c *cuts) get(session string) int {
-	if session == "" {
-		return 0
-	}
+type cut struct {
+	start int
+	seen  time.Time
+}
+
+const forgetCutsAfter = 24 * time.Hour
+
+func (c *cuts) get(conversation string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.at[session]
+	return c.at[conversation].start
 }
 
-func (c *cuts) set(session string, start int) {
-	if session == "" {
+// set records start, or forgets the conversation when start is 0.
+func (c *cuts) set(conversation string, start int, now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for k, v := range c.at {
+		if now.Sub(v.seen) > forgetCutsAfter {
+			delete(c.at, k)
+		}
+	}
+	if start == 0 {
+		delete(c.at, conversation)
 		return
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.at == nil {
-		c.at = map[string]int{}
+		c.at = map[string]cut{}
 	}
-	c.at[session] = start
+	c.at[conversation] = cut{start: start, seen: now}
 }

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/risadams/janus/internal/config"
 	"github.com/risadams/janus/internal/openai"
@@ -102,5 +103,94 @@ func TestAConversationTooLargeForTheWindowMovesOn(t *testing.T) {
 	res := j.send(t, longConversation(3, 6000))
 	if res.Exchange.Backend != "upstream" || len(srv.Requests()) != 0 || !strings.Contains(res.Exchange.Reason, "even its first and latest turns are more than the") {
 		t.Errorf("went to %s, OpenAI asked %d times, reason %q", res.Exchange.Backend, len(srv.Requests()), res.Exchange.Reason)
+	}
+}
+
+// A cut remembered for one conversation does not refuse another, nor the
+// same one once it fits again (#450): a subagent shares its main loop's
+// session id, and /compact makes a conversation shorter than its cut.
+func TestARememberedCutRefusesNothingThatFits(t *testing.T) {
+	ok := openaitest.Answer(openaitest.Text{Text: "ok"})
+	oa, srv := windowed(t, 4000, ok, ok, ok, ok)
+	up := httptest.NewServer(never(t))
+	defer up.Close()
+	j := listRouter(t, up, oa, "openai")
+	send := func(agent, body string) result {
+		req, _ := http.NewRequest(http.MethodPost, j.url+"/v1/messages", strings.NewReader(body))
+		req.Header.Set("X-Claude-Code-Session-Id", "s1")
+		if agent != "" {
+			req.Header.Set("X-Claude-Code-Agent-Id", agent)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return result{resp.StatusCode, "", <-j.reported}
+	}
+	if r := send("", longConversation(10, 1000)); r.Exchange.Backend != "openai" {
+		t.Fatalf("the long main conversation went to %s: %q", r.Exchange.Backend, r.Exchange.Reason)
+	}
+	if r := send("a1", longConversation(1, 200)); r.Status != http.StatusOK || strings.Contains(strings.Join(r.Exchange.Stages, ","), StageLeaveOut) {
+		t.Errorf("a short subagent conversation: status %d, stages %v, reason %q", r.Status, r.Exchange.Stages, r.Exchange.Reason)
+	}
+	if r := send("", longConversation(1, 200)); r.Status != http.StatusOK || strings.Contains(strings.Join(r.Exchange.Stages, ","), StageLeaveOut) {
+		t.Errorf("the main conversation after /compact: status %d, stages %v, reason %q", r.Status, r.Exchange.Stages, r.Exchange.Reason)
+	}
+	// Long again after the compaction: cut afresh, not refused.
+	if r := send("", longConversation(6, 1000)); r.Status != http.StatusOK || !strings.Contains(strings.Join(r.Exchange.Stages, ","), StageLeaveOut) {
+		t.Errorf("long again: status %d, stages %v, reason %q", r.Status, r.Exchange.Stages, r.Exchange.Reason)
+	}
+	if len(srv.Requests()) != 4 {
+		t.Errorf("OpenAI asked %d times, want 4", len(srv.Requests()))
+	}
+}
+
+func TestCutsAreForgottenAfterADay(t *testing.T) {
+	var c cuts
+	now := time.Now()
+	c.set("old", 5, now)
+	c.set("new", 7, now.Add(25*time.Hour))
+	if c.get("old") != 0 || c.get("new") != 7 {
+		t.Errorf("old %d, new %d", c.get("old"), c.get("new"))
+	}
+}
+
+// A subagent's cut does not move its main loop's, which would break the
+// main loop's cache on its next turn (#450).
+func TestASubagentsCutLeavesItsMainLoopsCutAlone(t *testing.T) {
+	ok := openaitest.Answer(openaitest.Text{Text: "ok"})
+	oa, srv := windowed(t, 4000, ok, ok, ok)
+	up := httptest.NewServer(never(t))
+	defer up.Close()
+	j := listRouter(t, up, oa, "openai")
+	send := func(agent, body string) {
+		req, _ := http.NewRequest(http.MethodPost, j.url+"/v1/messages", strings.NewReader(body))
+		req.Header.Set("X-Claude-Code-Session-Id", "s1")
+		if agent != "" {
+			req.Header.Set("X-Claude-Code-Agent-Id", agent)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		<-j.reported
+	}
+	send("", longConversation(10, 1000))
+	send("a1", longConversation(6, 1200))
+	send("", longConversation(11, 1000))
+	inputs := func(body []byte) []json.RawMessage {
+		var v struct {
+			Input []json.RawMessage `json:"input"`
+		}
+		_ = json.Unmarshal(body, &v)
+		return v.Input
+	}
+	a, b := inputs(srv.Requests()[0].Body), inputs(srv.Requests()[2].Body)
+	for i := range a {
+		if i >= len(b) || string(a[i]) != string(b[i]) {
+			t.Fatalf("the main loop's input[%d] changed after a subagent's turn, so its cache would break", i)
+		}
 	}
 }
