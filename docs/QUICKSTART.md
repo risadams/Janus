@@ -63,6 +63,11 @@ through, and every request goes to Anthropic as before. Janus prints a
 line for each one. Claude Code's own arguments go after it, as in
 `janus claude --resume`.
 
+To run one session on another provider, through the same Janus, give
+`janus claude -provider openai` (OpenAI first, then your rules' list), or
+run `janus local` (the local model only). See
+[choosing the route yourself](CONFIG.md#choosing-the-route-yourself).
+
 `janus claude` checks first that Janus is answering, then starts
 `claude` with two variables set for that session:
 

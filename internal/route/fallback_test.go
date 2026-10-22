@@ -315,3 +315,57 @@ func (j *listJanus) send(t *testing.T, body string) result {
 		return result{}
 	}
 }
+
+// Three sessions on one janus, each with its own provider: one following
+// the rules, one asking for OpenAI first, one for the local model only
+// (#383). OpenAI first still falls down the rule's list.
+func TestEachSessionCanAskForItsOwnProvider(t *testing.T) {
+	oa, srv := fakeOpenAI(t, openaitest.Answer(openaitest.Text{Text: "From OpenAI."}), openaitest.RateLimited("insufficient_quota", ""))
+	local, sawLocal := lmStudio(t, nil)
+	var sent []string
+	up := httptest.NewServer(claudeAnswers(&sent))
+	defer up.Close()
+	u, _ := url.Parse(up.URL)
+	model := qwen["janus-local"]
+	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local, OpenAI: oa, Aliases: qwen,
+		Rules: []Rule{{Name: "main", Route: RouteUpstream, Fallback: []Provider{{Name: RouteUpstream}, {Name: "janus-local", Local: &model}}}}}
+	reported := make(chan proxy.Exchange, 1)
+	janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: r.Upstream, Plan: r.Plan, Done: func(ex proxy.Exchange) { r.Report(ex); reported <- ex }}))
+	defer janus.Close()
+	send := func(session, route string) proxy.Exchange {
+		req, _ := http.NewRequest(http.MethodPost, janus.URL+"/v1/messages", strings.NewReader(opusRequest))
+		req.Header.Set("X-Claude-Code-Session-Id", session)
+		if route != "" {
+			req.Header.Set(backend.RouteHeader, route)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return <-reported
+	}
+
+	if ex := send("rules", ""); ex.Backend != "upstream" {
+		t.Errorf("the session following the rules went to %s", ex.Backend)
+	}
+	if ex := send("codex", RouteOpenAI); ex.Backend != "openai" || !strings.HasPrefix(ex.Reason, "override openai, then rule main") {
+		t.Errorf("the OpenAI session went to %s: %q", ex.Backend, ex.Reason)
+	}
+	if ex := send("local", RouteLocal); ex.Backend != "local" {
+		t.Errorf("the local session went to %s", ex.Backend)
+	}
+	// OpenAI out of quota: the OpenAI session goes on down the rule's list.
+	if ex := send("codex", RouteOpenAI); ex.Backend != "upstream" || len(ex.Tried) != 1 || ex.Tried[0].Backend != "openai" {
+		t.Errorf("with OpenAI out, the OpenAI session went to %s, tried %+v", ex.Backend, ex.Tried)
+	}
+	if len(sent) != 2 || len(srv.Requests()) != 2 || len(sawLocal) != 1 {
+		t.Errorf("Claude asked %d times, OpenAI %d, LM Studio %d", len(sent), len(srv.Requests()), len(sawLocal))
+	}
+	for _, r := range srv.Requests() {
+		if r.Header.Get(backend.RouteHeader) != "" {
+			t.Error("the route header reached OpenAI")
+		}
+	}
+}

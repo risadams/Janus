@@ -157,7 +157,7 @@ func TestRouteExplainsOverrideAndStandIn(t *testing.T) {
 	wantLines(t, out, "override local: local, to qwen/qwen3.8-27b", "Decision local: qwen/qwen3.8-27b answers")
 
 	out, _ = explain(t, lms.URL, true, nil, mainBody, "-override", "sideways")
-	wantLines(t, out, "Decision refused with HTTP 400", "is not upstream, local, or local=")
+	wantLines(t, out, "Decision refused with HTTP 400", "is not upstream, openai, local, or local=")
 
 	out, _ = explain(t, lms.URL, true, []map[string]any{{"name": "main", "class": "main", "route": "upstream", "fallback": []string{"upstream", "janus-local"}}}, mainBody)
 	wantLines(t, out, "rule main: upstream, or qwen/qwen3.8-27b if Claude cannot answer", "if Claude cannot answer (unreachable, rate limited, overloaded, failing),", "the next on the rule's list answers instead")

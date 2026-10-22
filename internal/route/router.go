@@ -383,7 +383,8 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	// A client can choose the route itself with a header, which beats the
 	// rules. Forcing local is a promise that the request will not go
 	// upstream, so if local cannot take it the request is refused.
-	if choice := strings.TrimSpace(header.Get(backend.RouteHeader)); choice != "" {
+	openaiFirst := false
+	if choice := strings.TrimSpace(header.Get(backend.RouteHeader)); choice != "" && choice != RouteOpenAI {
 		reason := "override " + choice
 		refuse := func(status int, kind, message string) (proxy.Plan, *proxy.Refusal, []string) {
 			trace = append(trace, fmt.Sprintf("%s: refused: %s", reason, message))
@@ -410,7 +411,7 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 			return plan, nil, trace
 		default:
 			return refuse(http.StatusBadRequest, "invalid_request_error",
-				fmt.Sprintf("%s: %q is not upstream, local, or local=<name of an entry in local.models>", backend.RouteHeader, choice))
+				fmt.Sprintf("%s: %q is not upstream, openai, local, or local=<name of an entry in local.models>", backend.RouteHeader, choice))
 		}
 	}
 
@@ -489,6 +490,36 @@ func (r *Router) Explain(ctx context.Context, header http.Header, req *anthropic
 	if r.NoUpstream && facts.Class == Quota {
 		trace = append(trace, "quota check: answered by janus, since upstream is off")
 		return proxy.Plan{Backend: backend.Nowhere{}, Route: "janus", Reason: "quota check: answered by janus, since upstream is off"}, nil, trace
+	}
+
+	if strings.TrimSpace(header.Get(backend.RouteHeader)) == RouteOpenAI {
+		openaiFirst = true
+	}
+	if openaiFirst && r.OpenAI != nil {
+		// The session asked for OpenAI first (janus claude -provider
+		// openai): OpenAI, then the rest of the list of the rule that
+		// would have decided, so the chain still covers OpenAI failing.
+		list := []Provider{{Name: RouteOpenAI}}
+		label := "override openai"
+		for i, rule := range r.Rules {
+			if rule.mismatch(facts, r.NoUpstream) != "" {
+				continue
+			}
+			label = "override openai, then " + rule.label(i)
+			for _, p := range rule.Fallback {
+				if p.Name != RouteOpenAI {
+					list = append(list, p)
+				}
+			}
+			break
+		}
+		trace = append(trace, label+": openai first")
+		return fromList(Rule{Fallback: list}, label, 0, nil)
+	} else if openaiFirst {
+		trace = append(trace, "override openai: refused, since openai is not configured")
+		return proxy.Plan{}, &proxy.Refusal{Status: http.StatusBadRequest, Type: "invalid_request_error",
+			Message: "janus: " + backend.RouteHeader + ": openai: there is no openai section in janus's config", Route: "none",
+			Reason: "override openai: refused: openai is not configured"}, trace
 	}
 
 	for i, rule := range r.Rules {

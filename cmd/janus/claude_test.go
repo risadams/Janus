@@ -22,6 +22,7 @@ func TestFakeClaude(t *testing.T) {
 	}
 	args := os.Args[slices.Index(os.Args, "--")+1:]
 	fmt.Printf("args=%q base=%q toolsearch=%q\n", args, os.Getenv("ANTHROPIC_BASE_URL"), os.Getenv("ENABLE_TOOL_SEARCH"))
+	fmt.Printf("headers=%q\n", os.Getenv("ANTHROPIC_CUSTOM_HEADERS"))
 	code, _ := strconv.Atoi(os.Getenv("JANUS_FAKE_EXIT"))
 	os.Exit(code)
 }
@@ -29,6 +30,12 @@ func TestFakeClaude(t *testing.T) {
 // launch runs janus claude with the fake Claude Code, a config listening
 // on listen, and the guard on or off.
 func launch(t *testing.T, listen string, guard bool, args ...string) (out string, code int, ran bool) {
+	t.Helper()
+	return launchAs(t, "claude", listen, guard, args...)
+}
+
+// launchAs is launch for the launcher command named, "claude" or "local".
+func launchAs(t *testing.T, command, listen string, guard bool, args ...string) (out string, code int, ran bool) {
 	t.Helper()
 	saved := claudeProgram
 	claudeProgram = []string{os.Args[0], "-test.run=^TestFakeClaude$", "--"}
@@ -43,7 +50,7 @@ func launch(t *testing.T, listen string, guard bool, args ...string) (out string
 	os.WriteFile(path, data, 0o600)
 
 	var stdout, stderr bytes.Buffer
-	code = run(append([]string{"claude", "-config", path}, args...), &stdout, &stderr)
+	code = run(append([]string{command, "-config", path}, args...), &stdout, &stderr)
 	return stdout.String() + stderr.String(), code, strings.Contains(stdout.String(), "args=")
 }
 
@@ -138,5 +145,35 @@ func TestDialAddrReachesEveryInterfaceOnLoopback(t *testing.T) {
 		if got := dialAddr(listen); got != want {
 			t.Errorf("dialAddr(%q) = %q, want %q", listen, got, want)
 		}
+	}
+}
+
+// A session's choice of provider reaches Janus in the route header, added
+// to any headers already set, and Claude Code's own arguments pass on.
+func TestTheLaunchersSayWhichProviderTheSessionWants(t *testing.T) {
+	addr := listening(t)
+	t.Setenv("ANTHROPIC_CUSTOM_HEADERS", "X-Team: core")
+	for _, c := range []struct {
+		command string
+		args    []string
+		want    string
+	}{
+		{"claude", []string{"-provider", "codex", "--resume"}, `headers="X-Team: core\nX-Janus-Route: openai"`},
+		{"claude", []string{"-provider=claude"}, `headers="X-Team: core\nX-Janus-Route: upstream"`},
+		{"local", []string{"--resume"}, `headers="X-Team: core\nX-Janus-Route: local"`},
+		{"claude", []string{"--resume"}, `headers="X-Team: core"`},
+	} {
+		out, code, ran := launchAs(t, c.command, addr, false, c.args...)
+		if !ran || code != 0 || !strings.Contains(out, c.want) || !strings.Contains(out, `"--resume"`) && slices.Contains(c.args, "--resume") {
+			t.Errorf("janus %s %q: exit %d:\n%s\nwant %s", c.command, c.args, code, out, c.want)
+		}
+	}
+	if out, code, ran := launch(t, addr, false, "-provider", "gemini"); ran || code != 2 || !strings.Contains(out, "is not claude, openai, codex, or local") {
+		t.Errorf("an unknown provider: exit %d, ran %v:\n%s", code, ran, out)
+	}
+	// Only janus can send a session to a provider, so with it down the
+	// session does not start.
+	if out, code, ran := launchAs(t, "local", refused(), false); ran || code != 1 || !strings.Contains(out, "only janus can send this session") {
+		t.Errorf("janus down: exit %d, ran %v:\n%s", code, ran, out)
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/risadams/janus/internal/backend"
 	"github.com/risadams/janus/internal/config"
 )
 
@@ -31,10 +32,41 @@ var claudeProgram = []string{"claude"}
 const dialTimeout = time.Second
 
 func runClaude(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	return startClaude("janus claude", "", args, stdin, stdout, stderr)
+}
+
+// runLocal is `janus local`: Claude Code on the local model only, for
+// this session, through the same running Janus.
+func runLocal(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	return startClaude("janus local", "local", args, stdin, stdout, stderr)
+}
+
+// providers maps what -provider accepts to the X-Janus-Route value that
+// asks for it. "codex" is OpenAI by the name of its coding models.
+var providers = map[string]string{
+	"claude": "upstream",
+	"openai": "openai",
+	"codex":  "openai",
+	"local":  "local",
+}
+
+// startClaude runs Claude Code through Janus. provider, if set, is the session's
+// choice of provider, given to every request in the route header, which
+// Janus never forwards: "openai" goes to OpenAI first and then along the
+// rule's list, "local" to the local model only, "claude" to Claude only.
+func startClaude(name, provider string, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ours, theirs := splitClaudeArgs(args)
-	fs := newFlagSet("janus claude", stderr)
+	fs := newFlagSet(name, stderr)
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "Usage: janus claude [-config file] [-require] [--] [claude arguments]\n\n"+
+		providerFlag := " [-provider claude|openai|local]"
+		if provider != "" {
+			providerFlag = ""
+		}
+		fmt.Fprintf(stderr, "Usage: %s [-config file] [-require]%s [--] [claude arguments]\n\n", name, providerFlag)
+		if provider == "local" {
+			fmt.Fprintf(stderr, "Runs Claude Code on the local model only, through Janus, for this session.\n\n")
+		}
+		fmt.Fprintf(stderr, ""+
 			"Runs Claude Code through Janus if Janus is answering on its listen address.\n"+
 			"If it is not, runs Claude Code directly, unless the guard is on or -require\n"+
 			"is given. Arguments after janus's own go to claude unchanged; for Claude\n"+
@@ -43,6 +75,10 @@ func runClaude(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	configPath := fs.String("config", config.DefaultPath, "path to the config file")
 	require := fs.Bool("require", false, "refuse to run Claude Code when Janus is not answering")
+	chosen := &provider
+	if provider == "" {
+		chosen = fs.String("provider", "", "send this session to claude, openai (or codex), or local first, instead of following the rules")
+	}
 	if err := fs.Parse(ours); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -53,17 +89,35 @@ func runClaude(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// Read, not Load: starting Claude Code must not write a config file.
 	cfg, err := config.Read(*configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "janus claude: %v\n", err)
+		fmt.Fprintf(stderr, name+": %v\n", err)
 		return 1
 	}
 	cfg = config.Apply(cfg, config.Overrides{}, os.Getenv)
 	if err := cfg.Validate(); err != nil {
-		fmt.Fprintf(stderr, "janus claude: %s has problems:\n%v\n", *configPath, err)
+		fmt.Fprintf(stderr, name+": %s has problems:\n%v\n", *configPath, err)
 		return 1
+	}
+
+	route := ""
+	if *chosen != "" {
+		var known bool
+		if route, known = providers[*chosen]; !known {
+			fmt.Fprintf(stderr, "%s: -provider %q is not claude, openai, codex, or local\n", name, *chosen)
+			return 2
+		}
 	}
 
 	base := clientURL(cfg.Listen)
 	env := os.Environ()
+	if route != "" {
+		// The route header is an instruction to Janus, removed before
+		// anything is sent on.
+		headers := lookupEnv(env, "ANTHROPIC_CUSTOM_HEADERS")
+		if headers != "" {
+			headers += "\n"
+		}
+		env = setEnv(env, "ANTHROPIC_CUSTOM_HEADERS", headers+backend.RouteHeader+": "+route)
+	}
 	if up(cfg.Listen) {
 		env = setEnv(env, "ANTHROPIC_BASE_URL", base)
 		env = setEnv(env, "ENABLE_TOOL_SEARCH", "true")
@@ -72,22 +126,26 @@ func runClaude(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 	} else {
 		switch {
+		case route != "":
+			fmt.Fprintf(stderr, "%s: janus is not answering on %s, and only janus can send this session to\n"+
+				"%s. Start janus, then run this again.\n", name, cfg.Listen, *chosen)
+			return 1
 		case cfg.Upstream.Off:
-			fmt.Fprintf(stderr, "janus claude: janus is not answering on %s, and upstream is off in %s:\n"+
+			fmt.Fprintf(stderr, name+": janus is not answering on %s, and upstream is off in %s:\n"+
 				"there is no Anthropic account to go straight to, so Claude Code was not started.\n"+
 				"Start janus, then run this again.\n", cfg.Listen, *configPath)
 			return 1
 		case cfg.Features.Guard:
-			fmt.Fprintf(stderr, "janus claude: janus is not answering on %s, and the guard is on in %s.\n"+
+			fmt.Fprintf(stderr, name+": janus is not answering on %s, and the guard is on in %s.\n"+
 				"Going straight to Anthropic would send what the guard keeps back, so Claude Code\n"+
 				"was not started. Start janus, then run this again.\n", cfg.Listen, *configPath)
 			return 1
 		case *require:
-			fmt.Fprintf(stderr, "janus claude: janus is not answering on %s, and -require was given.\n"+
+			fmt.Fprintf(stderr, name+": janus is not answering on %s, and -require was given.\n"+
 				"Start janus, then run this again.\n", cfg.Listen)
 			return 1
 		}
-		fmt.Fprintf(stderr, "janus claude: janus is not answering on %s, so Claude Code is going straight\n"+
+		fmt.Fprintf(stderr, name+": janus is not answering on %s, so Claude Code is going straight\n"+
 			"to Anthropic and this session will not be in the ledger. Start janus to change that.\n", cfg.Listen)
 		// A variable naming the stopped Janus would leave Claude Code
 		// unable to reach anything.
@@ -99,7 +157,7 @@ func runClaude(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	argv := append(append([]string(nil), claudeProgram...), theirs...)
 	path, err := exec.LookPath(argv[0])
 	if err != nil {
-		fmt.Fprintf(stderr, "janus claude: cannot find Claude Code (%q) on the PATH: %v\n", argv[0], err)
+		fmt.Fprintf(stderr, name+": cannot find Claude Code (%q) on the PATH: %v\n", argv[0], err)
 		return 1
 	}
 	cmd := exec.Command(path, argv[1:]...) // #nosec G204 G702 -- running the Claude Code the user asked for, with their arguments, is what janus claude is for
@@ -115,7 +173,7 @@ func runClaude(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case errors.As(err, &exit):
 		return exit.ExitCode()
 	case err != nil:
-		fmt.Fprintf(stderr, "janus claude: %v\n", err)
+		fmt.Fprintf(stderr, name+": %v\n", err)
 		return 1
 	}
 	return 0
@@ -136,7 +194,7 @@ func splitClaudeArgs(args []string) (ours, theirs []string) {
 		}
 		name, _, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
 		switch name {
-		case "config":
+		case "config", "provider":
 			if !hasValue && i+1 < len(args) {
 				i++
 			}

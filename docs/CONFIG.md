@@ -545,16 +545,22 @@ rule:
 | `X-Janus-Route` | Effect |
 | --- | --- |
 | `upstream` | Send it to Claude, whatever the rules say |
+| `openai` | Send it to OpenAI first; if OpenAI cannot answer, it goes on down the `fallback` list of the rule that would have matched |
 | `local` | Send it to the local model, if exactly one is configured |
 | `local=<name>` | Send it to that entry of `local.models` |
 
 Claude Code sends extra headers from an environment variable, so this
-works for a whole session:
+works for a whole session. The launchers set it for you:
 
 ```bash
-ANTHROPIC_CUSTOM_HEADERS="X-Janus-Route: upstream" claude   # bypass local routing for this session
-ANTHROPIC_CUSTOM_HEADERS="X-Janus-Route: local" claude      # keep this session off Anthropic
+janus claude -provider claude   # X-Janus-Route: upstream; bypass local routing for this session
+janus claude -provider openai   # X-Janus-Route: openai; "codex" means the same
+janus local                     # X-Janus-Route: local; keep this session off Anthropic
 ```
+
+Each session on one Janus can choose differently. Started another way,
+set `ANTHROPIC_CUSTOM_HEADERS="X-Janus-Route: local"` and the like
+yourself.
 
 **Forcing local is a promise that the request does not go upstream.** If
 the local model cannot take it, the request is refused with an error

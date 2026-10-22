@@ -45,6 +45,11 @@ Start Claude Code through janus:
   ...
 ```
 
+`janus claude -provider openai` starts a session with OpenAI first, and
+`janus local` one on the local model only, through the same Janus; other
+sessions keep following the rules
+([choosing the route yourself](../CONFIG.md#choosing-the-route-yourself)).
+
 Read the `Routing` lines after any config change: they are the rules as
 Janus understood them, which is not always what you meant. The first rule
 that matches a request decides where it goes, so a broad rule above a
