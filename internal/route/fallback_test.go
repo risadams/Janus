@@ -1,6 +1,7 @@
 package route
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -459,5 +460,90 @@ func TestLocalThenEscalateEscalatesAlongTheList(t *testing.T) {
 	}
 	if len(srv.Requests()) != 1 {
 		t.Errorf("OpenAI asked %d times", len(srv.Requests()))
+	}
+}
+
+// A strict rule passes over OpenAI for a request that asks for something
+// OpenAI would drop, saying what; a request that asks for nothing of the
+// kind goes (#454).
+func TestAStrictRulePassesOverOpenAIForWhatItWouldDrop(t *testing.T) {
+	oa, srv := fakeOpenAI(t, openaitest.Answer(openaitest.Text{Text: "ok"}))
+	var sent []string
+	up := httptest.NewServer(claudeAnswers(&sent))
+	defer up.Close()
+	j := listRouter(t, up, oa, "openai", "upstream")
+	j.Rules[0].Strict = true
+	withStop := `{"model":"claude-opus-5-5","max_tokens":100,"stop_sequences":["END"],"temperature":0.2,"messages":[{"role":"user","content":"hi"}]}`
+
+	res := j.send(t, withStop)
+	if res.Exchange.Backend != "upstream" || len(srv.Requests()) != 0 ||
+		!strings.Contains(res.Exchange.Reason, "the rule is strict, and OpenAI would drop what the request asked for: stop_sequences, temperature") {
+		t.Errorf("went to %s, OpenAI asked %d times, reason %q", res.Exchange.Backend, len(srv.Requests()), res.Exchange.Reason)
+	}
+	if tried := res.Exchange.Tried; len(tried) != 1 || tried[0].Backend != "openai" || tried[0].Sent {
+		t.Errorf("tried = %+v", tried)
+	}
+	if res := j.send(t, opusRequest); res.Exchange.Backend != "openai" {
+		t.Errorf("a request asking for nothing OpenAI drops went to %s", res.Exchange.Backend)
+	}
+	// Not strict: dropped and recorded, as before.
+	oa2, _ := fakeOpenAI(t, openaitest.Answer(openaitest.Text{Text: "ok"}))
+	j2 := listRouter(t, up, oa2, "openai", "upstream")
+	if res := j2.send(t, withStop); res.Exchange.Backend != "openai" {
+		t.Errorf("without strict, went to %s", res.Exchange.Backend)
+	}
+}
+
+// A rule's maxUsd passes over a provider whose most the request could
+// cost is above it; a local model is free, and a model with no price is
+// not passed over (#454).
+func TestAPriceCapPassesOverAProviderThatCouldCostMore(t *testing.T) {
+	oa, srv := fakeOpenAI(t, openaitest.Answer(openaitest.Text{Text: "ok"}))
+	local, _ := lmStudio(t, nil)
+	var sent []string
+	up := httptest.NewServer(claudeAnswers(&sent))
+	defer up.Close()
+	u, _ := url.Parse(up.URL)
+	model := qwen["janus-local"]
+	prices := map[string][2]float64{"claude-opus-5-5": {4, 20}, "gpt-6.1-sol": {2, 10}} // per million, input and output
+	r := &Router{Upstream: backend.NewUpstream(u, nil), Local: local, OpenAI: oa,
+		Cost: func(m string, in, out int) (float64, bool) {
+			p, ok := prices[m]
+			return (float64(in)*p[0] + float64(out)*p[1]) / 1e6, ok
+		},
+		Rules: []Rule{{Name: "all", MaxUSD: 0.10, Fallback: []Provider{{Name: RouteUpstream}, {Name: RouteOpenAI}, {Name: "janus-local", Local: &model}}}}}
+	reported := make(chan proxy.Exchange, 1)
+	janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: r.Upstream, Plan: r.Plan, Done: func(ex proxy.Exchange) { reported <- ex }}))
+	defer janus.Close()
+	send := func(maxTokens int) proxy.Exchange {
+		body := fmt.Sprintf(`{"model":"claude-opus-5-5","max_tokens":%d,"messages":[{"role":"user","content":"hi"}]}`, maxTokens)
+		resp, err := http.Post(janus.URL+"/v1/messages", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return <-reported
+	}
+
+	// A small answer: Claude could cost about $0.0004.
+	if ex := send(20); ex.Backend != "upstream" {
+		t.Errorf("a cheap request went to %s: %q", ex.Backend, ex.Reason)
+	}
+	// An answer of up to 8,000 tokens on Opus could cost $0.16, over the
+	// cap; OpenAI's model at half the price could cost $0.08, under it.
+	ex := send(8000)
+	if ex.Backend != "openai" || !strings.Contains(ex.Reason, "Claude (claude-opus-5-5) could cost up to about $0.16 for this request, over the rule's maxUsd of $0.10 (a ceiling at list price)") {
+		t.Errorf("went to %s, reason %q", ex.Backend, ex.Reason)
+	}
+	if tried := ex.Tried; len(tried) != 1 || tried[0].Backend != "upstream" || tried[0].Sent {
+		t.Errorf("tried = %+v", tried)
+	}
+	// Dearer than both: the local model, which is free, answers.
+	if ex := send(20000); ex.Backend != "local" {
+		t.Errorf("a dear request went to %s: %q", ex.Backend, ex.Reason)
+	}
+	if len(srv.Requests()) != 1 || len(sent) != 1 {
+		t.Errorf("OpenAI asked %d times, Claude %d", len(srv.Requests()), len(sent))
 	}
 }

@@ -289,6 +289,8 @@ Outcome.
 | `skipChecks` | For `local-then-escalate`: checks to leave out. See below. |
 | `maxSeconds` | For `local-then-escalate`: how long the local model gets before Claude is asked. Default 120. |
 | `fallback` | Where the request may go, in order: `upstream`, `openai`, or entries of `local.models`. With `route` left out the list is the route; with `upstream` or `shadow` it starts with `upstream`, and the rest answer when Claude cannot. See below. |
+| `strict` | With a `fallback` list naming `openai`: pass over OpenAI for a request that asks for something it would drop (`stop_sequences`, `temperature`, `top_p`, `top_k`), saying what. See [a list of providers](#a-list-of-providers). |
+| `maxUsd` | With a `fallback` list: pass over a provider whose most the request could cost is above this many US dollars. See [a list of providers](#a-list-of-providers). |
 | `ifUsageAbove` | Match only once a subscription usage limit is used past a share, as Claude last reported: `{"5h": 0.8}` for the five-hour limit, `"7d"` for the weekly one, `"openai.gpt-6.1-sol.tokens"` or `"openai.gpt-6.1-sol.requests"` for one OpenAI model's per-minute limits (any model's name), `"openai.tokens"` and `"openai.requests"` for the fullest of any model's; any one past its share is enough. Until the provider has answered, and after a limit's reset, it does not match. Not for `upstream`. See [the pacing recipe](recipes/pace.md). |
 
 The classes:
@@ -411,6 +413,24 @@ A list of one is one provider and nothing else: `["openai"]` sends the
 rule's requests to OpenAI only, and `["janus-local"]` to the local model
 only, refusing what it cannot take. Two entries can't name the same
 provider.
+
+**Two checks on a rule's list**, borrowed from OpenRouter's routing:
+
+- **`"strict": true`** passes over OpenAI for a request that asks for
+  something OpenAI would drop. Without it, Janus sends the request
+  anyway, drops those settings, and names them in the ledger's
+  `request.dropped`. With it, the next provider gets the request instead,
+  and `tried` says which settings.
+- **`"maxUsd": 0.50`** passes over a provider whose most the request
+  could cost is above that. The figure is a **ceiling at list price, not a
+  forecast**: the whole prompt at the uncached rate, which ignores the
+  cache reads most of a Claude Code turn is, plus an answer as long as
+  `max_tokens` allows (up to 128,000 tokens), with the prompt's size
+  estimated high at three bytes a token. Set it well above a typical turn
+  of the model you mean to allow: Opus with `max_tokens` of 32,000 can
+  come to about $0.64 in output alone. A local model is free, and a model
+  Janus has no price for is not passed over. Prices are the ones
+  [`pricing`](#pricing) holds.
 
 An entry that cannot take the request at all is passed over, and the
 ledger's `reason` says why: a request OpenAI's API has no way to express,

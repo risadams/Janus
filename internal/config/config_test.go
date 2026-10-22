@@ -536,3 +536,35 @@ func TestKeepFromNamesAProviderAndSomethingToKeep(t *testing.T) {
 		t.Errorf("with the guard off: %v", err)
 	}
 }
+
+func TestStrictAndMaxUsdNeedAListToActOn(t *testing.T) {
+	base := func() Config {
+		cfg := Default()
+		cfg.Features.Route = true
+		cfg.OpenAI = OpenAI{Key: "env:OPENAI_API_KEY"}
+		cfg.Local.Models = map[string]LocalModel{"janus-local": {Model: "q"}}
+		return cfg
+	}
+	for _, c := range []struct {
+		name string
+		rule Rule
+		want string
+	}{
+		{"both on a list naming openai", Rule{Strict: true, MaxUSD: 0.5, Fallback: []string{"upstream", "openai"}}, ""},
+		{"a cap on any list", Rule{MaxUSD: 1, Fallback: []string{"upstream", "janus-local"}}, ""},
+		{"strict on a list without openai", Rule{Strict: true, Fallback: []string{"upstream", "janus-local"}}, "strict only concerns openai"},
+		{"strict with no list", Rule{Route: "upstream", Strict: true}, "strict passes over a provider"},
+		{"a cap with no list", Rule{Route: "upstream", MaxUSD: 1}, "maxUsd passes over a provider"},
+		{"a negative cap", Rule{MaxUSD: -1, Fallback: []string{"upstream"}}, "maxUsd is negative"},
+	} {
+		cfg := base()
+		cfg.Routing = []Rule{c.rule}
+		err := cfg.Validate()
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%s: %v", c.name, err)
+		case c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)):
+			t.Errorf("%s: err = %v, want %q", c.name, err, c.want)
+		}
+	}
+}

@@ -372,6 +372,16 @@ type Rule struct {
 	// it is where the rule escalates to instead of Claude. It replaces
 	// ifDown (config version 2).
 	Fallback []string `json:"fallback,omitempty"`
+	// Strict passes over a provider on the list that would drop anything
+	// the request asked for: OpenAI takes none of stop_sequences,
+	// temperature, top_p, or top_k. The ledger says what. Needs a list that
+	// names openai (#454).
+	Strict bool `json:"strict,omitempty"`
+	// MaxUSD passes over a provider on the list whose most the request
+	// could cost, at list price, is above it. It is a ceiling, not a
+	// forecast: the whole prompt at the uncached rate plus an answer as long
+	// as max_tokens allows. Local models are free. Needs a list (#454).
+	MaxUSD float64 `json:"maxUsd,omitempty"`
 	// SkipChecks turns off named checks on the local answer, for the
 	// local-then-escalate route: empty, truncated, tools, schema, refusal.
 	SkipChecks []string `json:"skipChecks,omitempty"`
@@ -416,10 +426,22 @@ func (c Config) checkUpstreamOff() []error {
 
 // checkFallback says what is wrong with a rule's fallback list.
 func (c Config) checkFallback(where string, rule Rule) []error {
-	if len(rule.Fallback) == 0 {
-		return nil
-	}
 	var errs []error
+	if rule.MaxUSD < 0 {
+		errs = append(errs, fmt.Errorf("%s.maxUsd is negative; leave it out for no cap", where))
+	}
+	if len(rule.Fallback) == 0 {
+		if rule.Strict {
+			errs = append(errs, fmt.Errorf("%s.strict passes over a provider on a fallback list that would drop what the request asked for; it needs a list naming openai", where))
+		}
+		if rule.MaxUSD > 0 {
+			errs = append(errs, fmt.Errorf("%s.maxUsd passes over a provider on a fallback list that would cost too much; it needs a list", where))
+		}
+		return errs
+	}
+	if rule.Strict && !slices.Contains(rule.Fallback, "openai") {
+		errs = append(errs, fmt.Errorf("%s.strict only concerns openai, which drops what a request asked for, and the list does not name it", where))
+	}
 	seen := map[string]bool{}
 	for i, name := range rule.Fallback {
 		_, local := c.Local.Models[name]
@@ -637,7 +659,6 @@ func Apply(cfg Config, flags Overrides, getenv func(string) string) Config {
 // put there, so a broken config is fixed in one pass.
 func (c Config) Validate() error {
 	var errs []error
-
 	host, _, err := net.SplitHostPort(c.Listen)
 	switch {
 	case err != nil:

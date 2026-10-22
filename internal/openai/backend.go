@@ -100,10 +100,11 @@ type Translation struct {
 func (b *Backend) Translation(header http.Header, req *anthropic.Request) (*Translation, error) {
 	choice := Choose(b.config, req)
 	opts := RequestOptions{Model: choice.Model, Effort: choice.Effort, SessionID: header.Get("X-Claude-Code-Session-Id")}
-	if _, err := TranslateRequest(req, opts); err != nil {
+	first, err := TranslateRequest(req, opts)
+	if err != nil {
 		return nil, err
 	}
-	return &Translation{Choice: choice, b: b, opts: opts}, nil
+	return &Translation{Choice: choice, b: b, opts: opts, dropped: first.Dropped}, nil
 }
 
 // Translate is for the plan (proxy.Plan.Translate): it translates the body
@@ -122,6 +123,11 @@ func (t *Translation) Translate(body []byte) ([]byte, func(*http.Response) error
 	t.dropped = tr.Dropped
 	return tr.Body, t.b.back(t, ResponseOptions{Tools: tr.Tools, Summary: tr.Summary, scrub: t.b.key.scrub}), nil
 }
+
+// Dropped names what the request asked for that OpenAI cannot be sent
+// (Translated.Dropped), known before it is sent so that a strict rule can
+// pass OpenAI over (#454).
+func (t *Translation) Dropped() []string { return t.dropped }
 
 // Failure is OpenAI's error answer to the request, once it has been read:
 // what a fallback list decides on (#428). Nil before then, and when OpenAI
