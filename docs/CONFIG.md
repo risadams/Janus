@@ -111,7 +111,11 @@ The default models are `gpt-6.1-sol` for `fable`, `opus`, `sonnet`, and
 The reasoning effort follows Claude Code's: its `effort` setting goes
 across as it is, and a thinking budget picks one (under 4,000 tokens
 `low`, under 16,000 `medium`, under 32,000 `high`, otherwise `xhigh`).
-Thinking switched off becomes the model's lowest effort. An effort a model
+Thinking switched off becomes the model's lowest effort, and so does any
+request that caps its output below 4,000 tokens, such as auto mode's safety
+checks and status lines: OpenAI counts reasoning against the cap, so a
+model reasoning at its default can spend all of a small one and answer
+nothing. (4,000 is a starting point, not a measurement.) An effort a model
 does not take is moved to the nearest one it does: `max` on
 `gpt-5.3-codex` becomes `xhigh`. The ledger records the Claude model asked
 for as `request.model` and the OpenAI model that answered as

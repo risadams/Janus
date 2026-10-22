@@ -20,10 +20,26 @@ type Choice struct {
 // the requested model's full name, else for its family ("opus", "sonnet",
 // "haiku", "fable"), else for "default", with DefaultOpenAIModels filling
 // in what openai.models leaves out.
+//
+// A request with a small output cap goes with the model's lowest effort,
+// whatever it asked for (#452): OpenAI counts reasoning against the cap, so
+// a model reasoning at its default can spend all of a small one and return
+// no answer, billed all the same. Claude Code's auto-mode safety checks and
+// status lines are such requests.
 func Choose(o config.OpenAI, req *anthropic.Request) Choice {
 	model := chooseModel(o, req.Model())
-	return Choice{Model: model, Effort: clampEffort(model, requestedEffort(req))}
+	effort := requestedEffort(req)
+	if n := req.MaxTokens(); n > 0 && n < SmallCap {
+		effort = "off"
+	}
+	return Choice{Model: model, Effort: clampEffort(model, effort)}
 }
+
+// SmallCap is the output cap below which a request goes with the lowest
+// effort. It is a starting point, not a measurement: a model at its default
+// effort can reason for thousands of tokens, and the largest of Claude
+// Code's small requests asks for fewer than this.
+const SmallCap = 4096
 
 func chooseModel(o config.OpenAI, asked string) string {
 	lookup := func(key string) (string, bool) {

@@ -157,3 +157,45 @@ func TestTheLedgerRecordsWhatWasDroppedAndWhatWasSpentReasoning(t *testing.T) {
 		}
 	}
 }
+
+// An answer that stopped at the output cap with only reasoning in it is
+// recorded as such, not as an ordinary max_tokens stop (#452).
+func TestTheLedgerSaysWhenReasoningUsedTheWholeCap(t *testing.T) {
+	for _, stream := range []bool{true, false} {
+		srv := openaitest.New(t,
+			openaitest.Reply{Output: []openaitest.Item{openaitest.Reasoning{Encrypted: "gAAAA"}}, Status: "incomplete", Reason: "max_output_tokens",
+				Usage: openaitest.Usage{Input: 100, Output: 64, Reasoning: 64}},
+			openaitest.Reply{Output: []openaitest.Item{openaitest.Text{Text: "cut off mid"}}, Status: "incomplete", Reason: "max_output_tokens",
+				Usage: openaitest.Usage{Input: 100, Output: 64, Reasoning: 10}})
+		cfg := config.Default()
+		cfg.OpenAI = config.OpenAI{BaseURL: srv.URL, Key: "env:OPENAI_API_KEY"}
+		cfg.Features.Route = true
+		cfg.Routing = []config.Rule{{Fallback: []string{"openai"}}}
+		key, _ := openai.LoadKey(cfg.OpenAI, func(string) (string, bool) { return "janus-test-key", true })
+		oa, err := openai.NewBackend(cfg.OpenAI, key, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		unused, _ := url.Parse("http://127.0.0.1:1")
+		router := newRouter(cfg, backend.NewUpstream(unused, nil), backend.NewLocal(unused, nil), oa)
+		reported := make(chan proxy.Exchange, 1)
+		janus := httptest.NewServer(proxy.New(proxy.Options{Upstream: router.Upstream, Plan: router.Plan, Done: func(ex proxy.Exchange) { reported <- ex }}))
+		for i, wantFlag := range []bool{true, false} {
+			body := fmt.Sprintf(`{"model":"claude-sonnet-5-5","max_tokens":64,"stream":%v,"messages":[{"role":"user","content":"Is it safe?"}]}`, stream)
+			resp, err := http.Post(janus.URL+"/v1/messages", "application/json", strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			rec := ledger.FromExchange(<-reported)
+			if rec.Response == nil || rec.Response.StopReason != "max_tokens" || rec.Response.ReasoningUsedTheCap != wantFlag {
+				t.Errorf("stream=%v answer %d: response %+v, want reasoning_used_the_cap %v", stream, i+1, rec.Response, wantFlag)
+			}
+		}
+		if sent := string(srv.Requests()[0].Body); !strings.Contains(sent, `"effort":"low"`) {
+			t.Errorf("stream=%v: a 64-token request did not go with the lowest effort: %s", stream, sent)
+		}
+		janus.Close()
+	}
+}

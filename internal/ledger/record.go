@@ -294,6 +294,10 @@ type Response struct {
 	Model      string   `json:"model,omitempty"`
 	StopReason string   `json:"stop_reason,omitempty"`
 	Blocks     []string `json:"blocks"`
+	// ReasoningUsedTheCap is set on an OpenAI answer that stopped at the
+	// output cap with only reasoning in it: the model spent all of the cap
+	// thinking and wrote no answer, and was billed for it (#452).
+	ReasoningUsedTheCap bool `json:"reasoning_used_the_cap,omitempty"`
 	// Tools is the name of each tool called, in order.
 	Tools []string `json:"tools,omitempty"`
 }
@@ -448,6 +452,7 @@ func FromExchange(ex proxy.Exchange) Record {
 			blocks = []string{}
 		}
 		rec.Response = &Response{Model: s.Model, StopReason: s.StopReason, Blocks: blocks, Tools: s.Tools}
+		rec.Response.ReasoningUsedTheCap = usedTheCap(ex, s)
 		u := s.Usage
 		rec.Usage = &Usage{
 			Input: u.Input, Output: u.Output,
@@ -500,4 +505,18 @@ func firstInt(values ...*int) *int {
 		}
 	}
 	return nil
+}
+
+// usedTheCap reports whether an OpenAI answer stopped at the output cap
+// having written only reasoning.
+func usedTheCap(ex proxy.Exchange, s *anthropic.Summary) bool {
+	if ex.Backend != "openai" || s.StopReason != "max_tokens" || reasoning(ex) == nil || *reasoning(ex) == 0 {
+		return false
+	}
+	for _, b := range s.Blocks {
+		if b != "thinking" {
+			return false
+		}
+	}
+	return true
 }

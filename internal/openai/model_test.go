@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/risadams/janus/internal/anthropic"
@@ -91,6 +92,35 @@ func TestEffortIsClampedToWhatTheModelAccepts(t *testing.T) {
 	} {
 		if got := clampEffort(c.model, c.effort); got != c.want {
 			t.Errorf("%s at %q: %q, want %q", c.model, c.effort, got, c.want)
+		}
+	}
+}
+
+// A small output cap goes with the model's lowest effort, however much
+// the request asked for, since reasoning counts against the cap (#452).
+func TestASmallOutputCapGoesWithTheLowestEffort(t *testing.T) {
+	ask := func(maxTokens int, thinking string) Choice {
+		body := fmt.Sprintf(`{"model":"claude-sonnet-5-5","max_tokens":%d,%s"messages":[{"role":"user","content":"hi"}]}`, maxTokens, thinking)
+		req, err := anthropic.ParseRequest([]byte(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Choose(config.OpenAI{}, req)
+	}
+	for _, c := range []struct {
+		name, thinking string
+		maxTokens      int
+		want           string
+	}{
+		{"a safety check with no thinking setting", "", 64, "low"},
+		{"a status line that asked for high effort", `"output_config":{"effort":"high"},`, 200, "low"},
+		{"just under the line", `"output_config":{"effort":"high"},`, SmallCap - 1, "low"},
+		{"at the line, as asked", `"output_config":{"effort":"high"},`, SmallCap, "high"},
+		{"a main turn, as asked", `"output_config":{"effort":"medium"},`, 32000, "medium"},
+		{"a main turn with no setting", "", 32000, ""},
+	} {
+		if got := ask(c.maxTokens, c.thinking).Effort; got != c.want {
+			t.Errorf("%s: effort %q, want %q", c.name, got, c.want)
 		}
 	}
 }
