@@ -531,12 +531,21 @@ func TestDoctorSaysWhetherTheOpenAIKeyIsFoundButNotWhatItIs(t *testing.T) {
 	defer up.Close()
 	lms := serverSaying(200, lmStudioModels)
 	defer lms.Close()
-	openaiSection := map[string]any{"openai": map[string]any{"key": "env:JANUS_TEST_OPENAI_KEY"}}
+	var sentAuth []string
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sentAuth = append(sentAuth, r.Header.Get("Authorization"))
+		http.Error(w, `{"error":{"message":"Invalid URL (GET /)"}}`, http.StatusNotFound)
+	}))
+	defer fake.Close()
+	openaiSection := map[string]any{"openai": map[string]any{"key": "env:JANUS_TEST_OPENAI_KEY", "baseUrl": fake.URL}}
 
 	const key = "janus-test-key-0f3c9d"
 	t.Setenv("JANUS_TEST_OPENAI_KEY", key)
 	out, _, _ := doctor(t, up.URL, lms.URL, openaiSection)
-	wantLines(t, out, "ok openai https://api.openai.com, key found in JANUS_TEST_OPENAI_KEY")
+	wantLines(t, out, "ok openai "+fake.URL+" answers, key found in JANUS_TEST_OPENAI_KEY")
+	if len(sentAuth) == 0 || strings.Join(sentAuth, "") != "" {
+		t.Errorf("doctor asked OpenAI %d times, with credentials %q; want asked, with none", len(sentAuth), sentAuth)
+	}
 	if strings.Contains(out, key) {
 		t.Errorf("doctor printed the key:\n%s", out)
 	}
@@ -557,5 +566,28 @@ func TestDoctorSaysNothingOfOpenAIWithoutTheSection(t *testing.T) {
 	out, _, _ := doctor(t, up.URL, lms.URL, nil)
 	if strings.Contains(out, "openai") {
 		t.Errorf("doctor mentions OpenAI for a config without it:\n%s", out)
+	}
+}
+
+// With a rule sending requests to OpenAI, a missing key fails doctor, as
+// it stops janus starting; the rules' providers are listed in order.
+func TestDoctorFailsAMissingKeyARuleNeedsAndListsTheProviders(t *testing.T) {
+	up := serverSaying(200, "Anthropic API")
+	defer up.Close()
+	lms := serverSaying(200, lmStudioModels)
+	defer lms.Close()
+	fake := serverSaying(404, "")
+	defer fake.Close()
+	os.Unsetenv("JANUS_TEST_OPENAI_KEY")
+	out, code, _ := doctor(t, up.URL, lms.URL, map[string]any{
+		"openai":   map[string]any{"key": "env:JANUS_TEST_OPENAI_KEY", "baseUrl": fake.URL},
+		"features": map[string]any{"route": true},
+		"local":    map[string]any{"baseUrl": lms.URL, "models": map[string]any{"janus-local": map[string]any{"model": "qwen/qwen3.8-27b"}}},
+		"routing":  []map[string]any{{"fallback": []string{"openai", "janus-local"}}},
+	})
+	wantLines(t, out, "fail openai", "JANUS_TEST_OPENAI_KEY is not set", "janus will not start without it",
+		"ok providers rules send requests to openai, local qwen/qwen3.8-27b, upstream")
+	if code != 1 {
+		t.Errorf("exit %d, want 1", code)
 	}
 }
