@@ -236,3 +236,44 @@ func TestABrokenOpenAIStreamIsNotPassedOffAsFinished(t *testing.T) {
 		t.Errorf("the exchange records a stop reason, %q", ex.Summary.StopReason)
 	}
 }
+
+// A request the guard cannot check is not sent to OpenAI, as it is not
+// sent to Anthropic: the guard fails closed for every remote provider
+// (#380).
+func TestARequestTheGuardCannotCheckIsNotSentToOpenAI(t *testing.T) {
+	srv := openaitest.New(t)
+	b, err := NewBackend(config.OpenAI{BaseURL: srv.URL, Key: "env:OPENAI_API_KEY"}, loadTestKey(t), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unused, _ := url.Parse("http://127.0.0.1:1")
+	reported := make(chan proxy.Exchange, 1)
+	j := httptest.NewServer(proxy.New(proxy.Options{
+		Upstream: backend.NewUpstream(unused, nil),
+		Redactor: guard.NewRedactor(&guard.Detector{}),
+		Plan: func(ctx context.Context, header http.Header, req *anthropic.Request) (proxy.Plan, *proxy.Refusal) {
+			tr, err := b.Translation(header, req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// A body planning made that the guard cannot read.
+			return proxy.Plan{Backend: b, Route: "openai", Reason: "test", Body: []byte("{not json"), Translate: tr.Translate}, nil
+		},
+		Done: func(ex proxy.Exchange) { reported <- ex },
+	}))
+	defer j.Close()
+
+	resp, err := http.Post(j.URL+"/v1/messages", "application/json", strings.NewReader(hello))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	ex := <-reported
+	if len(srv.Requests()) != 0 {
+		t.Error("the request reached OpenAI")
+	}
+	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(got), "The request was not sent to openai") || ex.Guard == nil || ex.Guard.Blocked == "" {
+		t.Errorf("status %d, body %s, guard %+v", resp.StatusCode, got, ex.Guard)
+	}
+}
