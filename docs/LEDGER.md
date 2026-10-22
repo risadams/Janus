@@ -131,7 +131,7 @@ used to; `janus stats` says how many, and `-json` has them as
 | `ttfb_ms` | int | Time until the first byte of the response body |
 | `duration_ms` | int | Time until the response ended |
 | `request` | object | Messages requests only: `model`, `stream`, `bytes`, `messages`, `tools`, `cache_breakpoints`, and for one OpenAI answered, `dropped`: what it asked for that OpenAI has no way to take (`stop_sequences`, `temperature`, `top_p`, `top_k`) |
-| `response` | object | Messages responses only: `model` (the model that answered, by its backend's own name, which for a local answer differs from `request.model`), `stop_reason`, `blocks` (content block types in order), `tools` (names of the tools called, in order) |
+| `response` | object | Messages responses only: `model` (the model that answered, by its backend's own name, which for a local answer differs from `request.model`), `stop_reason`, `blocks` (content block types in order), `tools` (names of the tools called, in order), and `reasoning_used_the_cap`, set on an OpenAI answer that stopped at the output cap with only reasoning in it, which is billed all the same |
 | `usage` | object | Messages responses only; see below |
 | `unread` | string | Why a Messages response has no `usage`, e.g. `content-encoding br`, or a gzip body larger than 256 MiB once decompressed |
 | `quota` | object | On a subscription: how much of each usage limit is used; see [`quota`](#quota) |
