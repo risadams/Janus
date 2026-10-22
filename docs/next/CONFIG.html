@@ -5,7 +5,7 @@
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Configuration | Janus</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" name="twitter:image" content="https://risadams.github.io/Janus/img/social-card.png"><meta data-rh="true" property="og:url" content="https://risadams.github.io/Janus/docs/next/CONFIG"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Configuration | Janus"><meta data-rh="true" name="description" content="This is the reference: every setting, what it does, and why it works the"><meta data-rh="true" property="og:description" content="This is the reference: every setting, what it does, and why it works the"><link data-rh="true" rel="icon" href="/Janus/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://risadams.github.io/Janus/docs/next/CONFIG"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/CONFIG" hreflang="en"><link data-rh="true" rel="alternate" href="https://risadams.github.io/Janus/docs/next/CONFIG" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Configuration","item":"https://risadams.github.io/Janus/docs/next/CONFIG"}]}</script><link rel="apple-touch-icon" href="/Janus/img/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&amp;family=Caveat:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap"><link rel="stylesheet" href="/Janus/assets/css/styles.31295cc3.css">
-<script src="/Janus/assets/js/runtime~main.9bd25b20.js" defer="defer"></script>
+<script src="/Janus/assets/js/runtime~main.cdf07209.js" defer="defer"></script>
 <script src="/Janus/assets/js/main.ba9f6ce6.js" defer="defer"></script>
 </head>
 <body>
@@ -199,15 +199,44 @@ for as <code>request.model</code> and the OpenAI model that answered as
 <p><strong>The key is never in this file.</strong> A config file gets copied between
 machines, pasted into issues, and backed up, and <code>janus config upgrade</code>
 leaves a <code>.bak</code> copy beside it, so Janus refuses a key written here, and
-its error does not repeat it. It reads the key once, at startup, from the source <code>openai.key</code> names, keeps it in
-memory only, and sends it to OpenAI and nowhere else
-(<a class="" href="/Janus/docs/next/adr/openai-credential">ADR-005</a>). Use <code>keychain:</code> when Janus runs
-as a service, which does not see your shell&#x27;s environment. This release
-reads <code>env:</code> only; <code>keychain:</code> passes the config check, and <code>janus doctor</code>
-says the credential store cannot be read yet.</p>
+its error does not repeat it. It reads the key once, at startup, from the
+source <code>openai.key</code> names, keeps it in memory only, and sends it to OpenAI
+and nowhere else (<a class="" href="/Janus/docs/next/adr/openai-credential">ADR-005</a>).</p>
+<p><strong>Use <code>keychain:</code> when Janus runs as a service</strong> (<code>janus service install</code>), which does not see your shell&#x27;s environment. <code>janus service install</code> never copies a key into the service&#x27;s unit. Store the key once,
+with your platform&#x27;s own tool, then set <code>&quot;key&quot;: &quot;keychain:janus-openai&quot;</code>:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Platform</th><th>Store it</th><th>Janus reads it with</th></tr></thead><tbody><tr><td>macOS</td><td><code>security add-generic-password -a &quot;$USER&quot; -s janus-openai -w</code> (it asks for the key)</td><td><code>security find-generic-password -s janus-openai -w</code></td></tr><tr><td>Linux</td><td><code>secret-tool store --label=&quot;janus OpenAI key&quot; service janus-openai</code> (it asks for the key)</td><td><code>secret-tool lookup service janus-openai</code>, from libsecret</td></tr><tr><td>Windows</td><td><code>cmdkey /generic:janus-openai /user:janus /pass</code> (it asks for the key)</td><td><code>CredReadW</code>, the Credential Manager&#x27;s own call</td></tr></tbody></table>
+<p>Janus runs the tool with a fixed list of arguments, never through a
+shell. If the entry is missing, the error says the command that adds it.
+On macOS, the first read may ask whether Janus may use the entry; choose
+&quot;Always Allow&quot; so a service can read it unattended.</p>
 <p><code>janus doctor</code> says where the key comes from and whether it was found,
-never what it is. It sends nothing to OpenAI, so a wrong key shows up
-only when OpenAI refuses it.</p>
+never what it is. It asks OpenAI only whether it answers, without the
+key, so a wrong key shows up only when OpenAI refuses it.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="logs">Logs<a href="#logs" class="hash-link" aria-label="Direct link to Logs" title="Direct link to Logs" translate="no">​</a></h2>
 <p>By default the ledger and captures go to a folder per user, the same
 whichever folder Janus starts in: macOS <code>~/Library/Application Support/janus</code>, Linux <code>$XDG_STATE_HOME/janus</code> (or <code>~/.local/state/janus</code>),
